@@ -41,3 +41,5 @@ python scripts/build_portable.py --cache ..\..\work\portable-runtime-cache
 ```
 
 成品固定文件名 `RemoteCodex.exe`，界面左下角显示 0.9.3。关闭窗口退出桥接程序，官方任务继续执行。新建首轮速度参数仍无官方入口，本次没有扩大支持范围。
+
+发布后验证：桌面实际运行版本为 0.9.3；桌面 EXE、构建包和经过签名校验的远端清单 SHA-256 一致。通过已更新程序的回环页面只读查看仍在运行的开发任务，权限、模型和推理菜单均可展开；未发送任何该任务的设置或消息。结果见 `evidence/running-settings-packaged.json`。资源服务器仍只保留一个 EXE。
