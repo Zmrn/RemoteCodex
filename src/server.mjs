@@ -33,6 +33,7 @@ export async function startServer({
     ["/app.js", "text/javascript; charset=utf-8"],
     ["/ui.mjs", "text/javascript; charset=utf-8"],
     ["/message-content.mjs", "text/javascript; charset=utf-8"],
+    ["/conversation-history.mjs", "text/javascript; charset=utf-8"],
     ["/questions-ui.mjs", "text/javascript; charset=utf-8"],
     ["/queue-ui.mjs", "text/javascript; charset=utf-8"],
     ["/device-settings.mjs", "text/javascript; charset=utf-8"],
@@ -208,6 +209,17 @@ export async function startServer({
         }
         if (match[2] === "queue") return json(res, 200, bridge.queue.read(id));
         if (!match[2]) {
+          if (url.searchParams.get("paging") === "items-v1")
+            return json(
+              res,
+              200,
+              await bridge.readPage(
+                id,
+                url.searchParams.get("before"),
+                url.searchParams.get("retain"),
+                url.searchParams.get("known"),
+              ),
+            );
           const result = await bridge.read(id, url.searchParams.get("cursor"));
           return json(
             res,

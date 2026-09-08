@@ -3,6 +3,7 @@ import { QueueUI } from "./queue-ui.mjs";
 import { DeviceSettings, accessSummary } from "./device-settings.mjs";
 import { QuestionsUI } from "./questions-ui.mjs";
 import { questionReply, userContent } from "./message-content.mjs";
+import { mergeTurns, overlaps } from "./conversation-history.mjs";
 import {
   windowId,
   saveRecovery,
@@ -25,6 +26,9 @@ let agents = [],
   threads = [],
   turns = [],
   cursor = null,
+  pageProtocol = null,
+  gapCursor = null,
+  headHash = null,
   editing = null,
   streamAbort = null,
   readTimer = null,
@@ -294,6 +298,9 @@ function resetTaskReads() {
   taskReads.abort();
   taskReads = new AbortController();
   readInFlight = null;
+  pageProtocol = null;
+  gapCursor = null;
+  headHash = null;
 }
 function scheduleRead(older = false) {
   // Throttle instead of debounce: continuous events must still make progress.
@@ -322,6 +329,16 @@ const questionUI = new QuestionsUI(async (context, payload) => {
     setTimeout(() => read(), 250);
 });
 const messageImageCache = new Map();
+const messageImageObserver = new IntersectionObserver(
+  (entries) => {
+    for (const entry of entries)
+      if (entry.isIntersecting) {
+        messageImageObserver.unobserve(entry.target);
+        entry.target.loadImage?.();
+      }
+  },
+  { root: $("message-scroll"), rootMargin: "240px" },
+);
 function messageImage(ref) {
   const box = node("div", "message-image"),
     img = node("img"),
@@ -330,54 +347,71 @@ function messageImage(ref) {
   img.loading = "lazy";
   link.download = ref.name ?? "image.png";
   box.append(img, link);
-  const key = agentId + ":" + selected + ":" + (ref.id ?? ref.src);
-  let ready = messageImageCache.get(key);
-  if (!ready) {
-    ready = ref.src
-      ? Promise.resolve(ref.src)
-      : fetch(
-          base(agentId) +
-            "/threads/" +
-            selected +
-            "/media?id=" +
-            encodeURIComponent(ref.id),
-          {
-            headers: { "X-Bridge-CSRF": csrf },
-            signal: AbortSignal.any([
-              agentReads.signal,
-              taskReads.signal,
-              AbortSignal.timeout(75000),
-            ]),
-          },
-        ).then(async (r) => {
-          if (!r.ok) throw Error("原图不可用（源文件可能已移动或删除）");
-          return URL.createObjectURL(await r.blob());
-        });
-    messageImageCache.set(key, ready);
-    if (messageImageCache.size > 100) {
-      const first = messageImageCache.keys().next().value;
-      messageImageCache
-        .get(first)
-        .then((url) => {
-          if (url.startsWith("blob:")) URL.revokeObjectURL(url);
-        })
-        .catch(() => {});
-      messageImageCache.delete(first);
+  const imageAgent = agentId,
+    imageThread = selected;
+  let started = false;
+  img.style.minHeight = "100px";
+  box.loadImage = () => {
+    if (started) return;
+    started = true;
+    const key = imageAgent + ":" + imageThread + ":" + (ref.id ?? ref.src);
+    let ready = messageImageCache.get(key);
+    if (!ready) {
+      ready = ref.src
+        ? Promise.resolve(ref.src)
+        : fetch(
+            base(imageAgent) +
+              "/threads/" +
+              imageThread +
+              "/media?id=" +
+              encodeURIComponent(ref.id),
+            {
+              headers: { "X-Bridge-CSRF": csrf },
+              signal: AbortSignal.any([
+                agentReads.signal,
+                taskReads.signal,
+                AbortSignal.timeout(75000),
+              ]),
+            },
+          ).then(async (r) => {
+            if (!r.ok) throw Error("原图不可用（源文件可能已移动或删除）");
+            return URL.createObjectURL(await r.blob());
+          });
+      messageImageCache.set(key, ready);
+      if (messageImageCache.size > 100) {
+        const first = messageImageCache.keys().next().value;
+        messageImageCache
+          .get(first)
+          .then((url) => {
+            if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+          })
+          .catch(() => {});
+        messageImageCache.delete(first);
+      }
     }
-  }
-  ready
-    .then((src) => {
-      img.src = src;
-      link.href = src;
-      link.target = "_blank";
-      link.rel = "noopener";
-    })
-    .catch((e) => {
-      img.hidden = true;
-      link.removeAttribute("href");
-      link.textContent = e.message;
-      messageImageCache.delete(key);
-    });
+    ready
+      .then((src) => {
+        img.src = src;
+        link.textContent = "下载原图";
+        link.href = src;
+        link.target = "_blank";
+        link.rel = "noopener";
+      })
+      .catch((e) => {
+        img.hidden = true;
+        link.removeAttribute("href");
+        link.textContent = e.message;
+        messageImageCache.delete(key);
+      });
+  };
+  link.textContent = "加载原图";
+  link.onclick = (event) => {
+    if (!link.href) {
+      event.preventDefault();
+      box.loadImage();
+    }
+  };
+  messageImageObserver.observe(box);
   return box;
 }
 function permissions() {
@@ -449,7 +483,7 @@ function permissions() {
   if (!$("send").hidden) $("interrupt").hidden = true;
   $("interrupt").disabled =
     !turns.some((t) => t.status === "inProgress") || inFlight;
-  $("older").disabled = !status.connected;
+  $("older").disabled = !status.connected || !!readInFlight;
   $("refresh").disabled = !status.connected;
   $("writable").textContent = !status.connected
     ? "连接中断 · 状态未知"
@@ -1123,6 +1157,7 @@ function renderItem(item) {
   return box;
 }
 function displayTurns() {
+  messageImageObserver.disconnect();
   questionUI.index(turns);
   $("messages").replaceChildren();
   for (const t of [...turns].sort(
@@ -1143,7 +1178,10 @@ function displayTurns() {
     );
     for (const item of t.items ?? []) {
       const n = renderItem(item);
-      if (n) wrapper.append(n);
+      if (n) {
+        n.dataset.itemId = item.id;
+        wrapper.append(n);
+      }
     }
     const changed = new Map(
       (t.items ?? [])
@@ -1231,31 +1269,84 @@ function displayTurns() {
     $("messages").append(wrapper);
   }
 }
+function captureMessageAnchor() {
+  const scroll = $("message-scroll"),
+    top = scroll.getBoundingClientRect().top;
+  const item = [...$("messages").querySelectorAll("[data-item-id]")].find(
+    (el) => el.getBoundingClientRect().bottom > top + 5,
+  );
+  return item
+    ? {
+        id: item.dataset.itemId,
+        offset: item.getBoundingClientRect().top - top,
+      }
+    : null;
+}
+function restoreMessageAnchor(anchor) {
+  if (!anchor) return;
+  const item = $("messages").querySelector(
+    '[data-item-id="' + CSS.escape(anchor.id) + '"]',
+  );
+  const scroll = $("message-scroll");
+  if (item)
+    scroll.scrollTop +=
+      item.getBoundingClientRect().top -
+      scroll.getBoundingClientRect().top -
+      anchor.offset;
+}
 function read(older = false) {
-  if (!selected || !status.connected) return Promise.resolve();
+  if (
+    !selected ||
+    !status.connected ||
+    (older === true && !cursor) ||
+    (older === "gap" && !gapCursor)
+  )
+    return Promise.resolve();
   if (readInFlight) {
-    readInFlight.pending = true;
-    readInFlight.older ||= older;
+    if (!older) readInFlight.pending = true;
+    if (older === true && !readInFlight.history) readInFlight.older = true;
     return readInFlight.promise;
   }
-  const job = { a: agentId, id: selected, g: generation, seq: readSequence };
+  const job = {
+    a: agentId,
+    id: selected,
+    g: generation,
+    seq: readSequence,
+    history: older === true,
+  };
   readInFlight = job;
+  $("older").disabled = true;
+  $("older").textContent =
+    older === true ? "正在加载更早的消息…" : "加载更早的消息";
   job.promise = readTask(job, older).finally(() => {
     if (readInFlight !== job) return;
     readInFlight = null;
-    if (job.pending) scheduleRead(job.older);
+    $("older").disabled = !status.connected;
+    $("older").textContent = "加载更早的消息";
+    if (gapCursor && !job.failed) scheduleRead("gap");
+    else if (job.older) scheduleRead(true);
+    else if (job.pending) scheduleRead();
   });
   return job.promise;
 }
-async function readTask({ a, id, g, seq }, older) {
+async function readTask(job, older) {
+  const { a, id, g, seq } = job;
+  const requestedCursor = older === "gap" ? gapCursor : older ? cursor : null;
   const sidebarSeq = ++sidebarSequence;
   try {
     const r = await agentApi(
       a,
       "/threads/" +
         id +
-        "?view=conversation" +
-        (older && cursor ? "&cursor=" + encodeURIComponent(cursor) : ""),
+        "?view=conversation&paging=items-v1" +
+        (requestedCursor
+          ? (pageProtocol === "items-v1" ? "&before=" : "&cursor=") +
+            encodeURIComponent(requestedCursor)
+          : "") +
+        (pageProtocol === "items-v1" && cursor
+          ? "&retain=" + encodeURIComponent(cursor)
+          : "") +
+        (!older && taskData && headHash ? "&known=" + headHash : ""),
     );
     if (
       g !== generation ||
@@ -1264,11 +1355,37 @@ async function readTask({ a, id, g, seq }, older) {
       !status.connected
     )
       return;
+    if (r.notModified && !older && taskData) {
+      clearError();
+      return;
+    }
     if (r.data?.thread?.id !== id || !Array.isArray(r.data?.turns))
       throw Error("设备返回的会话内容格式不受支持，请更新目标设备后重试");
-    taskData = r.data;
+    const firstLoad = !turns.length;
+    const intersects = overlaps(turns, r.data.turns);
+    const next = r.data.page?.nextCursor ?? null;
+    pageProtocol = r.data.page?.pagination ?? null;
+    if (older === "gap") gapCursor = intersects ? null : next;
+    else if (older || firstLoad) cursor = next;
+    else if (pageProtocol === "items-v1" && !intersects) gapCursor ??= next;
+    if (!older) {
+      headHash = r.headHash ?? null;
+      taskData = r.data;
+      modelSettings(r.live?.state);
+    }
     clearError();
-    modelSettings(r.live?.state);
+    const scroll = $("message-scroll");
+    const atBottom =
+      firstLoad ||
+      scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 100;
+    const anchor = captureMessageAnchor();
+    turns = mergeTurns(turns, r.data.turns, !!older);
+    if (older) {
+      $("older").hidden = !cursor;
+      displayTurns();
+      restoreMessageAnchor(anchor);
+      return;
+    }
     const entry = threads.find((t) => t.id === id);
     const listChanged = !entry || entry.title !== taskData.thread.title;
     if (entry) {
@@ -1287,10 +1404,6 @@ async function readTask({ a, id, g, seq }, older) {
     );
     if (listChanged) renderThreads();
     else updateThreadIndicators();
-    cursor = r.data.page?.nextCursor;
-    turns = older
-      ? [...new Map([...turns, ...r.data.turns].map((t) => [t.id, t])).values()]
-      : (r.data.turns ?? []);
     $("title").textContent = taskData.thread.title;
     $("task-project").textContent =
       projects.find(
@@ -1334,14 +1447,11 @@ async function readTask({ a, id, g, seq }, older) {
       r.observedAt +
       "\n目录: " +
       taskData.thread.cwd;
-    const scroll = $("message-scroll"),
-      atBottom =
-        scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 100 ||
-        !scroll.scrollTop;
     displayTurns();
     permissions();
     queueUI.refresh();
-    if (!older && atBottom) scroll.scrollTop = scroll.scrollHeight;
+    if (atBottom) scroll.scrollTop = scroll.scrollHeight;
+    else restoreMessageAnchor(anchor);
   } catch (e) {
     if (
       g === generation &&
@@ -1349,7 +1459,9 @@ async function readTask({ a, id, g, seq }, older) {
       seq === readSequence &&
       e.name !== "AbortError"
     ) {
+      job.failed = true;
       error(e);
+      if (older) return;
       taskData = null;
       $("messages").querySelector(".read-notice")?.remove();
       $("task-state").textContent = "内容读取失败 · 状态未知";
@@ -1813,6 +1925,19 @@ $("open").onclick = async () => {
   }
 };
 $("older").onclick = () => read(true);
+$("message-scroll").addEventListener(
+  "scroll",
+  () => {
+    if (
+      $("message-scroll").scrollTop < 160 &&
+      cursor &&
+      !readInFlight &&
+      turns.length
+    )
+      read(true);
+  },
+  { passive: true },
+);
 $("interrupt").onclick = async () => {
   const a = agentId,
     t = selected,

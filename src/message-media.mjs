@@ -21,10 +21,29 @@ export function imageType(bytes) {
 export class MessageMedia {
   constructor() {
     this.threads = new Map();
+    this.inline = new Map();
+    this.inlineBytes = 0;
   }
-  add(threadId, source, name) {
+  add(threadId, source, name, externalImages = false) {
     if (typeof source !== "string") return null;
-    if (dataImage.test(source)) return { src: source, name: name ?? "图片" };
+    if (dataImage.test(source)) {
+      if (!externalImages) return { src: source, name: name ?? "图片" };
+      const id = createHash("sha256").update(source).digest("hex");
+      const key = threadId + ":" + id;
+      const old = this.inline.get(key);
+      if (old) this.inline.delete(key);
+      else this.inlineBytes += source.length;
+      this.inline.set(key, {
+        source,
+        name: name ?? "image." + source.slice(11, source.indexOf(";")),
+      });
+      while (this.inlineBytes > 96 * 1024 * 1024 && this.inline.size > 1) {
+        const first = this.inline.keys().next().value;
+        this.inlineBytes -= this.inline.get(first).source.length;
+        this.inline.delete(first);
+      }
+      return { id, name: this.inline.get(key).name };
+    }
     let file = source;
     if (!path.isAbsolute(file) || !/\.(png|jpe?g|webp)$/i.test(file))
       return null;
@@ -35,7 +54,7 @@ export class MessageMedia {
       entries.set(id, { file, name: name ?? path.basename(file) });
     return { id, name: name ?? path.basename(file) };
   }
-  decorate(threadId, data) {
+  decorate(threadId, data, { externalImages = false } = {}) {
     return {
       ...data,
       turns: (data.turns ?? []).map((turn) => ({
@@ -54,7 +73,7 @@ export class MessageMedia {
           const images = [],
             files = [];
           const add = (source, name) => {
-            const ref = this.add(threadId, source, name);
+            const ref = this.add(threadId, source, name, externalImages);
             if (ref) images.push(ref);
           };
           if (user || delegated !== undefined) {
@@ -105,6 +124,17 @@ export class MessageMedia {
     };
   }
   read(threadId, id) {
+    const inline = this.inline.get(threadId + ":" + id);
+    if (inline) {
+      const bytes = Buffer.from(
+        inline.source.slice(inline.source.indexOf(",") + 1),
+        "base64",
+      );
+      const type = imageType(bytes);
+      if (!type || bytes.length > 25 * 1024 * 1024)
+        throw Error("图片文件不可用或大于 25 MB");
+      return { bytes, type, name: inline.name };
+    }
     const entry = this.threads.get(threadId)?.get(id);
     if (!entry) throw Error("图片未出现在已读取的此会话中，请刷新会话");
     const fd = fs.openSync(entry.file, "r");

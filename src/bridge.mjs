@@ -10,6 +10,10 @@ import { OfficialQueue, composeQueuedMessage } from "./queue.mjs";
 import { assertProbeTarget, testExcludedThreadIds } from "./probe-safety.mjs";
 import { DATA_DIR } from "./runtime.mjs";
 import { MessageMedia } from "./message-media.mjs";
+import {
+  ConversationPages,
+  compactConversation,
+} from "./conversation-pages.mjs";
 import { withServiceTiers, tierOverride } from "./service-tiers.mjs";
 import {
   asyncQuestions,
@@ -43,6 +47,7 @@ export class Bridge extends EventEmitter {
     this.recovery = new Set();
     this.queue = new OfficialQueue(this);
     this.media = new MessageMedia();
+    this.pages = new ConversationPages();
   }
   save() {
     const tmp = this.stateFile + ".tmp";
@@ -315,11 +320,11 @@ export class Bridge extends EventEmitter {
       }),
     };
   }
-  async read(id, cursor) {
+  async read(id, cursor, { compact = false } = {}) {
     this.requireConnection();
     const data = await this.desktop.call("read_thread", {
       threadId: id,
-      turnLimit: 10,
+      turnLimit: compact ? 2 : 10,
       includeOutputs: true,
       maxOutputCharsPerItem: 12000,
       ...(cursor ? { cursor } : {}),
@@ -328,13 +333,15 @@ export class Bridge extends EventEmitter {
       this.live.delete(id);
       this.owners?.delete(id);
     }
+    const decorated = this.media.decorate(
+      id,
+      mergeLiveTurnItems(data, this.live.get(id)?.state),
+      { externalImages: compact },
+    );
     return {
       source: "official-desktop-tool-read + verified-owner-live-items",
       observedAt: new Date().toISOString(),
-      data: this.media.decorate(
-        id,
-        mergeLiveTurnItems(data, this.live.get(id)?.state),
-      ),
+      data: compact ? compactConversation(decorated) : decorated,
       live: this.live.has(id)
         ? {
             ...this.live.get(id),
@@ -342,6 +349,27 @@ export class Bridge extends EventEmitter {
           }
         : null,
     };
+  }
+  async readPage(id, before, retain, known) {
+    this.requireConnection();
+    this.pages.touch(id, retain);
+    const result = await this.pages.read(id, before, (cursor) =>
+      this.read(id, cursor, { compact: true }),
+    );
+    if (before) return result;
+    const headHash = createHash("sha256")
+      .update(
+        JSON.stringify({
+          thread: result.data.thread,
+          turns: result.data.turns,
+          settings: result.live?.state,
+          status: result.live?.status,
+        }),
+      )
+      .digest("hex");
+    return known === headHash
+      ? { notModified: true, headHash, observedAt: result.observedAt }
+      : { ...result, headHash };
   }
   async once(key, operation, payload, fn) {
     if (typeof key !== "string" || !/^[\w-]{8,100}$/.test(key))
