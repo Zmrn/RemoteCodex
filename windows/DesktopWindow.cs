@@ -21,6 +21,21 @@ public sealed class DesktopWindow : Form {
     private static readonly uint showMessage = RegisterWindowMessage("RemoteCodex.ShowDesktop.v1");
     private TaskCompletionSource<bool> draftSaved;
     private string draftNonce;
+    private readonly WindowPlacement placement;
+    private readonly Timer placementTimer = new Timer { Interval = 400 };
+    private bool placementReady;
+    private void RememberPlacement() {
+        if (!placementReady || placement == null) return;
+        placement.Capture(this);
+        placementTimer.Stop();
+        placementTimer.Start();
+    }
+    private void SavePlacement() {
+        if (!placementReady || placement == null) return;
+        placementTimer.Stop();
+        placement.Capture(this);
+        placement.Save();
+    }
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern uint RegisterWindowMessage(string message);
     protected override void WndProc(ref Message message) {
@@ -30,7 +45,8 @@ public sealed class DesktopWindow : Form {
     private void RestoreWindow() {
         if (closing) return;
         Show();
-        if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+        if (WindowState == FormWindowState.Minimized)
+            WindowState = placement.WasMaximized ? FormWindowState.Maximized : FormWindowState.Normal;
         Activate();
     }
     private void EnsureExitDeadline() {
@@ -50,6 +66,7 @@ public sealed class DesktopWindow : Form {
         await Task.WhenAny(completion.Task, Task.Delay(1500));
     }
     protected override void Dispose(bool disposing) {
+        if (disposing && !trayDisposed) { SavePlacement(); placementReady = false; placementTimer.Dispose(); }
         if (disposing && !trayDisposed) { trayDisposed = true; tray.Visible = false; tray.Dispose(); trayMenu.Dispose(); }
         base.Dispose(disposing);
     }
@@ -68,8 +85,12 @@ public sealed class DesktopWindow : Form {
         // Fail before showing a usable app if the required system runtime is absent.
         CoreWebView2Environment.GetAvailableBrowserVersionString();
         Text = "Remote Codex " + version;
-        Width = 1440; Height = 960; MinimumSize = new Size(360, 400);
-        StartPosition = FormStartPosition.CenterScreen;
+        placement = new WindowPlacement(data);
+        placement.Restore(this);
+        placementTimer.Tick += (sender, e) => { placementTimer.Stop(); placement.Save(); };
+        Move += (sender, e) => RememberPlacement();
+        Resize += (sender, e) => RememberPlacement();
+        ResizeEnd += (sender, e) => SavePlacement();
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         tray.Icon = Icon;
         tray.Text = "Remote Codex " + version;
@@ -86,6 +107,8 @@ public sealed class DesktopWindow : Form {
         Shown += async (sender, e) => {
             if (initialized) return;
             initialized = true;
+            placementReady = true;
+            RememberPlacement();
             try {
                 var environment = await CoreWebView2Environment.CreateAsync(null, Path.Combine(data, "desktop-webview"));
                 await web.EnsureCoreWebView2Async(environment);
@@ -129,6 +152,7 @@ public sealed class DesktopWindow : Form {
             }
         };
         FormClosing += async (sender, e) => {
+            SavePlacement();
             if (readyToClose) return;
             if (e.CloseReason == CloseReason.UserClosing && !exitRequested) {
                 e.Cancel = true;

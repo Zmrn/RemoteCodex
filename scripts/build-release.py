@@ -6,6 +6,7 @@ p = argparse.ArgumentParser()
 p.add_argument('--publish', action='store_true')
 args = p.parse_args()
 subprocess.run(['node', '--test', *[str(p) for p in sorted((ROOT / 'test').glob('*.test.mjs'))]], check=True, cwd=ROOT)
+subprocess.run([sys.executable, str(ROOT / 'scripts/verify-window-placement.py')], check=True, cwd=ROOT)
 for script in ('build_android.py', 'build_portable.py'):
     subprocess.run([sys.executable, '-X', 'utf8', str(ROOT / 'scripts' / script)], check=True, cwd=ROOT)
 if args.publish:

@@ -94,10 +94,10 @@ def main():
             (sdk / name).write_bytes(raw)
             files["runtime/webview2/" + name] = raw
     subprocess.run([str(compiler), "/nologo", "/codepage:65001", "/target:library", "/platform:x64", "/optimize+",
-        "/reference:System.Windows.Forms.dll", "/reference:System.Drawing.dll",
+        "/reference:System.Windows.Forms.dll", "/reference:System.Drawing.dll", "/reference:System.Web.Extensions.dll",
         "/reference:" + str(sdk / "Microsoft.Web.WebView2.Core.dll"),
         "/reference:" + str(sdk / "Microsoft.Web.WebView2.WinForms.dll"),
-        "/out:" + str(sdk / "DesktopUi.dll"), str(ROOT / "windows/DesktopWindow.cs")], check=True)
+        "/out:" + str(sdk / "DesktopUi.dll"), str(ROOT / "windows/DesktopWindow.cs"), str(ROOT / "windows/WindowPlacement.cs")], check=True)
     files["runtime/webview2/DesktopUi.dll"] = (sdk / "DesktopUi.dll").read_bytes()
     payload = build / "payload.zip"
     print("Compressing", len(files), "files ...", flush=True)
