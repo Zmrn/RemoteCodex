@@ -1585,6 +1585,14 @@ dialog .check-label input {
   color: #899ea9;
   line-height: 1.8;
 }
+#remote-info,
+#local-access-status {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+#configure-local-access {
+  margin: 0 8px 8px 0;
+}
 .setup-local .subtle {
   font-size: 11px;
 }

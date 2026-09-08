@@ -15,6 +15,7 @@ import {
   allowedRoute,
   startRemoteListener,
   proxyAgent,
+  connectionFailure,
 } from "../src/remote.mjs";
 const temp = () => fs.mkdtempSync(path.join(ROOT, "test/scratch/agents-"));
 fs.mkdirSync(path.join(ROOT, "test/scratch"), { recursive: true });
@@ -24,6 +25,21 @@ const close = (s) => {
   s.closeAllConnections();
   return new Promise((r) => s.close(r));
 };
+test("transport diagnostics separate a closed port, timeout and uncertain writes from authentication", () => {
+  const target = { hostname: "100.70.8.9", port: 43210, method: "GET" };
+  const refused = connectionFailure({ code: "ECONNREFUSED" }, target);
+  assert.match(refused.error, /100\.70\.8\.9:43210/);
+  assert.match(refused.error, /目标端口未接受连接/);
+  assert.ok(!refused.error.includes("密钥"));
+  const timeout = connectionFailure({ code: "ETIMEDOUT" }, target);
+  assert.match(timeout.error, /超时/);
+  assert.equal(timeout.confirmed, false);
+  assert.match(
+    connectionFailure({ code: "ECONNRESET" }, { ...target, method: "POST" })
+      .error,
+    /提交结果未知/,
+  );
+});
 test("agent names, selection and DPAPI keys persist; keys never appear in public listing", async () => {
   const dir = temp(),
     key = randomBytes(32).toString("hex");
@@ -135,6 +151,7 @@ test("authenticated two-hop transport forwards exact writes, SSE and original by
   try {
     let r = await fetch(endpoint + "/bridge/v1/api/status");
     assert.equal(r.status, 401);
+    assert.equal((await r.json()).code, "AUTHENTICATION_FAILED");
     r = await fetch(endpoint + "/bridge/v1/api/status", {
       headers: {
         Authorization: "Bearer " + key,

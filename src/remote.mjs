@@ -40,6 +40,30 @@ export function allowedRoute(method, url) {
   );
 }
 // One HTTP attempt only, including writes. A dropped response is never retried.
+export function connectionFailure(error, { hostname, port, method }) {
+  const target =
+    hostname === "127.0.0.1"
+      ? "目标电脑的桥接程序"
+      : (hostname.includes(":") ? `[${hostname}]` : hostname) + ":" + port;
+  const reason =
+    error?.code === "ECONNREFUSED"
+      ? `无法连接 ${target}：目标端口未接受连接。请在目标电脑编辑“这台电脑”，勾选允许其他设备通过 Tailscale 连接并保存，保持软件打开。`
+      : error?.code === "ETIMEDOUT"
+        ? `连接 ${target} 超时。请确认目标电脑已开启远程接入、双方 Tailscale 可互通，且访问端口填写一致。`
+        : `与 ${target} 的连接中断。请检查目标电脑的远程接入状态。`;
+  return {
+    error:
+      reason +
+      (method === "POST"
+        ? " 提交结果未知；请重新读取核对，不要重复发送。"
+        : ""),
+    code: ["ECONNREFUSED", "ETIMEDOUT"].includes(error?.code)
+      ? error.code
+      : "CONNECTION_INTERRUPTED",
+    status: "connection-interrupted",
+    confirmed: false,
+  };
+}
 export function relay(req, res, { hostname, port, route, headers }) {
   return new Promise((resolve) => {
     let settled = false,
@@ -78,24 +102,25 @@ export function relay(req, res, { hostname, port, route, headers }) {
         r.pipe(res);
       },
     );
-    const fail = () => {
+    const fail = (error) => {
       if (!res.headersSent) {
         res.writeHead(502, { "content-type": "application/json" });
         res.end(
-          JSON.stringify({
-            error:
-              req.method === "POST"
-                ? "设备连接中断，提交结果未知；请重新读取核对，不要重复发送。"
-                : "无法连接设备。请检查 agent、Tailscale 地址、端口和连接密钥。",
-            status: "connection-interrupted",
-            confirmed: false,
-          }),
+          JSON.stringify(
+            connectionFailure(error, { hostname, port, method: req.method }),
+          ),
         );
       } else res.destroy();
       done();
     };
-    upstream.setTimeout(75000, () => upstream.destroy());
-    const connectTimer = setTimeout(() => upstream.destroy(), 8000);
+    const timedOut = () =>
+      upstream.destroy(
+        Object.assign(new Error("Bridge connection timeout"), {
+          code: "ETIMEDOUT",
+        }),
+      );
+    upstream.setTimeout(75000, timedOut);
+    const connectTimer = setTimeout(timedOut, 8000);
     upstream.on("socket", (socket) =>
       socket.once("connect", () => clearTimeout(connectTimer)),
     );
@@ -160,7 +185,12 @@ export async function startRemoteListener({
       !timingSafeEqual(supplied, expected)
     ) {
       res.writeHead(401, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: "连接密钥无效" }));
+      res.end(
+        JSON.stringify({
+          error: "目标设备已响应，但连接验证失败。请核对目标电脑的访问密钥。",
+          code: "AUTHENTICATION_FAILED",
+        }),
+      );
       return;
     }
     const route = req.url.startsWith("/bridge/v1/api/")

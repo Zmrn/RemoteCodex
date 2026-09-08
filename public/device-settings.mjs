@@ -1,3 +1,25 @@
+export function accessEndpoint(host, port) {
+  return (host.includes(":") ? `[${host}]` : host) + ":" + port;
+}
+export function accessSummary(s) {
+  const host = s.host || s.addresses?.[0];
+  const state = s.listening
+    ? "远程接入已开启：" + accessEndpoint(s.listening.address, s.listening.port)
+    : s.error
+      ? "远程接入未开放：" + s.error
+      : "远程接入未开启，其他设备暂时无法连接。";
+  return (
+    state +
+    "\n" +
+    (host ? "本机 Tailscale IP：" + host : "未检测到本机 Tailscale IP") +
+    "\n访问端口：" +
+    s.port +
+    (s.listening ? "（正在监听）" : "（尚未监听）") +
+    (!s.listening
+      ? "\n在这台电脑的接入设置中勾选允许其他设备连接，并保存。仅复制密钥不会开启接入。"
+      : "\n请在控制端填写以上 IP、端口和这台电脑的访问密钥。")
+  );
+}
 export class DeviceSettings {
   constructor({ $, api, agentApi, toast, backupDrafts }) {
     Object.assign(this, { $, api, agentApi, toast, backupDrafts });
@@ -94,11 +116,7 @@ export class DeviceSettings {
     $("local-key").placeholder = s.hasKey
       ? "已设置，留空保持原密钥"
       : "可生成密钥，或输入自定义密钥";
-    $("local-access-status").textContent = s.listening
-      ? `已开放 ${s.listening.address}:${s.listening.port}`
-      : s.error
-        ? "未开放：" + s.error
-        : "当前仅本机可访问。勾选允许连接并保存后开放。";
+    $("local-access-status").textContent = accessSummary(s);
   }
   async saveLocal() {
     if (this.agent?.kind !== "local") return;
@@ -119,10 +137,10 @@ export class DeviceSettings {
     try {
       const state = await this.updateApi();
       if (sequence === this.sequence) this.renderUpdates(state);
-    } catch {
+    } catch (error) {
       if (sequence === this.sequence) {
         this.$("update-status").textContent =
-          "此设备暂时无法检查更新；旧版需先手动安装一次支持更新的版本。";
+          "无法读取此设备的更新状态：" + error.message;
         this.$("automatic-updates").disabled = true;
         this.$("install-update").disabled = true;
       }

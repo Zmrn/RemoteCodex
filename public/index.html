@@ -422,6 +422,10 @@
             密钥由我们的桥接程序生成，不是 ChatGPT
             登录凭据。保存后不会显示原值。
           </p>
+          <p class="field-help">
+            请先在被控制的电脑上编辑“这台电脑”，勾选允许其他设备通过 Tailscale
+            连接并保存。此处填写的是那台电脑的 IP、访问端口和密钥。
+          </p>
         </div>
         <section id="local-access-fields" hidden>
           <h3>本机远程访问</h3>
@@ -538,6 +542,9 @@
       <div class="setup-local">
         <strong>这台电脑的接入状态</strong>
         <p id="remote-info">读取中…</p>
+        <button id="configure-local-access" class="primary">
+          设置本机接入
+        </button>
         <button id="show-key" class="subtle">显示本机桥接连接密钥</button
         ><input
           id="pairing-key"
@@ -548,7 +555,7 @@
         /><button id="copy-key" class="subtle" hidden>复制密钥</button>
       </div>
       <p class="field-help">
-        默认仅本机可访问。上述命令只绑定已有 Tailscale
+        默认仅本机可访问。开启接入只绑定已有 Tailscale
         地址，不修改网络、防火墙或官方应用。另一台电脑尚未实测时，不代表远程连接已经通过。
       </p>
     </dialog>

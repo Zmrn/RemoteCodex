@@ -1,6 +1,6 @@
 import { icon, markdown } from "./ui.mjs";
 import { QueueUI } from "./queue-ui.mjs";
-import { DeviceSettings } from "./device-settings.mjs";
+import { DeviceSettings, accessSummary } from "./device-settings.mjs";
 import { QuestionsUI } from "./questions-ui.mjs";
 import { questionReply, userContent } from "./message-content.mjs";
 import {
@@ -2247,17 +2247,16 @@ $("remote-setup").onclick = async () => {
   $("remote-info").textContent = "读取中…";
   try {
     const r = await api("/api/remote-info");
-    $("remote-info").textContent =
-      (r.listening
-        ? "已监听 " + r.listening.address + ":" + r.listening.port
-        : "远程入口尚未启用；当前只允许本机访问。") +
-      "\n本机 Tailscale 地址：" +
-      (r.addresses.join(" / ") || "未发现");
+    $("remote-info").textContent = accessSummary(r);
   } catch (e) {
     $("remote-info").textContent = e.message;
   }
 };
 $("help").onclick = () => $("remote-setup").click();
+$("configure-local-access").onclick = () => {
+  $("setup-dialog").close();
+  editAgent("local");
+};
 $("show-key").onclick = async () => {
   try {
     const r = await api("/api/pairing-key", {});
