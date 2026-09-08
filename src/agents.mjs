@@ -6,10 +6,11 @@ import dns from "node:dns/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { PYTHON } from "./runtime.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 export function protect(value, operation = "protect") {
   return new Promise((resolve, reject) => {
-    const p = spawn("python", [path.join(here, "win_secret.py")], {
+    const p = spawn(PYTHON, [path.join(here, "win_secret.py")], {
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });

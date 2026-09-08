@@ -8,6 +8,7 @@ import { applyPatches, runtimeStatus, mergeLiveTurnItems } from "./state.mjs";
 import { weeklyUsage } from "./usage.mjs";
 import { OfficialQueue } from "./queue.mjs";
 import { assertProbeTarget, testExcludedThreadIds } from "./probe-safety.mjs";
+import { DATA_DIR } from "./runtime.mjs";
 import {
   parseModels,
   modelOverrides,
@@ -18,7 +19,7 @@ export const ROOT = path.resolve(
   "..",
 );
 export class Bridge extends EventEmitter {
-  constructor(dataDir = path.join(ROOT, "data")) {
+  constructor(dataDir = DATA_DIR) {
     super();
     this.dataDir = dataDir;
     fs.mkdirSync(dataDir, { recursive: true });

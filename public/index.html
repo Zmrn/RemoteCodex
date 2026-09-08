@@ -445,6 +445,10 @@
             官方 ChatGPT 保持登录，至少已有一个 Codex 任务。使用该电脑已有的
             Tailscale IP 启动：
           </p>
+          <p>单 EXE 版：先停止已运行的桥接器，再指定接入地址。</p>
+          <code>.\RemoteCodex-0.7.0-windows-x64.exe --stop</code>
+          <code>.\RemoteCodex-0.7.0-windows-x64.exe --agent-address 100.x.x.x --agent-port 43128</code>
+          <p>源码版：</p>
           <code
             >.\Start.ps1 -Background -AgentAddress 100.x.x.x -AgentPort
             43128</code

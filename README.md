@@ -1,6 +1,8 @@
 # Remote Codex · ChatGPT 桌面会话桥接器
 
-Windows 原型 **0.6.5**。连接已经运行的官方 ChatGPT 桌面端，通过它管理的同一个 Codex 任务收发消息、查看实时状态和操作队列。提供可自由调整窗口大小的 Windows UI，窄屏竖向布局自动使用侧栏抽屉。
+Windows 原型 **0.7.0**。连接已经运行的官方 ChatGPT 桌面端，通过它管理的同一个 Codex 任务收发消息、查看实时状态和操作队列。提供可自由调整窗口大小的 Windows UI，窄屏竖向布局自动使用侧栏抽屉。
+
+现已支持**单 EXE 分发**：`RemoteCodex-0.7.0-windows-x64.exe` 内置运行依赖，复制一个文件即可使用，详见 [PORTABLE.md](PORTABLE.md)。以下启动命令适用于源码版；仓库根目录原有的 `RemoteBridge.exe` 仍是依赖旁边源码的轻量启动器。
 
 调用链为：本机网页 / Windows UI → 桥接服务 → 官方 `ChatGPT.exe` 命名管道 → 官方任务所有者。程序不会启动独立 Codex app-server。
 

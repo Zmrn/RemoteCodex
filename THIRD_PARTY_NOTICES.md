@@ -1,6 +1,6 @@
 # 调查与许可证
 
-原型运行代码使用 Node.js/Python 标准库，无第三方运行时包。调查时参考了 Farfield 的桌面 IPC 分帧、客户端发现和所有者转发机制；相关 MIT 声明完整保留在 `FARFIELD-LICENSE.txt`。
+原型运行代码使用 Node.js/Python 标准库，无第三方 npm/Python 包。单 EXE 版本额外分发 Node.js 22.19.0 和 CPython 3.13.2 官方 Windows 运行时，分别完整保留其 `runtime/node/LICENSE`、`runtime/python/LICENSE.txt` 与官方分发附带的许可文件；来源和 SHA-256 位于 `scripts/build_portable.py` 及包内 `runtime/SOURCES.json`。调查时参考了 Farfield 的桌面 IPC 分帧、客户端发现和所有者转发机制；相关 MIT 声明完整保留在 `FARFIELD-LICENSE.txt`。
 
 Farfield：Copyright (c) 2026 Anshu Chimala，MIT，commit `a479046dfa2f13b3942d9ec3e56f56a0b84e8bee`。
 

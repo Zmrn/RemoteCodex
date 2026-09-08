@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import { Pipe } from "./transport.mjs";
+import { PYTHON } from "./runtime.mjs";
 const exec = promisify(execFile),
   here = path.dirname(fileURLToPath(import.meta.url));
 export function localContext(excludeId = null) {
@@ -39,7 +40,7 @@ export function localContext(excludeId = null) {
   );
 }
 export async function discover() {
-  const { stdout } = await exec("python", [path.join(here, "win_probe.py")], {
+  const { stdout } = await exec(PYTHON, [path.join(here, "win_probe.py")], {
     windowsHide: true,
     maxBuffer: 1024 * 1024,
   });

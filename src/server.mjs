@@ -9,6 +9,7 @@ import { listFiles, resolveFile, saveUpload } from "./files.mjs";
 import { Agents, isTailAddress } from "./agents.mjs";
 import { proxyAgent, startRemoteListener, allowedRoute } from "./remote.mjs";
 import { pairingKey } from "./pairing.mjs";
+import { DATA_DIR, INSTANCE } from "./runtime.mjs";
 export async function startServer({
   port = 43127,
   bridge = new Bridge(),
@@ -16,7 +17,7 @@ export async function startServer({
   agentHost,
   agentPort = 43128,
 } = {}) {
-  agents ??= new Agents(bridge.dataDir ?? path.join(ROOT, "data"));
+  agents ??= new Agents(bridge.dataDir ?? DATA_DIR);
   let remoteServer = null;
   const secret = randomBytes(32).toString("hex"),
     sse = new Set();
@@ -130,6 +131,8 @@ export async function startServer({
         });
       if (req.method === "GET" && url.pathname === "/api/status")
         return json(res, 200, bridge.status());
+      if (req.method === "GET" && url.pathname === "/api/instance")
+        return json(res, 200, INSTANCE);
       if (req.method === "GET" && url.pathname === "/api/events") {
         res.writeHead(200, {
           "Content-Type": "text/event-stream",
@@ -317,42 +320,55 @@ if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === path.join(ROOT, "src/server.mjs")
 ) {
-  const { values } = parseArgs({
-    options: {
-      "agent-address": { type: "string" },
-      "agent-port": { type: "string" },
-      port: { type: "string" },
-    },
-  });
-  const { server, bridge, address, remoteServer } = await startServer({
-    port: Number(values.port ?? 43127),
-    agentHost: values["agent-address"],
-    agentPort: Number(values["agent-port"] ?? 43128),
-  });
-  console.log("Remote Bridge UI: " + address + " (loopback only)");
-  if (remoteServer)
-    console.log(
-      "Authenticated agent listener: " +
-        remoteServer.address().address +
-        ":" +
-        remoteServer.address().port,
-    );
-  console.log(
-    "Codex tasks accept user messages, including the development task. Automated probes exclude it. Ctrl+C stops this bridge only.",
-  );
-  fs.writeFileSync(
-    path.join(bridge.dataDir, "server.json"),
-    JSON.stringify({
-      pid: process.pid,
-      address,
-      startedAt: new Date().toISOString(),
-      remoteAddress: remoteServer?.address() ?? null,
-    }),
-  );
-  for (const signal of ["SIGINT", "SIGTERM"])
-    process.on(signal, () => {
-      bridge.disconnect();
-      server.closeAllConnections();
-      server.close(() => process.exit(0));
+  try {
+    const { values } = parseArgs({
+      options: {
+        "agent-address": { type: "string" },
+        "agent-port": { type: "string" },
+        port: { type: "string" },
+      },
     });
+    const { server, bridge, address, remoteServer } = await startServer({
+      port: Number(values.port ?? 43127),
+      agentHost: values["agent-address"],
+      agentPort: Number(values["agent-port"] ?? 43128),
+    });
+    console.log("Remote Bridge UI: " + address + " (loopback only)");
+    if (remoteServer)
+      console.log(
+        "Authenticated agent listener: " +
+          remoteServer.address().address +
+          ":" +
+          remoteServer.address().port,
+      );
+    console.log(
+      "Codex tasks accept user messages, including the development task. Automated probes exclude it. Ctrl+C stops this bridge only.",
+    );
+    const record = path.join(bridge.dataDir, "server.json");
+    fs.writeFileSync(
+      record + ".tmp",
+      JSON.stringify({
+        ...INSTANCE,
+        executable: process.execPath,
+        address,
+        startedAt: new Date().toISOString(),
+        remoteAddress: remoteServer?.address() ?? null,
+      }),
+    );
+    fs.renameSync(record + ".tmp", record);
+    for (const signal of ["SIGINT", "SIGTERM"])
+      process.on(signal, () => {
+        bridge.disconnect();
+        server.closeAllConnections();
+        server.close(() => process.exit(0));
+      });
+  } catch (error) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(
+      path.join(DATA_DIR, "startup-error.txt"),
+      String(error.message),
+    );
+    console.error(error.message);
+    process.exitCode = 1;
+  }
 }

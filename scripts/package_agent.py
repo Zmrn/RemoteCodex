@@ -7,7 +7,7 @@ version = json.loads((root / 'package.json').read_text(encoding='utf-8'))['versi
 dest = root / 'dist' / f'RemoteBridge-Windows-{version}-source.zip'
 dest.parent.mkdir(exist_ok=True)
 files = [p for d in ('src','public','fixtures','scripts','windows') for p in (root/d).rglob('*') if p.is_file() and '__pycache__' not in p.parts]
-files += [root/n for n in ('README.md','.gitignore','package.json','RemoteBridge.exe','Start.ps1','Stop.ps1','Open-UI.ps1','Open-UI.cmd','THIRD_PARTY_NOTICES.md','FARFIELD-LICENSE.txt')]
+files += [root/n for n in ('README.md','PORTABLE.md','.gitignore','package.json','RemoteBridge.exe','Start.ps1','Stop.ps1','Open-UI.ps1','Open-UI.cmd','THIRD_PARTY_NOTICES.md','FARFIELD-LICENSE.txt')]
 files += list((root/'test').glob('*.test.mjs'))
 with zipfile.ZipFile(dest,'w',zipfile.ZIP_DEFLATED) as z:
     for p in sorted(files): z.write(p, p.relative_to(root).as_posix())
