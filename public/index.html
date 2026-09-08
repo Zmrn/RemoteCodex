@@ -71,7 +71,11 @@
     </div>
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-heading">
-        <span class="mode-picker">Codex</span>
+        <button id="mode-picker" class="mode-picker" popovertarget="mode-menu" aria-haspopup="menu" aria-label="切换 Chat 或 Codex 模式"><span id="mode-name">Codex</span><span data-icon="chevron"></span></button>
+        <div id="mode-menu" popover="auto" role="menu" aria-label="会话模式">
+          <button type="button" data-mode="codex" role="menuitemradio" aria-checked="true">Codex <small>代码与任务</small></button>
+          <button type="button" data-mode="chat" role="menuitemradio" aria-checked="false">Chat <small>ChatGPT 会话 · 试验性</small></button>
+        </div>
         <div>
           <button
             id="search-toggle"
@@ -116,6 +120,7 @@
         </select>
       </div>
       <div class="sidebar-scroll">
+        <p id="mode-notice" class="mode-notice" hidden></p>
         <div class="section-label">项目</div>
         <div id="project-groups"></div>
         <div class="section-label recent-label">

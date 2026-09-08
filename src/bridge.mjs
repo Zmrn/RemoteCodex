@@ -177,8 +177,10 @@ export class Bridge extends EventEmitter {
       throw Error("目前仅支持 Codex 会话写入");
     return r;
   }
-  async models() {
+  async models(mode = "codex") {
     this.requireConnection();
+    if (mode === "chat") return { source: "official-desktop-chat-model-catalog-unavailable", models: [], supported: false };
+    if (mode !== "codex") throw Error("Unknown conversation mode");
     return {
       source: "official-desktop-tools-schema-live",
       observedAt: new Date().toISOString(),
@@ -350,6 +352,7 @@ export class Bridge extends EventEmitter {
   }
   async read(id, cursor, { compact = false } = {}) {
     this.requireConnection();
+    const desktop = this.desktop;
     const data = await this.desktop.call("read_thread", {
       threadId: id,
       turnLimit: compact ? 2 : 10,
@@ -357,6 +360,25 @@ export class Bridge extends EventEmitter {
       maxOutputCharsPerItem: 12000,
       ...(cursor ? { cursor } : {}),
     });
+    this.requireConnection();
+    if (desktop !== this.desktop) throw Error("Viewer connection changed during read");
+    if (data.thread?.kind === "chatgpt") {
+      // The official Chat adapter stamps historical turns 'completed' even
+      // while streaming. Only its separate renderer status query is usable.
+      return {
+        source: "official-desktop-chat-history + renderer-status-poll (may be cached)",
+        observedAt: new Date().toISOString(),
+        data: {
+          ...data,
+          thread: { ...data.thread, status: {
+            ...data.thread.status,
+            type: data.thread.status?.type === "systemError" ? "error" : (data.thread.status?.type ?? "unknown"),
+          } },
+          turns: (data.turns ?? []).map(turn => ({ ...turn, status: "history" })),
+        },
+        live: null,
+      };
+    }
     if (data.thread?.status?.type === "notLoaded") {
       this.live.delete(id);
       this.owners?.delete(id);
@@ -369,7 +391,7 @@ export class Bridge extends EventEmitter {
       { externalImages: compact },
     );
     return {
-      source: "official-desktop-tool-read + verified-owner-live-items",
+      source: this.live.has(id) ? "official-desktop-tool-read + verified-owner-live-items" : "official-desktop-tool-read",
       observedAt: new Date().toISOString(),
       data: compact ? compactConversation(decorated) : decorated,
       live: this.live.has(id)
@@ -712,6 +734,43 @@ export class Bridge extends EventEmitter {
       return r;
     });
   }
+  chatCapabilities() {
+    const catalog = this.desktop?.catalog ?? [];
+    let supported = false;
+    try { this.requireSupportedBuild(); supported = true; } catch {}
+    const has = name => catalog.some(t => t.namespace === "codex_app" && t.name === name);
+    return {
+      read: has("read_thread") && has("list_threads"),
+      sendText: supported && has("send_message_to_thread"),
+      sendValidation: "source-reviewed; dedicated-live-test-pending",
+      create: false, models: false, images: false, queue: false, interrupt: false,
+      status: "renderer-poll", classification: "chatgpt-including-work-unclassified",
+    };
+  }
+  async chatSend(id, key, prompt, imageDataUrl, settings) {
+    this.guard(id);
+    this.requireConnection();
+    if (!this.chatCapabilities().sendText) throw Error("此官方桌面版本尚未验证 Chat 文字入口");
+    if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000) throw Error("Invalid message");
+    if (imageDataUrl || (settings && Object.keys(settings).length))
+      throw Error("Chat 暂不支持图片或模型/权限参数；请在官方桌面操作");
+    // Journal before checking state: retries of an accepted or uncertain send
+    // must return its original outcome, never submit the prompt a second time.
+    return this.once(key, "chat-send", { id, prompt }, async () => {
+      const desktop = this.desktop;
+      const r = await desktop.call("read_thread", { threadId: id, turnLimit: 1 });
+      this.requireConnection();
+      if (desktop !== this.desktop) throw Error("Viewer connection changed before Chat send");
+      if (r.thread?.id !== id || r.thread.kind !== "chatgpt") throw Error("目标不是官方 ChatGPT 会话");
+      if (r.thread.status?.type !== "idle") throw Error("Chat 正在回复或状态未知，请在官方桌面核对后再发送");
+      // No hostId, Codex settings or owner-discovery: the official tool's
+      // existing Chat branch loads this exact ID and uses its Chat composer.
+      const result = await desktop.call("send_message_to_thread", { threadId: id, prompt });
+      if (result.threadId !== id) throw Error("Chat send outcome unknown: official task ID mismatch");
+      this.emitEvent("chat-send-accepted", { threadId: id, route: "official-app-tools -> desktop Chat composer", officialPid: desktop.identity.officialPid });
+      return { threadId: id, source: "official-desktop-chat-send", officialPid: desktop.identity.officialPid };
+    });
+  }
   async open(id) {
     this.guard(id);
     this.requireConnection();
@@ -895,6 +954,7 @@ export class Bridge extends EventEmitter {
       protectedThreadId: null,
       protectedThreadIds: [],
       existingCodexWritable: true,
+      chat: this.chatCapabilities(),
       testThreads: this.db.tests,
       epoch: this.epoch,
       sequence: this.seq,

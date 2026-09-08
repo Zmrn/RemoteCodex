@@ -31,6 +31,7 @@ export async function startServer({
   let closing = false;
   const staticTypes = new Map([
     ["/app.js", "text/javascript; charset=utf-8"],
+    ["/modes.mjs", "text/javascript; charset=utf-8"],
     ["/ui.mjs", "text/javascript; charset=utf-8"],
     ["/message-content.mjs", "text/javascript; charset=utf-8"],
     ["/conversation-history.mjs", "text/javascript; charset=utf-8"],
@@ -191,7 +192,7 @@ export async function startServer({
       if (req.method === "GET" && url.pathname === "/api/threads")
         return json(res, 200, await bridge.threads());
       if (req.method === "GET" && url.pathname === "/api/models")
-        return json(res, 200, await bridge.models());
+        return json(res, 200, await bridge.models(url.searchParams.get("mode") ?? "codex"));
       if (req.method === "GET" && url.pathname === "/api/usage")
         return json(res, 200, await bridge.usage());
       const match =
@@ -342,6 +343,8 @@ export async function startServer({
         setTimeout(() => server.closeAllConnections(), 250).unref();
         return;
       }
+      if (url.pathname === "/api/threads" && body.mode && body.mode !== "codex")
+        throw Error("普通 Chat 新建尚未接入；请在官方桌面新建后刷新列表");
       if (url.pathname === "/api/threads")
         return json(
           res,
@@ -372,6 +375,8 @@ export async function startServer({
             await bridge.updateSettings(id, body.requestId, body.settings),
           );
         if (match[2] === "messages") {
+          if (body.mode === "chat") return json(res, 200, await bridge.chatSend(id, body.requestId, body.prompt, body.imageDataUrl, body.settings));
+          if (body.mode && body.mode !== "codex") throw Error("Unknown conversation mode");
           bridge.guard(id);
           if (body.imageDataUrl)
             saveUpload(path.join(bridge.dataDir, "uploads"), body.imageDataUrl);

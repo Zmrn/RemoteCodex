@@ -1,6 +1,14 @@
 # Remote Codex 开发与发布约定
 
-本项目通过 Windows 上已运行的官方 ChatGPT/Codex 会话所有者转发操作。Android 是控制端，共用 `public/` 界面；不得启动独立 Codex 后端并将其称为桌面桥接。Chat 接入尚未通过验证。
+本项目通过 Windows 上已运行的官方 ChatGPT/Codex 会话所有者转发操作。Android 是控制端，共用 `public/` 界面；不得启动独立 Codex 后端并将其称为桌面桥接。Chat 模式已实现列表与历史读取；文字续写通过官方 app-tools 的 Chat 分支，尚待专用真实会话验证，见 `CHAT-MODE.md`。
+
+## Chat 与 Codex 的区别
+
+- `kind=chatgpt` 列表包含普通 Chat 与 Work，现有接口没有分类字段，界面必须说明，不能将 Work 新建当作 Chat 新建。
+- Chat 不使用 Codex owner/follow、队列、模型/权限或中断接口；文字请求显式携带 `mode=chat`，目标端核对同一个真实 Chat ID，再经官方 `send_message_to_thread` 转发。
+- 普通 Chat 新建、模型目录/切换、图片暂无已验证的入口，不能补造模型目录或回退到 Codex/独立 API。旧设备未上报 Chat 能力时只读。
+- Chat 状态来自官方 renderer 定时查询，历史可能经过官方缓存；历史 `completed` 是适配器合成的记录标记，不是实时完成证据。断线、读取失败显示未知。
+- 模式切换必须隔离列表、草稿、导航与异步读取，保持真实会话 ID；Windows 和 Android 共用此行为。
 
 ## 操作边界
 

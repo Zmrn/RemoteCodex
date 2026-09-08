@@ -1,3 +1,4 @@
+import { normalizeMode, matchesMode, modeTaskKey, modeCatalog, chatComposer, chatNotice, chatEmpty } from "./modes.mjs";
 import { icon, markdown } from "./ui.mjs";
 import { QueueUI } from "./queue-ui.mjs";
 import { DeviceSettings, accessSummary } from "./device-settings.mjs";
@@ -39,6 +40,7 @@ if (android) {
 let agents = [],
   agentId = "local",
   selected = null,
+  mode = normalizeMode(localStorage.getItem("remote-codex-mode")),
   generation = 0,
   readSequence = 0,
   agentReads = new AbortController(),
@@ -84,7 +86,8 @@ const endpoint = (a) =>
     ? "本机直连 · " + a.host
     : (a.host.includes(":") ? "[" + a.host + "]" : a.host) + ":" + a.port;
 const base = (id) => "/api/agents/" + encodeURIComponent(id) + "/bridge";
-const taskKey = (a = agentId, t = selected) => a + ":" + t;
+const taskKey = (a = agentId, t = selected, m = mode) => modeTaskKey(a, t, m);
+const modeSelections = new Map();
 const takenDrafts = new Map();
 const deviceSettings = new DeviceSettings({
   $,
@@ -98,6 +101,8 @@ async function backupDrafts() {
   saveDraft();
   await saveRecovery({
     agent: agentId,
+    mode,
+    modeSelections: [...modeSelections],
     thread: selected,
     drafts: [...draft],
     taken: [...takenDrafts],
@@ -168,6 +173,8 @@ async function restoreTakenImage() {
   $("image").files = dt.files;
 }
 const stateNames = {
+  history: "历史记录",
+  systemError: "出错",
   active: "运行中",
   running: "运行中",
   idle: "空闲",
@@ -187,7 +194,7 @@ function label(s) {
 }
 function sidebarStatus(value, live) {
   const state = typeof value === "string" ? { type: value } : value;
-  const source = "官方桌面实时查询";
+  const source = mode === "chat" ? "官方 Chat 状态查询（非订阅）" : "官方桌面实时查询";
   if (state?.type === "notLoaded") return { type: "unknown", source };
   if (state?.activeFlags?.includes("waitingOnApproval"))
     return { type: "waiting-approval", source };
@@ -447,21 +454,23 @@ function permissions() {
     status.readOnlyThreadIds ??
     status.protectedThreadIds ?? [status.protectedThreadId]
   ).includes(selected);
-  const probe = Object.hasOwn(status.testThreads ?? {}, selected);
-  const writable =
+  const probe = mode === "codex" && Object.hasOwn(status.testThreads ?? {}, selected);
+  const chat = mode === "chat";
+  const chatAccess = chatComposer(status, taskData?.thread);
+  const writable = chat ? !readOnlyTask && chatAccess.writable :
     (fresh && !!currentAgent()) ||
     (!readOnlyTask &&
       (probe ||
         (status.existingCodexWritable && taskData?.thread?.kind === "codex")));
   const inFlight = busy.has(fresh ? agentId + ":create" : taskKey());
   const settingsAvailable =
-    status.connected &&
+    !chat && status.connected &&
     writable &&
     (fresh ||
       ["idle", "active", "notLoaded"].includes(taskData?.thread?.status?.type));
   if (settingsTarget && !settingsAvailable) closeSettingsMenu(false);
   const submitting = inFlight || queueUI.busy;
-  queueWritable = writable && !booting;
+  queueWritable = !chat && writable && !booting;
   const idle =
     fresh || ["idle", "notLoaded"].includes(taskData?.thread?.status?.type);
   $("create").disabled = $("mobile-new").disabled = busy.has(
@@ -469,7 +478,7 @@ function permissions() {
   );
   $("prompt").disabled = booting || !writable || submitting;
   $("image").disabled =
-    !status.connected ||
+    chat || !status.connected ||
     !writable ||
     fresh ||
     inFlight ||
@@ -482,17 +491,20 @@ function permissions() {
     !status.connected ||
     !writable ||
     inFlight ||
-    (!idle && taskData?.thread?.status?.type !== "active") ||
+    (chat ? !chatAccess.canSend : (!idle && taskData?.thread?.status?.type !== "active")) ||
     queueUI.busy ||
     !$("prompt").value.trim();
   $("send").title = submitting
     ? "提交中…"
-    : !idle
+    : !idle && !chat
       ? "加入队列，当前任务完成后发送"
       : "发送消息";
-  $("send").setAttribute("aria-label", !idle ? "加入队列" : "发送消息");
+  $("send").setAttribute("aria-label", !idle && !chat ? "加入队列" : "发送消息");
   $("open").disabled = !status.connected || fresh || readOnlyTask;
-  $("listfiles").disabled = !status.connected || fresh;
+  $("listfiles").disabled = chat || !status.connected || fresh;
+  for (const id of ["permission-display", "effort-display", "settings-nav", "attach-label", "files-nav", "toggle-files", "mobile-files"]) {
+    if ($(id)) $(id).hidden = chat;
+  }
   $("model-display").disabled =
     $("effort-display").disabled =
     $("permission-display").disabled =
@@ -527,11 +539,19 @@ function permissions() {
           : taskData?.thread?.status?.type === "notLoaded"
             ? "发送文字时由官方桌面继续此会话"
             : "";
+  if (chat && !readOnlyTask) $("writable").textContent = inFlight ? "正在转交官方 Chat…" : chatAccess.reason;
   $("destination").textContent = currentAgent()?.name ?? "";
   queueUI.render();
 }
 function modelSettings(state) {
   liveSettingsState = state;
+  if (mode === "chat") {
+    liveSettingsState = null;
+    $("model-display").textContent = "官方 Chat 模型";
+    $("model-display").title = "沿用此会话在官方 ChatGPT 中的模型；模型列表与切换尚未接入";
+    $("model-display").setAttribute("aria-label", "官方 Chat 模型，需在官方桌面切换");
+    return;
+  }
   const pending = pendingSettings.get(taskKey());
   const settings = { ...state?.latestThreadSettings, ...pending };
   const model = settings?.model ?? state?.latestModel;
@@ -644,7 +664,7 @@ function startViewerRecovery(id, g) {
             agentReads.signal,
             AbortSignal.timeout(20000),
           ]);
-          agentApi(
+          if (mode === "codex") agentApi(
             id,
             "/threads/" + task + "/follow",
             {},
@@ -659,8 +679,7 @@ function startViewerRecovery(id, g) {
         await refresh(g, options);
         if (g !== generation || signal.aborted) return;
         if (!status.connected) throw Error("官方桌面尚未连接");
-        $("empty-title").textContent = "今天有什么安排？";
-        $("empty-description").textContent = "在下方输入，开始一个新对话";
+        modeUI();
       } catch (e) {
         if (g !== generation || signal.aborted) return;
         setConnection(false);
@@ -947,26 +966,14 @@ async function refresh(g = generation, options = {}) {
   ]);
   if (g !== generation) return;
   status = s;
-  projects = p.data.projects ?? [];
-  threads = [...(t.data.pinnedThreads ?? []), ...(t.data.threads ?? [])];
+  threads = modeCatalog(t.data, mode, status.testThreads);
+  projects = (p.data.projects ?? []).filter(p => mode === "chat" ? p.kind === "chatgpt" || threads.some(t => t.projectId === p.projectId) : p.kind !== "chatgpt");
   for (const thread of threads)
     rememberSidebarStatus(
       thread.id,
       sidebarStatus(thread.status, s.threads?.[thread.id]?.status),
       sequence,
     );
-  // Official recent-list indexing can lag task creation. Keep the confirmed
-  // create result visible, but leave its runtime state unknown until read.
-  for (const [id, record] of Object.entries(status.testThreads ?? {})) {
-    if (!threads.some((t) => t.id === id))
-      threads.unshift({
-        id,
-        title: record.title,
-        kind: "codex",
-        status: "unknown",
-        updatedAt: Date.parse(record.createdAt) / 1000,
-      });
-  }
   const filter = $("project-filter").value;
   $("project-filter").replaceChildren(
     new Option("所有项目", "all"),
@@ -998,16 +1005,16 @@ async function pollSidebar() {
       setConnection(false);
       return;
     }
-    for (const t of [
-      ...(list.data.pinnedThreads ?? []),
-      ...(list.data.threads ?? []),
-    ])
+    status = { ...status, ...snapshot };
+    threads = modeCatalog(list.data, mode, snapshot.testThreads);
+    for (const t of threads)
       rememberSidebarStatus(
         t.id,
         sidebarStatus(t.status, snapshot.threads?.[t.id]?.status),
         sequence,
       );
-    updateThreadIndicators();
+    renderThreads();
+    permissions();
   } catch {
     if (g === generation) setConnection(false, "状态读取失败 · 状态未知");
   } finally {
@@ -1017,13 +1024,20 @@ async function pollSidebar() {
 function saveDraft() {
   draft.set(taskKey(), $("prompt").value);
   const saved = takenDrafts.get(taskKey());
-  if (saved) saved.file = $("image").files[0] ?? null;
+  const file = $("image").files[0] ?? null;
+  if (saved) saved.file = file;
+  else if (file) takenDrafts.set(taskKey(), { file });
 }
-async function switchAgent(id, record = true, resumeId = null) {
+async function switchAgent(id, record = true, resumeId = null, nextMode = mode) {
+  $("mode-menu").hidePopover();
   viewerRecovery?.stop();
   viewerRecovery = null;
   closeSettingsMenu(false);
   saveDraft();
+  modeSelections.set(agentId + ":" + mode, selected);
+  mode = normalizeMode(nextMode);
+  localStorage.setItem("remote-codex-mode", mode);
+  modeUI();
   const g = ++generation;
   agentReads.abort();
   agentReads = new AbortController();
@@ -1103,8 +1117,7 @@ async function switchAgent(id, record = true, resumeId = null) {
     refreshUsage();
     await refresh(g);
     if (g !== generation) return;
-    $("empty-title").textContent = "今天有什么安排？";
-    $("empty-description").textContent = "在下方输入，开始一个新对话";
+    modeUI();
     stream(id, g);
     if (record) recordRoute(id, null);
     if (resumeId) await selectThread(resumeId, false);
@@ -1129,6 +1142,7 @@ async function selectThread(id, record = true) {
   if (record) recordRoute(agentId, id);
   saveDraft();
   selected = id;
+  modeSelections.set(agentId + ":" + mode, id);
   queueUI.reset();
   resetTaskReads();
   taskData = null;
@@ -1161,7 +1175,7 @@ async function selectThread(id, record = true) {
     setConnection(false);
     return;
   }
-  agentApi(
+  if (mode === "codex") agentApi(
     a,
     "/threads/" + id + "/follow",
     {},
@@ -1178,7 +1192,7 @@ async function selectThread(id, record = true) {
   await read();
 }
 function renderItem(item) {
-  const question = questionUI.render(item, {
+  const question = mode === "codex" && questionUI.render(item, {
     agent: agentId,
     id: selected,
     connected: status.connected,
@@ -1193,7 +1207,7 @@ function renderItem(item) {
       .filter((c) => c.type === "text")
       .map((c) => c.text)
       .join("\n");
-    const reply = questionReply(text);
+    const reply = mode === "codex" && questionReply(text);
     if (reply) {
       if (reply.every((r) => questionUI.known?.has(r.questionItemId)))
         return null;
@@ -1206,7 +1220,7 @@ function renderItem(item) {
       card.append(node("small", "question-state", "已回答"));
       return card;
     }
-    text = item.bridgeDisplay?.text ?? userContent(text).text;
+    text = mode === "chat" ? text : (item.bridgeDisplay?.text ?? userContent(text).text);
     images = (item.content ?? item.input ?? []).filter(
       (c) =>
         c.type === "image" &&
@@ -1294,7 +1308,7 @@ function displayTurns() {
           ? new Date(t.startedAt * 1000).toLocaleString("zh-CN")
           : "时间未知") +
           " · " +
-          label(t.status),
+          (mode === "chat" ? "历史记录" : label(t.status)),
       ),
     );
     for (const item of t.items ?? []) {
@@ -1482,6 +1496,7 @@ async function readTask(job, older) {
     }
     if (r.data?.thread?.id !== id || !Array.isArray(r.data?.turns))
       throw Error("设备返回的会话内容格式不受支持，请更新目标设备后重试");
+    if (!matchesMode(r.data.thread, mode)) throw Error("会话类型与当前模式不同，请切换模式后重新选择");
     const firstLoad = !turns.length;
     const resetPaging = !pageProtocol;
     const intersects = overlaps(turns, r.data.turns);
@@ -1533,7 +1548,7 @@ async function readTask(job, older) {
       projects.find(
         (p) => p.projectId === threads.find((t) => t.id === id)?.projectId,
       )?.label ??
-      (taskData.thread.kind === "chatgpt" ? "Chat · 只读" : "Codex");
+      (taskData.thread.kind === "chatgpt" ? "ChatGPT · 定时查询" : "Codex");
     let st = taskData.thread.status;
     if (r.live?.status?.confirmed) st = r.live.status;
     if (st?.activeFlags?.includes("waitingOnApproval"))
@@ -1573,7 +1588,7 @@ async function readTask(job, older) {
       taskData.thread.cwd;
     displayTurns();
     permissions();
-    queueUI.refresh();
+    if (mode === "codex") queueUI.refresh();
     if (atBottom) scroll.scrollTop = scroll.scrollHeight;
     else restoreMessageAnchor(anchor);
   } catch (e) {
@@ -1587,6 +1602,8 @@ async function readTask(job, older) {
       error(e);
       if (older) return;
       taskData = null;
+      rememberSidebarStatus(id, { type: "unknown", confirmed: false });
+      updateThreadIndicators();
       $("messages").querySelector(".read-notice")?.remove();
       $("task-state").textContent = "内容读取失败 · 状态未知";
       $("task-state").className = "badge offline";
@@ -1654,7 +1671,7 @@ async function stream(id, g) {
           });
           updateThreadIndicators();
         }
-        if (e.threadId === selected && e.kind === "queue-changed")
+        if (mode === "codex" && e.threadId === selected && e.kind === "queue-changed")
           queueUI.refresh();
         if (e.threadId === selected && e.kind === "unknown") {
           $("task-state").textContent = "状态未知";
@@ -1775,11 +1792,48 @@ async function fileData(file) {
     reader.readAsDataURL(file);
   });
 }
+function modeUI() {
+  const chat = mode === "chat";
+  $("mode-name").textContent = chat ? "Chat" : "Codex";
+  document.body.dataset.mode = mode;
+  for (const button of $("mode-menu").querySelectorAll("[data-mode]"))
+    button.setAttribute("aria-checked", String(button.dataset.mode === mode));
+  $("mode-notice").hidden = !chat;
+  $("mode-notice").textContent = chatNotice;
+  $("empty-title").textContent = chat ? "你的 ChatGPT 会话" : "今天有什么安排？";
+  $("empty-description").textContent = chat ? chatEmpty : "在下方输入，开始一个新对话";
+}
+async function switchMode(next) {
+  next = normalizeMode(next);
+  if (next === mode) return;
+  const resume = modeSelections.get(agentId + ":" + next) ?? null;
+  await switchAgent(agentId, false, resume, next);
+  recordRoute(agentId, selected);
+}
+function positionModeMenu() {
+  const rect = $("mode-picker").getBoundingClientRect();
+  $("mode-menu").style.left = Math.max(8, Math.min(rect.left, innerWidth - 256)) + "px";
+  $("mode-menu").style.top = rect.bottom + 8 + "px";
+}
+$("mode-menu").addEventListener("beforetoggle", e => { if (e.newState === "open") positionModeMenu(); });
+window.addEventListener("resize", positionModeMenu);
+for (const button of $("mode-menu").querySelectorAll("[data-mode]")) button.onclick = () => {
+  $("mode-menu").hidePopover();
+  switchMode(button.dataset.mode).catch(error);
+};
+$("mode-menu").addEventListener("keydown", e => {
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+  e.preventDefault();
+  const buttons = [...$("mode-menu").querySelectorAll("button")];
+  const current = buttons.indexOf(document.activeElement);
+  buttons[e.key === "Home" ? 0 : e.key === "End" ? buttons.length - 1 : (current + (e.key === "ArrowUp" ? -1 : 1) + buttons.length) % buttons.length].focus();
+});
+
 function recordRoute(a, t) {
-  if (routeHistory[routeIndex]?.a === a && routeHistory[routeIndex]?.t === t)
+  if (routeHistory[routeIndex]?.a === a && routeHistory[routeIndex]?.t === t && routeHistory[routeIndex]?.mode === mode)
     return;
   routeHistory = routeHistory.slice(0, routeIndex + 1);
-  routeHistory.push({ a, t });
+  routeHistory.push({ a, t, mode });
   routeIndex = routeHistory.length - 1;
   navigationButtons();
 }
@@ -1793,7 +1847,7 @@ async function navigateBy(delta) {
   routeIndex = i;
   const r = routeHistory[i];
   navigationButtons();
-  if (r.a !== agentId) await switchAgent(r.a, false, r.t);
+  if (r.a !== agentId || r.mode !== mode) await switchAgent(r.a, false, r.t, r.mode);
   else if (r.t) await selectThread(r.t, false);
   else newConversation(false);
 }
@@ -1818,8 +1872,7 @@ function newConversation(record = true) {
   document.querySelector(".conversation").classList.add("is-new");
   $("title").textContent = "新对话";
   $("task-state").hidden = true;
-  $("empty-title").textContent = "今天有什么安排？";
-  $("empty-description").textContent = "在下方输入，开始一个新对话";
+  modeUI();
   setPromptValue("");
   draft.delete(taskKey());
   $("image").value = "";
@@ -1840,7 +1893,8 @@ $("form").onsubmit = async (e) => {
     g = generation,
     v = viewEpoch,
     fresh = t === null,
-    enqueue = !fresh && taskData?.thread?.status?.type === "active",
+    m = mode,
+    enqueue = m === "codex" && !fresh && taskData?.thread?.status?.type === "active",
     k = fresh ? a + ":create" : taskKey(),
     prompt = $("prompt").value,
     file = $("image").files[0];
@@ -1860,8 +1914,10 @@ $("form").onsubmit = async (e) => {
     $("activity").hidden = false;
   }
   try {
+    if (m === "chat" && fresh) throw Error(chatEmpty);
     const imageDataUrl = await fileData(file),
       payload = {
+        mode: m,
         prompt,
         ...(takenDrafts.get(taskKey(a, t))
           ? { recoveryId: takenDrafts.get(taskKey(a, t)).recoveryId }
@@ -1887,9 +1943,9 @@ $("form").onsubmit = async (e) => {
     if (r.status !== "accepted" || (fresh && !r.result?.threadId))
       throw Error("提交结果未知，已阻止重复发送；请先核对官方对话。");
     j.clear();
-    takenDrafts.delete(taskKey(a, t));
-    draft.delete(taskKey(a, t));
-    pendingSettings.delete(taskKey(a, t));
+    takenDrafts.delete(taskKey(a, t, m));
+    draft.delete(taskKey(a, t, m));
+    pendingSettings.delete(taskKey(a, t, m));
     if (g === generation && v === viewEpoch) {
       setPromptValue("");
       $("image").value = "";
@@ -2048,6 +2104,11 @@ setInterval(() => {
   if (!document.hidden) refreshUsage();
 }, 60000);
 setInterval(pollSidebar, 15000);
+// Chat has no Codex owner event stream. Poll only the visible task; existing
+// read coalescing and generation checks discard old device/mode responses.
+setInterval(() => {
+  if (mode === "chat" && selected && status.connected && !document.hidden && !readInFlight) read();
+}, 4000);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) return;
   wakeViewer();
@@ -2060,7 +2121,7 @@ function wakeViewer() {
   if (streamAbort && Date.now() - streamLastSeen > 45000)
     streamAbort.abort(Error("唤醒后恢复查看连接"));
   if (!status.connected || !streamAbort) viewerRecovery?.request(true);
-  else pollSidebar();
+  else { pollSidebar(); if (mode === "chat" && selected) read(); }
 }
 window.addEventListener("online", wakeViewer);
 window.addEventListener("focus", wakeViewer);
@@ -2086,10 +2147,11 @@ $("project-filter").onchange = renderThreads;
 $("open").onclick = async () => {
   const a = agentId,
     id = selected,
-    g = generation;
+    g = generation,
+    m = mode;
   try {
     await agentApi(a, "/threads/" + id + "/open", {});
-    for (let attempt = 0; attempt < 20; attempt++) {
+    if (m === "codex") for (let attempt = 0; attempt < 20; attempt++) {
       try {
         await agentApi(a, "/threads/" + id + "/follow", {});
         break;
@@ -2523,6 +2585,7 @@ function renderSettingsMenu(focus = false) {
     )?.focus();
 }
 async function openSettingsMenu(kind) {
+  if (mode === "chat") return;
   const trigger = $(
     kind === "model"
       ? "model-display"
@@ -2739,10 +2802,14 @@ $("setup-dialog").addEventListener("close", () => {
   $("pairing-key").value = "";
   $("pairing-key").hidden = $("copy-key").hidden = true;
 });
+modeUI();
 api("/api/agents")
   .then(async (d) => {
     agents = d.agents;
     const saved = await readRecovery().catch(() => null);
+    mode = normalizeMode(saved?.mode ?? mode);
+    for (const [key, id] of saved?.modeSelections ?? []) modeSelections.set(key, id);
+    modeUI();
     await switchAgent(
       saved && agents.some((a) => a.id === saved.agent)
         ? saved.agent

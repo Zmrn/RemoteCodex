@@ -45,6 +45,27 @@ public final class Probe extends Instrumentation {
       require(read.getJSONObject("data").has("thread") && read.getJSONObject("data").getJSONArray("turns").length()>0,"real task read through APK proxy");result.putString("taskId",thread);result.putString("source",read.getString("source"));
       js("document.getElementById('prompt').value='ANDROID_UPGRADE_DRAFT';window.remoteCodexSaveDrafts()");SystemClock.sleep(700);
       require(true,"draft saved without sending a task message");
+    }else if(stage.equals("chat")){
+      until("document.getElementById('connection').textContent==='已连接官方桌面'",60);
+      js("document.querySelector('#mode-menu [data-mode=chat]').click()");
+      until("document.body.dataset.mode==='chat' && document.querySelector('#threads .thread-card')!=null",60);
+      require("true".equals(js("document.getElementById('mode-notice').textContent.includes('Work')")),"Chat list explicitly reports unclassified Work records");
+      js("document.querySelector('#threads .thread-card').click()");
+      until("document.querySelector('#messages .message')!=null",60);
+      require("true".equals(js("document.getElementById('model-display').disabled && document.getElementById('model-display').textContent==='官方 Chat 模型'")),"Chat never offers Codex model catalog");
+      require("true".equals(js("document.getElementById('image').disabled && document.getElementById('permission-display').hidden")),"unsupported Chat attachments and permissions hidden");
+      require("true".equals(js("[...document.querySelectorAll('.turn-divider')].every(e=>e.textContent.includes('历史记录'))")),"Chat history does not claim runtime completion");
+      require("true".equals(js("document.getElementById('metadata').textContent.includes('chat-history')")),"real Chat read uses official Windows Chat adapter");
+      runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));
+      until("innerWidth>innerHeight && !document.body.classList.contains('mobile-layout')",15);
+      js("document.getElementById('mode-picker').click()");
+      require("true".equals(js("document.getElementById('mode-menu').matches(':popover-open')")),"Android landscape mode dropdown opens");
+      js("document.querySelector('#mode-menu [data-mode=codex]').click()");
+      until("document.body.dataset.mode==='codex' && document.querySelector('#threads .thread-card')!=null",30);
+      require(true,"Android switches back to real Codex list");
+      runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
+      until("document.body.classList.contains('mobile-layout') && !document.body.classList.contains('drawer-open')",15);
+      require(true,"portrait drawer remains closed; no real task writes");
     }else if(stage.equals("layout")){
       runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));
       until("innerWidth>innerHeight && !document.body.classList.contains('mobile-layout')",15);
