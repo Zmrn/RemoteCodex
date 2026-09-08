@@ -1,5 +1,12 @@
 import { icon, markdown } from "./ui.mjs";
 import { QueueUI } from "./queue-ui.mjs";
+import { DeviceSettings } from "./device-settings.mjs";
+import {
+  windowId,
+  saveRecovery,
+  readRecovery,
+  clearRecovery,
+} from "./update-recovery.mjs";
 const $ = (id) => document.getElementById(id),
   csrf = document.querySelector("meta[name=bridge-csrf]").content;
 let agents = [],
@@ -44,6 +51,25 @@ const endpoint = (a) =>
 const base = (id) => "/api/agents/" + encodeURIComponent(id) + "/bridge";
 const taskKey = (a = agentId, t = selected) => a + ":" + t;
 const takenDrafts = new Map();
+const deviceSettings = new DeviceSettings({
+  $,
+  api,
+  agentApi,
+  toast,
+  backupDrafts,
+});
+async function backupDrafts() {
+  saveDraft();
+  await saveRecovery({
+    agent: agentId,
+    thread: selected,
+    drafts: [...draft],
+    taken: [...takenDrafts],
+    settings: [...pendingSettings],
+    prompt: $("prompt").value,
+    file: $("image").files[0] ?? null,
+  });
+}
 let queueWritable = false;
 const queueUI = new QueueUI({
   getContext: () => ({
@@ -1134,6 +1160,10 @@ async function stream(id, g) {
         const line = frame.split("\n").find((l) => l.startsWith("data: "));
         if (!line) continue;
         const e = JSON.parse(line.slice(6));
+        if (e.kind === "bridge-updating") {
+          toast("桥接程序正在更新，官方任务继续运行");
+          if (id === "local") backupDrafts().catch(error);
+        }
         if (e.kind === "connection-interrupted") setConnection(false);
         if (["thread-state", "unknown"].includes(e.kind)) {
           rememberSidebarStatus(e.threadId, {
@@ -1174,6 +1204,12 @@ async function stream(id, g) {
     if (g === generation && e.name !== "AbortError") {
       error(e);
       setConnection(false);
+      setTimeout(() => {
+        if (g === generation) {
+          stream(id, g);
+          if (selected) read();
+        }
+      }, 2000);
     }
   }
 }
@@ -1192,6 +1228,7 @@ function editAgent(id) {
   $("remove-agent").hidden = !a || a.kind === "local";
   $("agent-form-error").textContent = "";
   $("agent-dialog").showModal();
+  deviceSettings.open(a);
 }
 function journal(a, t, operation, payload) {
   const key = "remote-bridge-request:" + a + ":" + t + ":" + operation,
@@ -1409,6 +1446,7 @@ $("agent-form").onsubmit = async (e) => {
   e.preventDefault();
   $("save-agent").disabled = true;
   try {
+    await deviceSettings.saveLocal();
     const d = await api("/api/agents", {
       id: editing,
       name: $("agent-name").value,
@@ -2046,7 +2084,10 @@ window.visualViewport?.addEventListener("scroll", positionSettingsMenu);
 
 for (const b of document.querySelectorAll(".close-dialog"))
   b.onclick = () => b.closest("dialog").close();
-$("agent-dialog").addEventListener("close", () => ($("agent-key").value = ""));
+$("agent-dialog").addEventListener("close", () => {
+  $("agent-key").value = "";
+  deviceSettings.close();
+});
 $("remote-setup").onclick = async () => {
   $("setup-dialog").showModal();
   $("remote-info").textContent = "读取中…";
@@ -2085,16 +2126,64 @@ $("setup-dialog").addEventListener("close", () => {
 api("/api/agents")
   .then(async (d) => {
     agents = d.agents;
-    await switchAgent(d.selectedId);
-    const requested = new URL(location.href).searchParams.get("thread");
+    const saved = await readRecovery().catch(() => null);
+    await switchAgent(
+      saved && agents.some((a) => a.id === saved.agent)
+        ? saved.agent
+        : d.selectedId,
+    );
+    const requested =
+      saved?.thread || new URL(location.href).searchParams.get("thread");
     if (requested && /^[a-f0-9-]{36}$/.test(requested))
       await selectThread(requested);
+    if (saved) {
+      draft = new Map(saved.drafts || []);
+      pendingSettings = new Map(saved.settings || []);
+      takenDrafts.clear();
+      for (const [key, value] of saved.taken || []) takenDrafts.set(key, value);
+      $("prompt").value = saved.prompt || "";
+      if (saved.file) {
+        const dt = new DataTransfer();
+        dt.items.add(saved.file);
+        $("image").files = dt.files;
+      }
+      renderAttachment();
+      await clearRecovery();
+    }
   })
   .catch(error)
   .finally(() => {
     booting = false;
     permissions();
   });
+let checkingInstance = false;
+setInterval(async () => {
+  if (booting || checkingInstance) return;
+  checkingInstance = true;
+  try {
+    const page = await (
+      await fetch("/", { cache: "no-store", signal: AbortSignal.timeout(3000) })
+    ).text();
+    const current = /name="bridge-csrf" content="([a-f0-9]+)"/.exec(page)?.[1];
+    if (current && current !== csrf) {
+      await backupDrafts();
+      location.reload();
+      return;
+    }
+    await api("/api/updates/activity", {
+      id: windowId,
+      busy:
+        !!document.querySelector("dialog[open]") ||
+        !!$("prompt").value ||
+        !!$("image").files[0] ||
+        busy.size > 0 ||
+        [...draft.values()].some(Boolean),
+    });
+  } catch {
+  } finally {
+    checkingInstance = false;
+  }
+}, 4000);
 
 const mobileQuery = matchMedia(
   "(max-width:819px) and (orientation:portrait), (max-width:599px), (max-width:819px) and (min-height:501px)",

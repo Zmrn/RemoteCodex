@@ -1,0 +1,18 @@
+[Unit]
+Description=Remote Codex latest release files
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+ExecStart=/usr/bin/python3 /opt/remote-codex-updates/serve-updates.py --bind 100.75.83.51 --port 43130 --root /opt/remote-codex-updates
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -6,9 +6,10 @@ import { parseArgs } from "node:util";
 import { randomBytes } from "node:crypto";
 import { Bridge, ROOT } from "./bridge.mjs";
 import { listFiles, resolveFile, saveUpload } from "./files.mjs";
-import { Agents, isTailAddress } from "./agents.mjs";
-import { proxyAgent, startRemoteListener, allowedRoute } from "./remote.mjs";
-import { pairingKey } from "./pairing.mjs";
+import { Agents } from "./agents.mjs";
+import { proxyAgent, allowedRoute } from "./remote.mjs";
+import { LocalAccess } from "./local-access.mjs";
+import { Updater } from "./updater.mjs";
 import { DATA_DIR, INSTANCE } from "./runtime.mjs";
 export async function startServer({
   port = 43127,
@@ -16,9 +17,13 @@ export async function startServer({
   agents,
   agentHost,
   agentPort = 43128,
+  access,
 } = {}) {
   agents ??= new Agents(bridge.dataDir ?? DATA_DIR);
-  let remoteServer = null;
+  access ??= new LocalAccess(bridge.dataDir ?? DATA_DIR);
+  const updater = new Updater(bridge.dataDir ?? DATA_DIR, (e) =>
+    bridge.emitEvent?.(e.kind, e),
+  );
   const secret = randomBytes(32).toString("hex"),
     sse = new Set();
   let closing = false;
@@ -26,6 +31,8 @@ export async function startServer({
     ["/app.js", "text/javascript; charset=utf-8"],
     ["/ui.mjs", "text/javascript; charset=utf-8"],
     ["/queue-ui.mjs", "text/javascript; charset=utf-8"],
+    ["/device-settings.mjs", "text/javascript; charset=utf-8"],
+    ["/update-recovery.mjs", "text/javascript; charset=utf-8"],
     ["/style.css", "text/css; charset=utf-8"],
     ["/app-icon.svg", "image/svg+xml"],
     ["/app-icon.ico", "image/x-icon"],
@@ -122,13 +129,13 @@ export async function startServer({
       if (req.method === "GET" && url.pathname === "/api/remote-info")
         return json(res, 200, {
           host: os.hostname(),
-          listening: remoteServer?.address() ?? null,
-          addresses: Object.values(os.networkInterfaces())
-            .flat()
-            .filter((n) => isTailAddress(n.address))
-            .map((n) => n.address),
+          ...access.status(),
           defaultPort: 43128,
         });
+      if (req.method === "GET" && url.pathname === "/api/local-access")
+        return json(res, 200, access.status());
+      if (req.method === "GET" && url.pathname === "/api/updates")
+        return json(res, 200, updater.status());
       if (req.method === "GET" && url.pathname === "/api/status")
         return json(res, 200, bridge.status());
       if (req.method === "GET" && url.pathname === "/api/instance")
@@ -210,7 +217,28 @@ export async function startServer({
       if (url.pathname === "/api/agents/remove")
         return json(res, 200, await agents.remove(body.id));
       if (url.pathname === "/api/pairing-key")
-        return json(res, 200, { key: await pairingKey(bridge.dataDir) });
+        return json(res, 200, { key: await access.key() });
+      if (url.pathname === "/api/local-access") {
+        const status = await access.save(body);
+        const file = path.join(bridge.dataDir ?? DATA_DIR, "server.json");
+        if (fs.existsSync(file)) {
+          const record = JSON.parse(fs.readFileSync(file));
+          if (record.instanceId === INSTANCE.instanceId) {
+            record.remoteAddress = status.listening;
+            fs.writeFileSync(file + ".tmp", JSON.stringify(record));
+            fs.renameSync(file + ".tmp", file);
+          }
+        }
+        return json(res, 200, status);
+      }
+      if (url.pathname === "/api/updates/settings")
+        return json(res, 200, updater.configure(body));
+      if (url.pathname === "/api/updates/check")
+        return json(res, 200, await updater.check());
+      if (url.pathname === "/api/updates/install")
+        return json(res, 200, updater.install(true));
+      if (url.pathname === "/api/updates/activity")
+        return json(res, 200, updater.activity(body));
       if (url.pathname === "/api/connect") {
         await bridge.connect();
         return json(res, 200, bridge.status());
@@ -222,8 +250,8 @@ export async function startServer({
       if (url.pathname === "/api/stop") {
         json(res, 200, { stopped: true, officialTasksUnaffected: true });
         closing = true;
-        remoteServer?.closeAllConnections();
-        remoteServer?.close();
+        access.close();
+        updater.close();
         bridge.disconnect();
         for (const s of sse) s.end();
         server.close();
@@ -288,25 +316,23 @@ export async function startServer({
   }, 15000);
   heartbeat.unref();
   server.on("close", () => {
-    remoteServer?.closeAllConnections();
-    remoteServer?.close();
+    access.close();
+    updater.close();
     clearInterval(heartbeat);
     bridge.off("event", event);
   });
   const address = "http://127.0.0.1:" + server.address().port;
-  if (agentHost) {
-    try {
-      remoteServer = await startRemoteListener({
-        host: agentHost,
-        port: agentPort,
-        key: await pairingKey(bridge.dataDir),
-        localPort: server.address().port,
-        secret,
-      });
-    } catch (e) {
-      server.close();
-      throw e;
-    }
+  try {
+    await access.start({
+      localPort: server.address().port,
+      secret,
+      host: agentHost,
+      port: agentPort,
+    });
+  } catch (e) {
+    access.close();
+    server.close();
+    throw e;
   }
   if (!closing)
     await bridge
@@ -314,7 +340,19 @@ export async function startServer({
       .catch((e) =>
         bridge.emitEvent("connection-interrupted", { reason: e.message }),
       );
-  return { server, bridge, secret, address, agents, remoteServer };
+  updater.start(address);
+  return {
+    server,
+    bridge,
+    secret,
+    address,
+    agents,
+    access,
+    updater,
+    get remoteServer() {
+      return access.server;
+    },
+  };
 }
 if (
   process.argv[1] &&

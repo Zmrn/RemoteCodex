@@ -43,6 +43,7 @@ internal static class PortableLauncher {
                     }
                     if (!Environment.Is64BitOperatingSystem) throw new Exception("此版本需要 64 位 Windows。");
                     string root = Extract();
+                    if (options.ContainsKey("--prepare-only")) return 0;
                     if (options.ContainsKey("--self-test")) {
                         using (Process check = RunNode(root, "src/portable-check.mjs", new List<string>(), Guid.NewGuid().ToString())) {
                             if (!check.WaitForExit(60000)) {
@@ -105,7 +106,7 @@ internal static class PortableLauncher {
         for (int i = 0; i < args.Length; i++) {
             string key = args[i];
             if (result.ContainsKey(key)) throw new Exception("重复参数：" + key);
-            if (key == "--headless" || key == "--stop" || key == "--self-test") result[key] = "true";
+            if (key == "--headless" || key == "--stop" || key == "--self-test" || key == "--prepare-only") result[key] = "true";
             else if (key == "--home" || key == "--port" || key == "--agent-address" || key == "--agent-port") {
                 if (++i >= args.Length) throw new Exception("缺少参数值：" + key);
                 result[key] = args[i];
@@ -220,6 +221,8 @@ internal static class PortableLauncher {
         info.EnvironmentVariables["REMOTE_BRIDGE_PYTHON"] = Path.Combine(root, "runtime/python/python.exe");
         info.EnvironmentVariables["REMOTE_BRIDGE_INSTANCE_ID"] = instance;
         info.EnvironmentVariables["REMOTE_BRIDGE_PORTABLE"] = "1";
+        info.EnvironmentVariables["REMOTE_BRIDGE_HOME"] = home;
+        info.EnvironmentVariables["REMOTE_BRIDGE_LAUNCHER_EXE"] = Assembly.GetExecutingAssembly().Location;
         foreach (string key in new[] { "NODE_OPTIONS", "NODE_PATH", "PYTHONHOME", "PYTHONPATH" }) info.EnvironmentVariables.Remove(key);
         return Process.Start(info);
     }

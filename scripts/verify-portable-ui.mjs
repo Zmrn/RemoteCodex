@@ -21,7 +21,7 @@ try {
   await page.goto(address + "/?ui=0.7.0");
   await page.locator("#prompt").waitFor({ state: "visible" });
   await page.waitForFunction(() => !document.querySelector("#prompt").disabled);
-  assert.match(await page.locator("#setup-dialog").textContent(), /RemoteCodex-0\.7\.0-windows-x64\.exe --agent-address/);
+  assert.match(await page.locator("#setup-dialog").textContent(), /设置访问端口和密钥/);
   await page.screenshot({ path: path.join(root, "evidence/portable-ui.png") });
   const result = { title: await page.title(), composerEditable: await page.locator("#prompt").isEditable(), portableConnectionHelp: true, pageErrors: errors };
   assert.deepEqual(errors, []);

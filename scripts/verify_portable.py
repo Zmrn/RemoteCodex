@@ -40,6 +40,8 @@ def main():
     executable = single / "Remote Codex.exe"
     shutil.copyfile(args.exe, executable)
     home = sandbox / "独立 数据目录"
+    (home / "data").mkdir(parents=True)
+    (home / "data/update-settings.json").write_text('{"automatic":false}',encoding="utf-8")
     env = os.environ.copy()
     env["PATH"] = str(Path(os.environ["WINDIR"]) / "System32")
     for key in ("PYTHONHOME", "PYTHONPATH", "NODE_PATH", "NODE_OPTIONS"):

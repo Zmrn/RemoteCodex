@@ -2,14 +2,22 @@ import http from "node:http";
 import os from "node:os";
 import { timingSafeEqual } from "node:crypto";
 import { isTailAddress, resolveAgent } from "./agents.mjs";
+import { validateAccessKey } from "./access-key.mjs";
 export function allowedRoute(method, url) {
   const u = new URL(url, "http://bridge.invalid");
   if (
     method === "GET" &&
-    /^\/api\/(status|events|projects|threads|models|usage)$/.test(u.pathname)
+    /^\/api\/(status|events|projects|threads|models|usage|updates)$/.test(
+      u.pathname,
+    )
   )
     return true;
   if (method === "POST" && /^\/api\/(connect|threads)$/.test(u.pathname))
+    return true;
+  if (
+    method === "POST" &&
+    /^\/api\/updates\/(check|install|settings)$/.test(u.pathname)
+  )
     return true;
   const m =
     /^\/api\/threads\/[\w-]+(?:\/(follow|open|messages|interrupt|files|file|settings|queue))?$/.exec(
@@ -127,6 +135,7 @@ export async function startRemoteListener({
   host,
   port = 43128,
   key,
+  getKey = () => key,
   localPort,
   secret,
 }) {
@@ -140,10 +149,9 @@ export async function startRemoteListener({
         .some((n) => n.address === host))
   )
     throw Error("监听地址必须是本机已有的 Tailscale IP");
-  if (!/^[a-f0-9]{64}$/.test(key ?? ""))
-    throw Error("无有效连接密钥，不能开启远程入口");
-  const expected = Buffer.from("Bearer " + key);
+  validateAccessKey(getKey());
   const server = http.createServer(async (req, res) => {
+    const expected = Buffer.from("Bearer " + getKey());
     const supplied = Buffer.from(req.headers.authorization ?? "");
     if (
       req.headers.origin ||

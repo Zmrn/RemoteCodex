@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { PYTHON } from "./runtime.mjs";
+import { validateAccessKey } from "./access-key.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 export function protect(value, operation = "protect") {
   return new Promise((resolve, reject) => {
@@ -140,8 +141,7 @@ export class Agents {
           old && (old.host !== endpoint.host || old.port !== endpoint.port);
         let sealedKey = changed ? undefined : old?.sealedKey;
         if (body.key) {
-          if (!/^[a-f0-9]{64}$/.test(body.key))
-            throw Error("连接密钥应为远端生成的 64 位十六进制字符");
+          validateAccessKey(body.key);
           sealedKey = await protect(body.key);
         }
         const item = {

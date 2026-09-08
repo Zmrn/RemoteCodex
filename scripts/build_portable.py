@@ -48,11 +48,14 @@ def download(cache, entry):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cache", type=Path, default=ROOT / "work/runtime-cache")
+    parser.add_argument("--version", help="Version override for an isolated update test build")
     args = parser.parse_args()
     if os.name != "nt":
         raise SystemExit("Build on Windows with the .NET Framework C# compiler.")
     args.cache.mkdir(parents=True, exist_ok=True)
-    version = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
+    package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    version = args.version or package["version"]
+    if not __import__("re").fullmatch(r"\d+\.\d+\.\d+", version): raise ValueError("Invalid version")
     files = {}
     for folder in ("src", "public"):
         for file in (ROOT / folder).rglob("*"):
@@ -60,6 +63,8 @@ def main():
                 files[file.relative_to(ROOT).as_posix()] = file.read_bytes()
     for name in ("package.json", "README.md", "PORTABLE.md", "THIRD_PARTY_NOTICES.md", "FARFIELD-LICENSE.txt"):
         files[name] = (ROOT / name).read_bytes()
+    package["version"] = version
+    files["package.json"] = json.dumps(package, indent=2).encode()
     with zipfile.ZipFile(io.BytesIO(download(args.cache, RUNTIMES["node"]))) as archive:
         for name in ("node.exe", "LICENSE"):
             files["runtime/node/" + name] = archive.read("node-v22.19.0-win-x64/" + name)

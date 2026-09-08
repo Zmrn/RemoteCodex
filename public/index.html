@@ -420,6 +420,79 @@
             登录凭据。保存后不会显示原值。
           </p>
         </div>
+        <section id="local-access-fields" hidden>
+          <h3>本机远程访问</h3>
+          <div class="field-row">
+            <label
+              >Tailscale IP<select
+                id="local-host"
+                aria-label="本机 Tailscale IP"
+              ></select
+            ></label>
+            <label class="port-label"
+              >访问端口<input
+                id="local-port"
+                type="number"
+                min="1"
+                max="65535"
+                value="43128"
+            /></label>
+          </div>
+          <div class="settings-actions">
+            <button id="refresh-local-access" class="subtle" type="button">
+              刷新 IP</button
+            ><button id="copy-local-address" class="subtle" type="button">
+              复制 IP:端口
+            </button>
+          </div>
+          <label class="check-label"
+            ><input id="local-enabled" type="checkbox" />允许其他设备通过
+            Tailscale 连接</label
+          >
+          <label
+            >访问密钥<input
+              id="local-key"
+              type="password"
+              autocomplete="off"
+              placeholder="已设置时留空保持原密钥"
+          /></label>
+          <div class="settings-actions">
+            <button id="generate-local-key" class="subtle" type="button">
+              生成密钥</button
+            ><button id="copy-local-key" class="subtle" type="button">
+              显示并复制密钥
+            </button>
+          </div>
+          <p id="local-access-status" class="field-help" role="status">
+            正在读取本机接入状态…
+          </p>
+          <p class="field-help">
+            密钥可自行设置，需 16–128 个字符（字母、数字或 . _ ~
+            -）。保存后生效；更换密钥后其他设备需同步修改。
+          </p>
+        </section>
+        <section id="update-fields" hidden>
+          <h3>此设备的软件更新</h3>
+          <p id="update-status" class="field-help" role="status">
+            正在读取版本…
+          </p>
+          <label class="check-label"
+            ><input
+              id="automatic-updates"
+              type="checkbox"
+            />自动检查并安装更新</label
+          >
+          <div class="settings-actions">
+            <button id="check-updates" class="subtle" type="button">
+              检查更新</button
+            ><button id="install-update" class="subtle" type="button" disabled>
+              安装更新
+            </button>
+          </div>
+          <p class="field-help">
+            自动更新每小时检查，有未发送草稿或正在编辑设置时会等待。更新保留设备配置，官方任务继续运行。
+          </p>
+        </section>
         <p id="agent-form-error" class="form-error" role="alert"></p>
         <div class="dialog-footer">
           <button id="remove-agent" type="button" class="danger-text" hidden>
@@ -442,21 +515,17 @@
         <li>
           <strong>在那台电脑运行桥接程序</strong>
           <p>
-            官方 ChatGPT 保持登录，至少已有一个 Codex 任务。使用该电脑已有的
-            Tailscale IP 启动：
+            官方 ChatGPT 保持登录，至少已有一个 Codex
+            任务。在桥接程序左下角打开设备菜单，编辑“这台电脑”。
           </p>
-          <p>单 EXE 版：先停止已运行的桥接器，再指定接入地址。</p>
-          <code>.\RemoteCodex-0.7.0-windows-x64.exe --stop</code>
-          <code>.\RemoteCodex-0.7.0-windows-x64.exe --agent-address 100.x.x.x --agent-port 43128</code>
-          <p>源码版：</p>
-          <code
-            >.\Start.ps1 -Background -AgentAddress 100.x.x.x -AgentPort
-            43128</code
-          >
+          <p>
+            选择本机 Tailscale
+            IP，设置访问端口和密钥，勾选允许其他设备连接并保存。
+          </p>
         </li>
         <li>
           <strong>在那台电脑获取连接密钥</strong>
-          <p>打开桥接 UI 的此面板，点击下方按钮。密钥只属于我们的桥接程序。</p>
+          <p>在编辑设备中复制 IP:端口和访问密钥；密钥只属于我们的桥接程序。</p>
         </li>
         <li>
           <strong>在控制端添加设备</strong>
