@@ -1,8 +1,8 @@
 # Remote Codex · ChatGPT 桌面会话桥接器
 
-Windows 原型 **0.8.1**。连接已经运行的官方 ChatGPT 桌面端，通过它管理的同一个 Codex 任务收发消息、查看实时状态和操作队列。提供可自由调整窗口大小的 Windows UI，窄屏竖向布局自动使用侧栏抽屉。
+Windows 原型 **0.9.0**。连接已经运行的官方 ChatGPT 桌面端，通过它管理的同一个 Codex 任务收发消息、查看实时状态和操作队列。提供可自由调整窗口大小的 Windows UI，窄屏竖向布局自动使用侧栏抽屉。
 
-现已支持**单 EXE 分发及在线更新**：`RemoteCodex-0.8.1-windows-x64.exe` 内置运行依赖。编辑本机设备可读取 Tailscale IP、设置端口和访问密钥、开关远程访问；同一窗口可检查更新并开关自动更新。更新只替换桥接程序，官方任务继续运行。详见 [PORTABLE.md](PORTABLE.md)。以下启动命令适用于源码版；仓库根目录原有的 `RemoteBridge.exe` 仍是依赖旁边源码的轻量启动器。
+现已支持**单 EXE 分发及在线更新**：`RemoteCodex-0.9.0-windows-x64.exe` 内置运行依赖。编辑本机设备可读取 Tailscale IP、设置端口和访问密钥、开关远程访问；同一窗口可检查更新并开关自动更新。更新只替换桥接程序，官方任务继续运行。详见 [PORTABLE.md](PORTABLE.md)。以下启动命令适用于源码调试版；仓库根目录的 `RemoteBridge.exe` 现在转到已构建的单 EXE 桌面。
 
 调用链为：本机网页 / Windows UI → 桥接服务 → 官方 `ChatGPT.exe` 命名管道 → 官方任务所有者。程序不会启动独立 Codex app-server。
 
@@ -18,7 +18,7 @@ cd remote-codex
 .\Open-UI.cmd
 ```
 
-也可双击目录中的 `RemoteBridge.exe`。这是调用同目录 `Open-UI.ps1` 的小启动器，需要保留整个目录。Windows UI 使用 Edge app 模式，源代码在 `windows/Launcher.cs`。
+源码需先构建 `python scripts/build_portable.py`，随后可双击单 EXE 或目录中的 `RemoteBridge.exe`。Windows UI 使用内嵌 WebView2，由主程序持有窗口和运行组件。关闭窗口退出整个桥接程序；异常退出时 Windows Job Object 清理其子进程。
 
 只启动网页服务：
 
@@ -30,7 +30,7 @@ cd remote-codex
 .\Stop.ps1
 ```
 
-前台启动可执行 `node src/server.mjs`，按 Ctrl+C 停止。关闭 UI 窗口会保留后台服务；停止桥接器只断开查看连接，官方任务继续执行。默认 UI 端口固定为 43127，同一电脑只运行一份；不要同时启动多个 checkout。
+这些独立 Node/PowerShell 命令仅用于源码调试，不是桌面软件启动方式。正式桌面关闭窗口即停止接入；最小化窗口则继续运行。停止桥接程序只断开查看连接，官方任务继续执行。桌面使用独立的随机回环端口，源码调试默认 43127。
 
 ## 使用
 

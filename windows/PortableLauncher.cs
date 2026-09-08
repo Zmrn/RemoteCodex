@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Management;
 using System.IO.Compression;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -24,80 +25,161 @@ internal static class PortableLauncher {
     private static int Main(string[] args) {
         quiet = Array.IndexOf(args, "--headless") >= 0;
         try {
-            Dictionary<string, string> options = Parse(args);
-            quiet = options.ContainsKey("--headless");
+            var options = Parse(args);
             home = Path.GetFullPath(options.ContainsKey("--home") ? options["--home"] :
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RemoteCodex"));
             data = Path.Combine(home, "data");
-            EnsureDirectory(home);
-            EnsureDirectory(data);
-            string mutexName = "Local\\RemoteCodex-" + Hash(Encoding.UTF8.GetBytes(home.ToLowerInvariant())).Substring(0, 24);
-            using (Mutex mutex = new Mutex(false, mutexName)) {
-                bool locked = false;
-                try {
-                    try { locked = mutex.WaitOne(30000); } catch (AbandonedMutexException) { locked = true; }
-                    if (!locked) throw new Exception("另一个启动操作尚未结束，请稍后重试。");
-                    if (options.ContainsKey("--stop")) {
-                        Stop(ReadRecord());
-                        return 0;
-                    }
-                    if (!Environment.Is64BitOperatingSystem) throw new Exception("此版本需要 64 位 Windows。");
-                    string root = Extract();
-                    if (options.ContainsKey("--prepare-only")) return 0;
-                    if (options.ContainsKey("--self-test")) {
-                        using (Process check = RunNode(root, "src/portable-check.mjs", new List<string>(), Guid.NewGuid().ToString())) {
-                            if (!check.WaitForExit(60000)) {
-                                check.Kill();
-                                throw new Exception("只读自检超时。官方任务未被中断。");
-                            }
-                            if (!quiet) MessageBox.Show("自检结果：" + Path.Combine(data, "self-test.json"), "Remote Codex");
-                            return check.ExitCode;
-                        }
-                    }
-                    Dictionary<string, object> record = ReadRecord();
-                    if (IsRunning(record)) {
-                        string expected = Path.Combine(root, "runtime/node/node.exe");
-                        if (!SamePath(Text(record, "executable"), expected))
-                            throw new Exception("旧版桥接器仍在运行。请先用此 EXE 加 --stop 停止桥接器，再打开新版。官方任务会继续运行。");
-                        if (options.ContainsKey("--agent-address") || options.ContainsKey("--port"))
-                            throw new Exception("桥接器已运行。更改监听参数前请先运行此 EXE 加 --stop。");
-                    } else {
-                        if (OwnedProcessAlive(record))
-                            throw new Exception("现有桥接进程仍在运行，但无法确认连接状态；请稍后重试，避免重复启动。");
-                        string instance = Guid.NewGuid().ToString();
-                        var nodeArgs = new List<string> { "--port", options.ContainsKey("--port") ? options["--port"] : "0" };
-                        AddOption(options, nodeArgs, "--agent-address");
-                        AddOption(options, nodeArgs, "--agent-port");
-                        using (Process server = RunNode(root, "src/server.mjs", nodeArgs, instance)) {
-                            Stopwatch timer = Stopwatch.StartNew();
-                            record = null;
-                            while (timer.ElapsedMilliseconds < 60000) {
-                                if (server.HasExited) {
-                                    string errorFile = Path.Combine(data, "startup-error.txt");
-                                    throw new Exception(File.Exists(errorFile) ? File.ReadAllText(errorFile) : "桥接服务启动失败。");
-                                }
-                                Dictionary<string, object> candidate = ReadRecord();
-                                if (candidate != null && Text(candidate, "instanceId") == instance && IsRunning(candidate)) {
-                                    record = candidate;
-                                    break;
-                                }
-                                Thread.Sleep(250);
-                            }
-                            if (record == null) {
-                                // This is only the new bridge process, which has not become ready.
-                                if (!server.HasExited) server.Kill();
-                                throw new Exception("桥接服务连接超时，已停止本次未就绪的桥接进程。官方任务不受影响。");
-                            }
-                        }
-                    }
-                    if (!quiet) OpenWindow(Text(record, "address"));
-                    return 0;
-                } finally { if (locked) mutex.ReleaseMutex(); }
+            EnsureDirectory(home); EnsureDirectory(data);
+            if (options.ContainsKey("--stop")) { Stop(ReadRecord()); return 0; }
+            // Compatibility with the 0.8 updater: the short-lived invocation
+            // now starts an owned, visible desktop, never an orphan service.
+            if (quiet && !options.ContainsKey("--self-test") && !options.ContainsKey("--prepare-only"))
+                return LaunchCompatibility(options);
+            string root = Extract();
+            if (options.ContainsKey("--prepare-only")) return 0;
+            if (options.ContainsKey("--self-test")) {
+                OwnedProcesses.BindLifetime();
+                using (Process check = RunNode(root, "src/portable-check.mjs", new List<string>(), Guid.NewGuid().ToString())) {
+                    if (!check.WaitForExit(60000)) throw new Exception("只读自检超时。");
+                    return check.ExitCode;
+                }
             }
+            return RunDesktop(root, options);
         } catch (Exception error) {
-            try { if (data != null) File.WriteAllText(Path.Combine(data, "launcher-error.txt"), error.Message, Encoding.UTF8); } catch { }
+            try { if (data != null) File.WriteAllText(Path.Combine(data, "launcher-error.txt"), error.ToString(), Encoding.UTF8); } catch { }
             if (!quiet) MessageBox.Show(error.Message, "Remote Codex", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
+        }
+    }
+
+    private static int LaunchCompatibility(Dictionary<string,string> options) {
+        string arguments = "";
+        foreach (var item in options) if (item.Key != "--headless") arguments += " " + item.Key + " " + Quote(item.Value);
+        using (Process desktop = Process.Start(new ProcessStartInfo {
+            FileName = Assembly.GetExecutingAssembly().Location, Arguments = arguments,
+            UseShellExecute = false, WindowStyle = ProcessWindowStyle.Normal
+        })) {
+            for (int i=0;i<360;i++) {
+                var owner = ReadDesktopRecord();
+                if (DesktopAlive(owner) && Text(owner,"version") == PortableBuild.Version && IsRunning(ReadRecord())) return 0;
+                if (desktop.HasExited && desktop.ExitCode != 0) throw new Exception("桌面启动失败，请查看 launcher-error.txt。");
+                Thread.Sleep(250);
+            }
+            throw new Exception("桌面启动超时。");
+        }
+    }
+
+    private static int RunDesktop(string root, Dictionary<string,string> options) {
+        Dictionary<string,object> record = null;
+        Form window = null;
+        bool updating = false;
+        string helperJob = null;
+        string ownerFile = Path.Combine(data,"desktop.json");
+        try {
+            string mutexName = "Local\\RemoteCodex-" + Hash(Encoding.UTF8.GetBytes(home.ToLowerInvariant())).Substring(0,24);
+            using (Mutex mutex = new Mutex(false,mutexName)) {
+                bool locked=false;
+                try {
+                    try { locked=mutex.WaitOne(30000); } catch(AbandonedMutexException) { locked=true; }
+                    if (!locked) throw new Exception("上一个桌面启动或退出尚未结束，请稍后再试。");
+                    var owner=ReadDesktopRecord();
+                    if (DesktopAlive(owner) && Text(owner,"version")==PortableBuild.Version) {
+                        IntPtr handle = new IntPtr(Convert.ToInt64(owner["window"]));
+                        OwnedProcesses.ShowWindow(handle,9); OwnedProcesses.SetForegroundWindow(handle);
+                        return 0;
+                    }
+                    var old=ReadRecord();
+                    Stop(old); // API instance ID + cached runtime path must both match.
+                    for(int i=0;i<100 && DesktopAlive(owner);i++) Thread.Sleep(100);
+                    if(DesktopAlive(owner)) throw new Exception("旧窗口尚未退出；请关闭旧窗口后重试。");
+                    CloseLegacyBrowser();
+                    OwnedProcesses.BindLifetime();
+                    Application.EnableVisualStyles();
+                    Application.SetCompatibleTextRenderingDefault(false);
+                    string instance=Guid.NewGuid().ToString();
+                    var nodeArgs=new List<string> {"--port",options.ContainsKey("--port")?options["--port"]:ReusablePort(old)};
+                    AddOption(options,nodeArgs,"--agent-address"); AddOption(options,nodeArgs,"--agent-port");
+                    using(Process server=RunNode(root,"src/server.mjs",nodeArgs,instance)) {
+                        for(int i=0;i<240;i++) {
+                            if(server.HasExited) throw new Exception("桥接启动失败，请查看 startup-error.txt。");
+                            var candidate=ReadRecord();
+                            if(candidate!=null && Text(candidate,"instanceId")==instance && IsRunning(candidate)) {record=candidate;break;}
+                            Thread.Sleep(250);
+                        }
+                        if(record==null) throw new Exception("桥接启动超时。");
+                    }
+                    string sdk=Path.Combine(root,"runtime/webview2");
+                    if(OwnedProcesses.LoadLibrary(Path.Combine(sdk,"WebView2Loader.dll"))==IntPtr.Zero) throw new Exception("无法加载 WebView2 组件。");
+                    var ui=Assembly.LoadFrom(Path.Combine(sdk,"DesktopUi.dll"));
+                    window=(Form)Activator.CreateInstance(ui.GetType("DesktopWindow"),new object[]{Text(record,"address"),data,PortableBuild.Version});
+                    File.WriteAllText(ownerFile,Json.Serialize(new Dictionary<string,object>{
+                        {"pid",Process.GetCurrentProcess().Id},{"executable",Assembly.GetExecutingAssembly().Location},
+                        {"version",PortableBuild.Version},{"instanceId",instance},{"window",window.Handle.ToInt64()}
+                    }));
+                } finally {if(locked)mutex.ReleaseMutex();}
+            }
+            using(var timer=new System.Windows.Forms.Timer {Interval=400}) {
+                timer.Tick += (sender,e) => {
+                    if(!OwnedProcessAlive(record)) {window.Close();return;}
+                    if(helperJob!=null) {
+                        try {
+                            var result=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(data,"updates/result.json")));
+                            if(Text(result,"jobId")==helperJob && Text(result,"status")!="updated") {helperJob=null;updating=false;}
+                        } catch{}
+                        return;
+                    }
+                    string requestFile=Path.Combine(data,"updates/desktop-request.json");
+                    if(!File.Exists(requestFile))return;
+                    try {
+                        var request=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(requestFile));
+                        string jobFile=Path.Combine(data,"updates/job.json");
+                        var job=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(jobFile));
+                        if(Text(request,"instanceId")!=Text(record,"instanceId") || Text(request,"jobId")!=Text(job,"jobId") ||
+                            Text(job,"desktopPid")!=Process.GetCurrentProcess().Id.ToString())return;
+                        string node=Path.Combine(root,"runtime/node/node.exe");
+                        OwnedProcesses.StartUpdateHelper(node,Quote(node)+" "+Quote(Path.Combine(root,"src/apply-update.mjs"))+" "+Quote(jobFile),root);
+                        helperJob=Text(job,"jobId"); updating=true;
+                        File.Delete(requestFile);
+                    } catch(Exception error) {File.WriteAllText(Path.Combine(data,"update-launch-error.txt"),error.Message);}
+                };
+                timer.Start();
+                Application.Run(window);
+            }
+            return 0;
+        } finally {
+            if(window!=null)window.Dispose();
+            if(record!=null && !updating) {try{Stop(record);}catch{}}
+            try {var owner=ReadDesktopRecord();if(Text(owner,"pid")==Process.GetCurrentProcess().Id.ToString())File.Delete(ownerFile);}catch{}
+            // Process exit closes the job and terminates any remaining owned children.
+        }
+    }
+    private static Dictionary<string,object> ReadDesktopRecord() {
+        try{return Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(data,"desktop.json")));}catch{return null;}
+    }
+    private static string ReusablePort(Dictionary<string,object> old) {
+        Uri uri;
+        if(Text(old,"application")!="remote-codex" || !Uri.TryCreate(Text(old,"address"),UriKind.Absolute,out uri) ||
+            uri.Host!="127.0.0.1" || uri.Scheme!="http" || uri.Port<1)return "0";
+        var probe=new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback,uri.Port);
+        try {probe.Start();return uri.Port.ToString();}catch{return "0";}finally{probe.Stop();}
+    }
+    private static bool DesktopAlive(Dictionary<string,object> record) {
+        try {using(var process=Process.GetProcessById(Convert.ToInt32(record["pid"]))) {
+            return !process.HasExited && SamePath(process.MainModule.FileName,Text(record,"executable"));
+        }}catch{return false;}
+    }
+    private static void CloseLegacyBrowser() {
+        string profile=Path.Combine(data,"windows-ui-profile");
+        // Match only our old dedicated Edge profile; never touch the user's Edge
+        // browser or the official ChatGPT process.
+        using(var query=new ManagementObjectSearcher("SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='msedge.exe'"))
+        foreach(ManagementObject item in query.Get()) {
+            string command=Convert.ToString(item["CommandLine"]);
+            if(command.IndexOf("--user-data-dir="+Quote(profile),StringComparison.OrdinalIgnoreCase)<0 &&
+               command.IndexOf(Quote("--user-data-dir="+profile),StringComparison.OrdinalIgnoreCase)<0)continue;
+            try {using(var process=Process.GetProcessById(Convert.ToInt32(item["ProcessId"]))) {
+                process.CloseMainWindow();if(!process.WaitForExit(3000))process.Kill();
+            }}catch{}
         }
     }
 
@@ -222,6 +304,7 @@ internal static class PortableLauncher {
         info.EnvironmentVariables["REMOTE_BRIDGE_INSTANCE_ID"] = instance;
         info.EnvironmentVariables["REMOTE_BRIDGE_PORTABLE"] = "1";
         info.EnvironmentVariables["REMOTE_BRIDGE_HOME"] = home;
+        info.EnvironmentVariables["REMOTE_BRIDGE_DESKTOP_PID"] = Process.GetCurrentProcess().Id.ToString();
         info.EnvironmentVariables["REMOTE_BRIDGE_LAUNCHER_EXE"] = Assembly.GetExecutingAssembly().Location;
         foreach (string key in new[] { "NODE_OPTIONS", "NODE_PATH", "PYTHONHOME", "PYTHONPATH" }) info.EnvironmentVariables.Remove(key);
         return Process.Start(info);
@@ -286,20 +369,5 @@ internal static class PortableLauncher {
         Request(address, "/api/stop", Csrf(address), true);
         for (int attempt = 0; attempt < 100 && OwnedProcessAlive(record); attempt++) Thread.Sleep(100);
         if (OwnedProcessAlive(record)) throw new Exception("桥接器尚未停止，请稍后重试。没有结束任何官方进程。");
-    }
-    private static void OpenWindow(string address) {
-        string edge = null;
-        foreach (string folder in new[] { Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) }) {
-            string candidate = Path.Combine(folder, "Microsoft/Edge/Application/msedge.exe");
-            if (File.Exists(candidate)) { edge = candidate; break; }
-        }
-        if (edge == null) throw new Exception("未找到 Microsoft Edge。桥接器已启动，可用浏览器打开：" + address);
-        // The visible app window is the requested user interface. The service remains hidden.
-        Process.Start(new ProcessStartInfo {
-            FileName = edge,
-            Arguments = Quote("--app=" + address + "/?ui=" + PortableBuild.Version) + " " +
-                Quote("--user-data-dir=" + Path.Combine(data, "windows-ui-profile")) + " --no-first-run --no-default-browser-check --window-size=1440,960",
-            UseShellExecute = false, WindowStyle = ProcessWindowStyle.Normal
-        });
     }
 }

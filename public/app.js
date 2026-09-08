@@ -70,6 +70,7 @@ async function backupDrafts() {
     file: $("image").files[0] ?? null,
   });
 }
+window.remoteCodexSaveDrafts = backupDrafts;
 let queueWritable = false;
 const queueUI = new QueueUI({
   getContext: () => ({

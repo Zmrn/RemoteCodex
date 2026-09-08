@@ -1,7 +1,7 @@
 const windowKey = "remote-codex-window-id";
-export const windowId =
-  sessionStorage.getItem(windowKey) || crypto.randomUUID();
-sessionStorage.setItem(windowKey, windowId);
+const storage = window.chrome?.webview ? localStorage : sessionStorage;
+export const windowId = storage.getItem(windowKey) || crypto.randomUUID();
+storage.setItem(windowKey, windowId);
 function database() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open("remote-codex-update-recovery", 1);

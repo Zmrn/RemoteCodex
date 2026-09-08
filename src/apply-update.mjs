@@ -124,6 +124,19 @@ try {
     await sleep(100);
   }
   verifyExecutable(job.candidate, manifest);
+  if (job.desktopPid) {
+    for (let i = 0; i < 100; i++) {
+      let alive = true;
+      try {
+        process.kill(job.desktopPid, 0);
+      } catch {
+        alive = false;
+      }
+      if (!alive) break;
+      if (i === 99) throw Error("原桌面窗口尚未退出，取消替换");
+      await sleep(100);
+    }
+  }
   await replaceFile(job.candidate, job.launcher);
   replaced = true;
   await run(job.launcher, ["--port", url.port]);

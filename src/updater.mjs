@@ -237,6 +237,7 @@ export class Updater {
       home: process.env.REMOTE_BRIDGE_HOME,
       version: INSTANCE.version,
       candidate: file,
+      desktopPid: Number(process.env.REMOTE_BRIDGE_DESKTOP_PID) || null,
     };
     const jobFile = path.join(this.dir, "job.json");
     fs.writeFileSync(jobFile, JSON.stringify(job));
@@ -252,6 +253,19 @@ export class Updater {
     if (!this.force && !this.settings.automatic) {
       this.installing = false;
       this.phase = "available";
+      return;
+    }
+    if (job.desktopPid) {
+      // The owning desktop launches the installer outside its process job.
+      // The installer may finish replacing the EXE after the old window exits.
+      fs.writeFileSync(
+        path.join(this.dir, "desktop-request.json.tmp"),
+        JSON.stringify({ jobId: job.jobId, instanceId: job.instanceId }),
+      );
+      fs.renameSync(
+        path.join(this.dir, "desktop-request.json.tmp"),
+        path.join(this.dir, "desktop-request.json"),
+      );
       return;
     }
     const child = spawn(

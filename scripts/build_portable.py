@@ -21,6 +21,11 @@ RUNTIMES = {
         "url": "https://www.python.org/ftp/python/3.13.2/python-3.13.2-embed-amd64.zip",
         "sha256": "1e803610b140cbf69dfa2ceaaeb39651bef75a239c381289e827c30862a27b93",
     },
+    "webview2Sdk": {
+        "file": "microsoft.web.webview2.1.0.4191.47.nupkg",
+        "url": "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.4191.47/microsoft.web.webview2.1.0.4191.47.nupkg",
+        "sha256": "f492bbf547d0da329553b6727435b677579b1e9f91cc9e4a1ad029366d5f23d0",
+    },
 }
 
 
@@ -77,6 +82,21 @@ def main():
     files["runtime/SOURCES.json"] = json.dumps(RUNTIMES, indent=2).encode()
     build = ROOT / "work/portable-build"
     build.mkdir(parents=True, exist_ok=True)
+    compiler = Path(os.environ["WINDIR"]) / "Microsoft.NET/Framework64/v4.0.30319/csc.exe"
+    sdk = build / "webview2"
+    sdk.mkdir(exist_ok=True)
+    with zipfile.ZipFile(io.BytesIO(download(args.cache, RUNTIMES["webview2Sdk"]))) as archive:
+        for entry in ("lib/net462/Microsoft.Web.WebView2.Core.dll", "lib/net462/Microsoft.Web.WebView2.WinForms.dll", "runtimes/win-x64/native/WebView2Loader.dll", "LICENSE.txt"):
+            name = Path(entry).name
+            raw = archive.read(entry)
+            (sdk / name).write_bytes(raw)
+            files["runtime/webview2/" + name] = raw
+    subprocess.run([str(compiler), "/nologo", "/codepage:65001", "/target:library", "/platform:x64", "/optimize+",
+        "/reference:System.Windows.Forms.dll", "/reference:System.Drawing.dll",
+        "/reference:" + str(sdk / "Microsoft.Web.WebView2.Core.dll"),
+        "/reference:" + str(sdk / "Microsoft.Web.WebView2.WinForms.dll"),
+        "/out:" + str(sdk / "DesktopUi.dll"), str(ROOT / "windows/DesktopWindow.cs")], check=True)
+    files["runtime/webview2/DesktopUi.dll"] = (sdk / "DesktopUi.dll").read_bytes()
     payload = build / "payload.zip"
     print("Compressing", len(files), "files ...", flush=True)
     with zipfile.ZipFile(payload, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
@@ -101,11 +121,11 @@ def main():
     subprocess.run([
         str(compiler), "/nologo", "/codepage:65001", "/target:winexe", "/platform:x64", "/optimize+",
         "/reference:System.Windows.Forms.dll", "/reference:System.Web.Extensions.dll",
-        "/reference:System.IO.Compression.dll",
+        "/reference:System.IO.Compression.dll", "/reference:System.Management.dll",
         "/win32icon:" + str(ROOT / "public/app-icon.ico"),
         "/resource:" + str(payload) + ",payload.zip",
         "/resource:" + str(manifest) + ",payload.files",
-        "/out:" + str(dest), str(ROOT / "windows/PortableLauncher.cs"), str(generated),
+        "/out:" + str(dest), str(ROOT / "windows/PortableLauncher.cs"), str(ROOT / "windows/OwnedProcesses.cs"), str(generated),
     ], check=True)
     result = {
         "file": dest.name, "version": version, "bytes": dest.stat().st_size,

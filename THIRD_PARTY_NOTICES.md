@@ -1,5 +1,7 @@
 # 调查与许可证
 
+0.9.0 的内嵌 Windows 界面使用 Microsoft.Web.WebView2 SDK 1.0.4191.47；Microsoft 的完整许可条款随包保留在 `runtime/webview2/LICENSE.txt`。SDK 原包来自 NuGet 官方源，固定 SHA-256 写入构建脚本。仅分发 SDK 的托管组件及 x64 Loader，实际浏览器运行时使用电脑已安装的 Microsoft Edge WebView2 Runtime，不修改或重分发官方 ChatGPT。
+
 原型运行代码使用 Node.js/Python 标准库，无第三方 npm/Python 包。单 EXE 版本额外分发 Node.js 22.19.0 和 CPython 3.13.2 官方 Windows 运行时，分别完整保留其 `runtime/node/LICENSE`、`runtime/python/LICENSE.txt` 与官方分发附带的许可文件；来源和 SHA-256 位于 `scripts/build_portable.py` 及包内 `runtime/SOURCES.json`。调查时参考了 Farfield 的桌面 IPC 分帧、客户端发现和所有者转发机制；相关 MIT 声明完整保留在 `FARFIELD-LICENSE.txt`。
 
 Farfield：Copyright (c) 2026 Anshu Chimala，MIT，commit `a479046dfa2f13b3942d9ec3e56f56a0b84e8bee`。
