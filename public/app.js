@@ -99,7 +99,7 @@ const queueUI = new QueueUI({
       toast("输入框已有草稿，取回的消息已另外保存");
       return;
     }
-    $("prompt").value = message.text;
+    setPromptValue(message.text);
     draft.set(taskKey(), message.text);
     takenDrafts.set(taskKey(), { message, recoveryId });
     await restoreTakenImage();
@@ -870,7 +870,7 @@ async function switchAgent(id, record = true, resumeId = null) {
   closeDrawer(false);
   $("empty").hidden = false;
   $("file-tray").hidden = true;
-  $("prompt").value = draft.get(taskKey()) ?? "";
+  setPromptValue(draft.get(taskKey()) ?? "");
   $("image").value = "";
   await restoreTakenImage();
   renderAttachment();
@@ -938,7 +938,7 @@ async function selectThread(id, record = true) {
   $("task-agent").textContent = currentAgent().name;
   $("task-state").textContent = "读取中";
   $("task-state").className = "badge neutral";
-  $("prompt").value = draft.get(taskKey()) ?? "";
+  setPromptValue(draft.get(taskKey()) ?? "");
   $("image").value = "";
   await restoreTakenImage();
   renderAttachment();
@@ -1456,8 +1456,7 @@ function newConversation(record = true) {
   $("task-state").hidden = true;
   $("empty-title").textContent = "今天有什么安排？";
   $("empty-description").textContent = "在下方输入，开始一个新对话";
-  $("prompt").value = "";
-  $("prompt").style.height = "";
+  setPromptValue("");
   draft.delete(taskKey());
   $("image").value = "";
   renderAttachment();
@@ -1528,7 +1527,7 @@ $("form").onsubmit = async (e) => {
     draft.delete(taskKey(a, t));
     pendingSettings.delete(taskKey(a, t));
     if (g === generation && v === viewEpoch) {
-      $("prompt").value = "";
+      setPromptValue("");
       $("image").value = "";
       renderAttachment();
       if (fresh) {
@@ -1549,11 +1548,28 @@ $("form").onsubmit = async (e) => {
     permissions();
   }
 };
+function resizePrompt() {
+  const input = $("prompt");
+  input.style.height = "";
+  if (!input.value) {
+    input.scrollTop = 0;
+    return;
+  }
+  input.style.height = "auto";
+  const maxHeight = Math.min(
+    parseFloat(getComputedStyle(input).maxHeight) || 180,
+    180,
+  );
+  input.style.height = Math.min(input.scrollHeight, maxHeight) + "px";
+}
+function setPromptValue(value) {
+  $("prompt").value = value;
+  resizePrompt();
+}
 $("prompt").oninput = () => {
   saveDraft();
   permissions();
-  $("prompt").style.height = "auto";
-  $("prompt").style.height = Math.min($("prompt").scrollHeight, 180) + "px";
+  resizePrompt();
 };
 $("prompt").onkeydown = (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
@@ -2294,7 +2310,7 @@ api("/api/agents")
       pendingSettings = new Map(saved.settings || []);
       takenDrafts.clear();
       for (const [key, value] of saved.taken || []) takenDrafts.set(key, value);
-      $("prompt").value = saved.prompt || "";
+      setPromptValue(saved.prompt || "");
       if (saved.file) {
         const dt = new DataTransfer();
         dt.items.add(saved.file);
@@ -2434,3 +2450,11 @@ mobileQuery.addEventListener("change", syncLayout);
 syncLayout();
 for (const n of document.querySelectorAll("[data-icon]"))
   n.replaceChildren(icon(n.dataset.icon));
+
+// Width changes can wrap the same draft differently without an input event.
+let promptWidth = 0;
+new ResizeObserver(([entry]) => {
+  if (entry.contentRect.width === promptWidth) return;
+  promptWidth = entry.contentRect.width;
+  resizePrompt();
+}).observe($("prompt"));

@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
@@ -13,6 +14,17 @@ public sealed class DesktopWindow : Form {
     private bool readyToClose;
     private TaskCompletionSource<bool> draftSaved;
     private string draftNonce;
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
+    protected override void OnHandleCreated(EventArgs e) {
+        base.OnHandleCreated(e);
+        // Match the window caption to our fixed dark theme on supported Windows.
+        try {
+            int dark = 1;
+            if (DwmSetWindowAttribute(Handle, 20, ref dark, sizeof(int)) != 0)
+                DwmSetWindowAttribute(Handle, 19, ref dark, sizeof(int));
+        } catch (DllNotFoundException) { } catch (EntryPointNotFoundException) { }
+    }
     public DesktopWindow(string address, string data, string version) {
         // Fail before showing a usable app if the required system runtime is absent.
         CoreWebView2Environment.GetAvailableBrowserVersionString();
@@ -20,12 +32,15 @@ public sealed class DesktopWindow : Form {
         Width = 1440; Height = 960; MinimumSize = new Size(360, 400);
         StartPosition = FormStartPosition.CenterScreen;
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+        BackColor = Color.FromArgb(16, 23, 34);
+        web.DefaultBackgroundColor = BackColor;
         web.Dock = DockStyle.Fill;
         Controls.Add(web);
         Shown += async (sender, e) => {
             try {
                 var environment = await CoreWebView2Environment.CreateAsync(null, Path.Combine(data, "desktop-webview"));
                 await web.EnsureCoreWebView2Async(environment);
+                web.CoreWebView2.Profile.PreferredColorScheme = CoreWebView2PreferredColorScheme.Dark;
                 web.CoreWebView2.Settings.IsStatusBarEnabled = false;
                 web.CoreWebView2.WebMessageReceived += (s, args) => {
                     try { if(args.TryGetWebMessageAsString()==draftNonce && draftSaved!=null)draftSaved.TrySetResult(true); } catch{}
