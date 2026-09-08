@@ -9,6 +9,7 @@ import { MessageMedia } from "../src/message-media.mjs";
 import { mergeTurns, overlaps } from "../public/conversation-history.mjs";
 import { Bridge, ROOT } from "../src/bridge.mjs";
 import path from "node:path";
+import { mergeLiveTurnItems } from "../src/state.mjs";
 const turn = (id, count) => ({
   id,
   startedAt: Number(id.slice(1)),
@@ -186,4 +187,130 @@ test("paged reads request two official turns; identical head uses tiny response 
       .data.thread.status.type,
     "idle",
   );
+});
+
+test("owner-only turns survive head paging when official history is seven turns behind", async () => {
+  const dir = fs.mkdtempSync(path.join(ROOT, "test/scratch/owner-history-"));
+  const b = new Bridge(dir);
+  b.connected = true;
+  const history = [turn("t3", 3), turn("t2", 3), turn("t1", 3)];
+  const calls = [];
+  b.desktop = {
+    call: async (_method, args) => {
+      calls.push(args.cursor ?? null);
+      const page = args.cursor ? history.slice(2) : history.slice(0, 2);
+      return {
+        thread: { id: "one", status: { type: "active" } },
+        turns: structuredClone(page),
+        page: { nextCursor: args.cursor ? null : "older" },
+      };
+    },
+  };
+  const entities = Object.fromEntries(
+    Array.from({ length: 10 }, (_, i) => {
+      const t = turn("t" + (i + 1), i === 9 ? 65 : 3);
+      return [
+        t.id,
+        {
+          turnId: t.id,
+          turnStartedAtMs: t.startedAt * 1000,
+          status: i === 9 ? "inProgress" : "completed",
+          items: t.items,
+        },
+      ];
+    }),
+  );
+  const state = {
+    id: "one",
+    threadRuntimeStatus: { type: "active" },
+    turnHistory: { history: { entitiesByKey: entities } },
+  };
+  b.live.set("one", { state });
+  let result = await b.readPage("one"),
+    merged = result.data.turns,
+    pages = 1;
+  assert.equal(merged[0].id, "t10");
+  assert.equal(merged[0].status, "inProgress");
+  assert.equal(merged[0].startedAt, 10);
+  assert.equal(merged[0].items.at(-1).id, "t10i64");
+  while (result.data.page.nextCursor) {
+    result = await b.readPage("one", result.data.page.nextCursor);
+    merged = mergeTurns(merged, result.data.turns, true);
+    assert.ok(++pages < 10);
+  }
+  assert.equal(merged.length, 10);
+  assert.equal(new Set(merged.map((t) => t.id)).size, 10);
+  assert.equal(
+    merged.reduce((sum, t) => sum + t.items.length, 0),
+    92,
+  );
+  assert.deepEqual(calls, [null, "older"]);
+  const head = await b.readPage("one");
+  assert.equal(
+    (await b.readPage("one", null, head.data.page.nextCursor, head.headHash))
+      .notModified,
+    true,
+  );
+  entities.t10.items.push({
+    id: "latest",
+    type: "agentMessage",
+    text: "new owner reply",
+  });
+  const updated = await b.readPage(
+    "one",
+    null,
+    head.data.page.nextCursor,
+    head.headHash,
+  );
+  assert.equal(updated.notModified, undefined);
+  assert.equal(updated.data.turns[0].items.at(-1).id, "latest");
+});
+
+test("historical cursors stay historical, matching live status updates, and unrelated owners stay isolated", () => {
+  const data = {
+    thread: { id: "one" },
+    turns: [turn("t2", 2)],
+    page: { nextCursor: "older" },
+  };
+  const state = {
+    id: "one",
+    turnHistory: {
+      history: {
+        entitiesByKey: {
+          current: {
+            turnId: "t3",
+            turnStartedAtMs: 3000,
+            status: "inProgress",
+            items: [],
+          },
+          match: {
+            turnId: "t2",
+            turnStartedAtMs: 2000,
+            status: "interrupted",
+            items: [],
+          },
+          older: {
+            turnId: "t1",
+            turnStartedAtMs: 1000,
+            status: "completed",
+            items: [],
+          },
+        },
+      },
+    },
+  };
+  assert.deepEqual(
+    mergeLiveTurnItems(data, state).turns.map((t) => t.id),
+    ["t3", "t2"],
+  );
+  const history = mergeLiveTurnItems(data, state, { includeNewTurns: false });
+  assert.deepEqual(
+    history.turns.map((t) => t.id),
+    ["t2"],
+  );
+  assert.equal(history.turns[0].status, "interrupted");
+  assert.equal(history.turns[0].items.length, 2);
+  assert.deepEqual(history.page, data.page);
+  assert.equal(mergeLiveTurnItems(data, { ...state, id: "two" }), data);
+  assert.equal(data.turns[0].status, "completed");
 });

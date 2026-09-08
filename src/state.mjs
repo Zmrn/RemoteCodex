@@ -22,26 +22,62 @@ export function conversationView(result) {
     },
   };
 }
-export function mergeLiveTurnItems(data, state) {
+export function mergeLiveTurnItems(
+  data,
+  state,
+  { includeNewTurns = true } = {},
+) {
   if (!Array.isArray(data.turns) || !state) return data;
+  if (state.id && data.thread?.id && state.id !== data.thread.id) return data;
   const live = new Map(
     Object.values(state.turnHistory?.history?.entitiesByKey ?? {})
       .filter((t) => t.turnId)
       .map((t) => [t.turnId, t]),
   );
+  const liveFields = (t) => ({
+    id: t.turnId,
+    ...(typeof t.status === "string" ? { status: t.status } : {}),
+    ...(Number.isFinite(t.turnStartedAtMs)
+      ? { startedAt: t.turnStartedAtMs / 1000 }
+      : {}),
+    ...(Object.hasOwn(t, "error") ? { error: t.error } : {}),
+  });
+  const turns = data.turns.map((t) => {
+    const current = live.get(t.id);
+    if (!current) return t;
+    const merged = new Map((t.items ?? []).map((item) => [item.id, item]));
+    for (const item of current.items ?? []) merged.set(item.id, item);
+    return {
+      ...t,
+      ...liveFields(current),
+      items: [...merged.values()],
+      itemsSource: "official-desktop-IPC-live + tool-read",
+    };
+  });
+  // The official history tool can lag behind its own running conversation
+  // owner by whole turns. Merge that owner's newer turns into the head before
+  // paging. Older cursor reads must remain older pages, never reinsert the head.
+  if (includeNewTurns) {
+    const ids = new Set(turns.map((t) => t.id));
+    const times = turns.map((t) => t.startedAt).filter(Number.isFinite);
+    const boundary = times.length ? Math.min(...times) : -Infinity;
+    for (const t of live.values()) {
+      if (ids.has(t.turnId)) continue;
+      if (
+        !Number.isFinite(t.turnStartedAtMs) ||
+        t.turnStartedAtMs / 1000 < boundary
+      )
+        continue;
+      turns.push({
+        ...liveFields(t),
+        items: t.items ?? [],
+        itemsSource: "official-desktop-IPC-live",
+      });
+    }
+  }
   return {
     ...data,
-    turns: data.turns.map((t) => {
-      const items = live.get(t.id)?.items;
-      if (!items?.length) return t;
-      const merged = new Map((t.items ?? []).map((item) => [item.id, item]));
-      for (const item of items) merged.set(item.id, item);
-      return {
-        ...t,
-        items: [...merged.values()],
-        itemsSource: "official-desktop-IPC-live + tool-read",
-      };
-    }),
+    turns: turns.sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0)),
   };
 }
 export function applyPatches(state, patches) {

@@ -363,7 +363,9 @@ export class Bridge extends EventEmitter {
     }
     const decorated = this.media.decorate(
       id,
-      mergeLiveTurnItems(data, this.live.get(id)?.state),
+      mergeLiveTurnItems(data, this.live.get(id)?.state, {
+        includeNewTurns: !cursor,
+      }),
       { externalImages: compact },
     );
     return {

@@ -1,4 +1,4 @@
-# Windows 单 EXE 桌面版 0.9.11
+# Windows 单 EXE 桌面版 0.9.12
 
 界面统一使用深蓝灰色主题，侧栏、消息区、输入框、菜单和设备设置都保持深色。长文字发送或加入队列成功后输入框恢复默认高度；发送失败保留原文，切换会话和取回队列草稿时自动匹配文字高度。
 
@@ -26,6 +26,8 @@
 
 点击会话、待发送或队列中的图片可打开全窗口预览，切换“原始尺寸”查看细节并滚动，切回“适应窗口”查看全图；点击图片外的背景、右上角关闭按钮或按 Esc 返回，预览内可下载原图。
 
+0.9.12 修复“状态变化但正文停在旧消息”：官方历史接口返回的轮次可能落后于同一会话所有者的实时状态，现在先合并实时新增轮次，再按原有 40 项上限分页。此修复需要被控制的电脑也更新到 0.9.12。
+
 ## 运行条件与数据
 
 需要 64 位 Windows 10/11、.NET Framework 4.7.2+ 和已安装的 Microsoft Edge WebView2 Runtime。本机已验证 Runtime 152.0.4191.66。若另一台电脑缺少 Runtime，会报告界面启动失败并清理本程序的运行组件，不自动安装系统软件。
@@ -51,7 +53,7 @@ EXE 内置 Node.js 22.19.0、Python 3.13.2、WebView2 SDK Loader 和托管组件
 ```powershell
 python scripts/build_portable.py
 # 发布到用户授权的 tx 资源服务
-python scripts/publish-update.py dist/RemoteCodex.exe --version 0.9.11
+python scripts/publish-update.py dist/RemoteCodex.exe --version 0.9.12
 # 只读诊断
 .\dist\RemoteCodex.exe --self-test
 # 可选：停止本桌面实例（平时使用托盘右键退出）

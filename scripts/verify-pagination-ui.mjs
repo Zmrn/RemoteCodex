@@ -268,6 +268,59 @@ try {
   checks.push(
     "server restart replaces expired cursors while retaining history; scrolling reaches every original item once",
   );
+  // The official read tool remains on t1 while its verified owner has t2.
+  bridge.live.set(id, {
+    state: {
+      id,
+      threadRuntimeStatus: { type: "active" },
+      turnHistory: {
+        history: {
+          entitiesByKey: {
+            t2: {
+              turnId: "t2",
+              turnStartedAtMs: 2000,
+              status: "inProgress",
+              items: [
+                {
+                  id: "new-owner-user",
+                  type: "userMessage",
+                  content: [{ type: "text", text: "Continue this same task" }],
+                },
+                {
+                  id: "new-owner-reply",
+                  type: "agentMessage",
+                  text: "Latest reply from the official owner",
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+  });
+  bridge.emitEvent("thread-state", {
+    threadId: id,
+    status: { type: "running", confirmed: true },
+  });
+  await page.waitForFunction(() =>
+    document.querySelector('[data-item-id="new-owner-reply"]'),
+  );
+  assert.equal(
+    await page.locator('[data-item-id="new-owner-user"]').count(),
+    1,
+  );
+  assert.equal(
+    await page.locator('[data-item-id="new-owner-reply"]').count(),
+    1,
+  );
+  assert.equal(await messages(), items.length + 2);
+  assert.equal(
+    await page.locator(".turn").last().getAttribute("data-turn-id"),
+    "t2",
+  );
+  checks.push(
+    "owner-only new turn appears through live refresh while older messages remain once, in order",
+  );
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(
     await page.evaluate(
