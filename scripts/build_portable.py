@@ -116,7 +116,7 @@ def main():
     compiler = Path(os.environ["WINDIR"]) / "Microsoft.NET/Framework64/v4.0.30319/csc.exe"
     if not compiler.exists():
         compiler = Path(os.environ["WINDIR"]) / "Microsoft.NET/Framework/v4.0.30319/csc.exe"
-    dest = ROOT / "dist" / f"RemoteCodex-{version}-windows-x64.exe"
+    dest = ROOT / "dist" / "RemoteCodex.exe"
     dest.parent.mkdir(exist_ok=True)
     subprocess.run([
         str(compiler), "/nologo", "/codepage:65001", "/target:winexe", "/platform:x64", "/optimize+",

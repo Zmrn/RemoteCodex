@@ -93,7 +93,8 @@ export async function startServer({
       return res.end(
         fs
           .readFileSync(path.join(ROOT, "public/index.html"), "utf8")
-          .replace("__BRIDGE_CSRF__", secret),
+          .replace("__BRIDGE_CSRF__", secret)
+          .replace("__BRIDGE_VERSION__", INSTANCE.version),
       );
     }
     if (req.method === "GET" && staticTypes.has(url.pathname)) {

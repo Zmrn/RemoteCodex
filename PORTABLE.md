@@ -1,6 +1,6 @@
-# Windows 单 EXE 桌面版 0.9.0
+# Windows 单 EXE 桌面版 0.9.1
 
-双击 `RemoteCodex-0.9.0-windows-x64.exe` 打开应用。现在使用应用内嵌窗口：**关闭窗口退出整个桥接程序；最小化继续运行**。没有独立后台模式或托盘驻留。重复打开会定位现有窗口，不产生第二套服务。能确认身份的旧版残留桥接实例会在打开新版时自动停止，无需手工执行 `--stop`。
+双击 `RemoteCodex.exe` 打开应用，文件名不带版本号；当前软件版本显示在界面左下角设备名旁，切换设备不改变这个本程序版本。现在使用应用内嵌窗口：**关闭窗口退出整个桥接程序；最小化继续运行**。没有独立后台模式或托盘驻留。重复打开会定位现有窗口，不产生第二套服务。能确认身份的旧版残留桥接实例会在打开新版时自动停止，无需手工执行 `--stop`。
 
 窗口、Node 桥接进程、Python 和 WebView2 子进程受同一个 Windows 进程作业管理；主程序正常退出或崩溃时，Windows 清理它的子进程。内部仍有多个运行组件，但都由同一个桌面应用负责启动和退出。官方 ChatGPT 进程不属于这个作业，不会被停止。
 
@@ -29,11 +29,11 @@ EXE 内置 Node.js 22.19.0、Python 3.13.2、WebView2 SDK Loader 和托管组件
 ```powershell
 python scripts/build_portable.py
 # 发布到用户授权的 tx 资源服务
-python scripts/publish-update.py dist/RemoteCodex-0.9.0-windows-x64.exe --version 0.9.0
+python scripts/publish-update.py dist/RemoteCodex.exe --version 0.9.1
 # 只读诊断
-.\RemoteCodex-0.9.0-windows-x64.exe --self-test
+.\dist\RemoteCodex.exe --self-test
 # 可选：停止本桌面实例（一般直接关闭窗口即可）
-.\RemoteCodex-0.9.0-windows-x64.exe --stop
+.\dist\RemoteCodex.exe --stop
 ```
 
 `--home <目录>` 隔离缓存和设备数据；`--port <端口>` 固定本地 UI 回环端口。`--headless` 仅为兼容 0.8.x 更新助手保留，普通启动调用会转到可见桌面，不再留下无窗口后台。`--prepare-only` 只校验解压，用于更新预检。
