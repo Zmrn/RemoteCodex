@@ -270,6 +270,22 @@ try {
   checks.push(
     "SSE reconnection restores confirmed connection and missed messages",
   );
+  streams.get("laptop").write('data: {"kind":"connection-interrupted"}\n\n');
+  await page.waitForFunction(
+    () => document.querySelector("#connection").textContent === "连接中断",
+  );
+  revision = 4;
+  streams.get("laptop").write('data: {"kind":"connected"}\n\n');
+  await connected();
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#messages").textContent.includes("revision 4"),
+    {},
+    { timeout: 6000 },
+  );
+  checks.push(
+    "official IPC reconnect recovers through the existing SSE stream",
+  );
   await thread(ids[0]);
   await page.waitForFunction(
     () =>

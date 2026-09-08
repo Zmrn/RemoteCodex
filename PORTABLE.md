@@ -1,4 +1,4 @@
-# Windows 单 EXE 桌面版 0.9.6
+# Windows 单 EXE 桌面版 0.9.7
 
 界面统一使用深蓝灰色主题，侧栏、消息区、输入框、菜单和设备设置都保持深色。长文字发送或加入队列成功后输入框恢复默认高度；发送失败保留原文，切换会话和取回队列草稿时自动匹配文字高度。
 
@@ -41,7 +41,7 @@ EXE 内置 Node.js 22.19.0、Python 3.13.2、WebView2 SDK Loader 和托管组件
 ```powershell
 python scripts/build_portable.py
 # 发布到用户授权的 tx 资源服务
-python scripts/publish-update.py dist/RemoteCodex.exe --version 0.9.6
+python scripts/publish-update.py dist/RemoteCodex.exe --version 0.9.7
 # 只读诊断
 .\dist\RemoteCodex.exe --self-test
 # 可选：停止本桌面实例（一般直接关闭窗口即可）

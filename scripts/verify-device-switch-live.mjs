@@ -19,6 +19,7 @@ const headers = { "X-Bridge-CSRF": csrf };
 const data = await (await fetch(address + "/api/agents", { headers })).json();
 const [remoteId, ...targets] = process.argv.slice(2);
 const sourceOverride = process.env.REMOTE_BRIDGE_UI_SOURCE_TEST === "1";
+const switchDuringRead = process.env.REMOTE_BRIDGE_SWITCH_DURING_READ === "1";
 const laptop = data.agents.find(
   (a) => a.id === remoteId && a.kind === "remote",
 );
@@ -36,8 +37,17 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
 const errors = [],
   checks = [],
   blocked = [],
-  transfers = [];
+  transfers = [],
+  aborted = [];
+let failure = null;
 page.on("pageerror", (e) => errors.push(e.message));
+page.on("requestfailed", (req) => {
+  if (/\/threads\/[\w-]+$/.test(new URL(req.url()).pathname))
+    aborted.push({
+      path: new URL(req.url()).pathname,
+      error: req.failure()?.errorText,
+    });
+});
 page.on("requestfinished", async (req) => {
   const url = new URL(req.url());
   if (/\/threads\/[\w-]+$/.test(url.pathname)) {
@@ -104,7 +114,30 @@ try {
   }
   for (const id of targets) {
     const t = Date.now();
-    await page.locator(`.thread-card[data-thread-id="${id}"]`).first().click();
+    const card = page.locator(`.thread-card[data-thread-id="${id}"]`).first();
+    await card.waitFor({ state: "visible", timeout: 40000 });
+    await Promise.all([
+      page.waitForRequest(
+        (r) =>
+          r.method() === "GET" &&
+          new URL(r.url()).pathname.endsWith("/threads/" + id),
+      ),
+      card.click(),
+    ]);
+    if (switchDuringRead) {
+      await new Promise((r) => setTimeout(r, 1500));
+      assert.equal(
+        transfers.length,
+        0,
+        "The slow response must still be pending",
+      );
+      checks.push({
+        kind: "switch-during-read",
+        threadId: id,
+        ms: Date.now() - t,
+      });
+      break;
+    }
     await page.waitForFunction(
       (id) =>
         document.querySelector("#metadata").textContent.includes(id) &&
@@ -141,9 +174,14 @@ try {
     threadCards: await page.locator(".thread-card").count(),
   });
   assert.ok(Date.now() - start < 10000);
+  if (switchDuringRead)
+    assert.ok(aborted.some((r) => r.error === "net::ERR_ABORTED"));
   assert.deepEqual(errors, []);
   assert.deepEqual(blocked, []);
-  console.log(JSON.stringify({ checks, transfers, errors, blocked }));
+  console.log(JSON.stringify({ checks, transfers, aborted, errors, blocked }));
+} catch (e) {
+  failure = e.message;
+  throw e;
 } finally {
   fs.mkdirSync(path.join(ROOT, "evidence"), { recursive: true });
   fs.writeFileSync(
@@ -153,9 +191,13 @@ try {
         source:
           "real loopback service -> saved Tailscale device -> official desktop owner; preference writes suppressed",
         sourceOverride,
+        switchDuringRead,
+        result: failure ? "failed" : "passed",
+        failure,
         version: runtime.version,
         checks,
         transfers,
+        aborted,
         errors,
         blocked,
       },

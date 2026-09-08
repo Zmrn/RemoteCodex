@@ -1391,7 +1391,26 @@ async function stream(id, g) {
           toast("桥接程序正在更新，官方任务继续运行");
           if (id === "local") backupDrafts().catch(error);
         }
-        if (e.kind === "connection-interrupted") setConnection(false);
+        if (e.kind === "connection-interrupted") {
+          setConnection(false);
+          if (e.reason?.includes("Oversize IPC frame"))
+            error(
+              Error(
+                "目标设备无法接收此会话的大型快照，请更新目标电脑的 Remote Codex。",
+              ),
+            );
+        }
+        if (e.kind === "connected") {
+          const snapshot = await agentApi(id, "/status");
+          if (g !== generation || controller.signal.aborted) return;
+          if (snapshot.connected) {
+            status = snapshot;
+            setConnection(true);
+            clearError();
+            refreshUsage();
+            if (selected) read();
+          }
+        }
         if (["thread-state", "unknown"].includes(e.kind)) {
           rememberSidebarStatus(e.threadId, {
             ...(e.kind === "thread-state"

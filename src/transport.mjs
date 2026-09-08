@@ -2,6 +2,10 @@ import net from "node:net";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 
+// Owner snapshots contain native images and accumulated tool output. This is
+// an inbound limit on verified local pipes, not an HTTP upload allowance.
+export const MAX_INBOUND_FRAME = 256 * 1024 * 1024;
+
 export function encode(frame) {
   const b = Buffer.from(JSON.stringify(frame));
   if (b.length > 32 * 1024 * 1024) throw Error("Frame too large");
@@ -16,11 +20,17 @@ export class Pipe extends EventEmitter {
     this.kind = kind;
     this.pending = new Map();
     this.clientId = "initializing-client";
-    this.buffer = Buffer.alloc(0);
+    this.resetDecoder();
+  }
+  resetDecoder() {
+    this.header = Buffer.alloc(4);
+    this.headerBytes = 0;
+    this.payload = null;
+    this.payloadBytes = 0;
   }
   async connect() {
     if (this.socket && !this.socket.destroyed) return;
-    this.buffer = Buffer.alloc(0);
+    this.resetDecoder();
     this.socket = net.createConnection(this.path);
     this.socket.on("data", (c) => {
       try {
@@ -51,47 +61,74 @@ export class Pipe extends EventEmitter {
       p.reject(error);
     }
     this.pending.clear();
+    this.resetDecoder();
     this.emit("disconnected", error.message);
   }
   data(chunk) {
-    this.buffer = Buffer.concat([this.buffer, chunk]);
-    while (this.buffer.length >= 4) {
-      let n = this.buffer.readUInt32LE(0);
-      if (n > 32 * 1024 * 1024) throw Error("Oversize IPC frame");
-      if (this.buffer.length < n + 4) return;
-      let f = JSON.parse(this.buffer.subarray(4, n + 4));
-      this.buffer = this.buffer.subarray(n + 4);
-      if (f.type === "client-discovery-request") {
-        this.send({
-          type: "client-discovery-response",
-          requestId: f.requestId,
-          response: { canHandle: false },
-        });
-        continue;
-      }
-      if (f.type === "request") {
-        this.send({
-          type: "response",
-          requestId: f.requestId,
-          resultType: "error",
-          error: "no-handler-for-request",
-        });
-        continue;
-      }
-      const id = f.requestId ?? f.id,
-        p = this.pending.get(id);
-      if (p) {
-        this.pending.delete(id);
-        clearTimeout(p.timer);
-        if (f.error || f.resultType === "error")
-          p.reject(
-            Error(
-              typeof f.error === "string" ? f.error : JSON.stringify(f.error),
-            ),
+    let offset = 0;
+    while (offset < chunk.length) {
+      if (this.headerBytes < 4) {
+        const count = Math.min(4 - this.headerBytes, chunk.length - offset);
+        chunk.copy(this.header, this.headerBytes, offset, offset + count);
+        this.headerBytes += count;
+        offset += count;
+        if (this.headerBytes < 4) return;
+        const size = this.header.readUInt32LE(0);
+        if (!size || size > MAX_INBOUND_FRAME)
+          throw Error(
+            `Oversize IPC frame: ${size} bytes (limit ${MAX_INBOUND_FRAME})`,
           );
-        else p.resolve(f);
-      } else this.emit("frame", f);
+        // Copy each byte once; repeated Buffer.concat made fragmented large
+        // snapshots quadratic in size and kept old buffers alive until GC.
+        this.payload = Buffer.allocUnsafe(size);
+        this.payloadBytes = 0;
+      }
+      const count = Math.min(
+        this.payload.length - this.payloadBytes,
+        chunk.length - offset,
+      );
+      chunk.copy(this.payload, this.payloadBytes, offset, offset + count);
+      this.payloadBytes += count;
+      offset += count;
+      if (this.payloadBytes < this.payload.length) return;
+      const frame = this.payload;
+      this.payload = null;
+      this.payloadBytes = 0;
+      this.headerBytes = 0;
+      this.receive(JSON.parse(frame));
     }
+  }
+  receive(f) {
+    if (f.type === "client-discovery-request") {
+      this.send({
+        type: "client-discovery-response",
+        requestId: f.requestId,
+        response: { canHandle: false },
+      });
+      return;
+    }
+    if (f.type === "request") {
+      this.send({
+        type: "response",
+        requestId: f.requestId,
+        resultType: "error",
+        error: "no-handler-for-request",
+      });
+      return;
+    }
+    const id = f.requestId ?? f.id,
+      p = this.pending.get(id);
+    if (p) {
+      this.pending.delete(id);
+      clearTimeout(p.timer);
+      if (f.error || f.resultType === "error")
+        p.reject(
+          Error(
+            typeof f.error === "string" ? f.error : JSON.stringify(f.error),
+          ),
+        );
+      else p.resolve(f);
+    } else this.emit("frame", f);
   }
   send(f) {
     if (!this.socket || this.socket.destroyed)
