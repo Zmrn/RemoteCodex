@@ -1,0 +1,28 @@
+# Local state, pairing secrets, browser profiles, conversations and attachments
+/data/
+/evidence/
+/downloads/
+/test/scratch/
+/work/
+*.local.*
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated packages
+node_modules/
+__pycache__/
+*.py[cod]
+/dist/
+*.zip
+*.log
+*.tmp
+*.pdb
+Thumbs.db
+.DS_Store
+
+# Original machine-specific investigation reports
+/ENVIRONMENT.md
+/REPORT.md
+/WINDOWS-UI.md
+/UI-*.md

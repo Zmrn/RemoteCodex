@@ -1,0 +1,371 @@
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { createHash } from "node:crypto";
+export const queueRevision = (messages) =>
+  createHash("sha256").update(JSON.stringify(messages)).digest("hex");
+const imagePattern = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+export function composeQueuedMessage(id, prompt, cwd, imageDataUrl) {
+  if (typeof cwd !== "string" || !cwd.trim())
+    throw Error("官方会话工作目录未知");
+  if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000)
+    throw Error("Invalid message");
+  if (
+    imageDataUrl &&
+    (!imagePattern.test(imageDataUrl) || imageDataUrl.length > 7 * 1024 * 1024)
+  )
+    throw Error("Invalid queued image");
+  return {
+    id,
+    text: prompt,
+    context: {
+      prompt,
+      addedFiles: [],
+      fileAttachments: [],
+      ideContext: null,
+      imageAttachments: imageDataUrl
+        ? [{ id: id + "-image", src: imageDataUrl, filename: "image.png" }]
+        : [],
+      commentAttachments: [],
+      workspaceRoots: [cwd],
+    },
+    cwd,
+    createdAt: Date.now(),
+  };
+}
+export function editableQueueMessage(message) {
+  const c = message.context ?? {};
+  const complex =
+    [
+      "addedFiles",
+      "fileAttachments",
+      "pastedTextAttachments",
+      "commentAttachments",
+      "mcpAppModelContextAttachments",
+      "selectedTextAttachments",
+      "responseTextAnnotations",
+      "appshotContexts",
+      "threadReferences",
+      "chatGptConversationContexts",
+      "pullRequestChecks",
+      "imageCommentDrafts",
+    ].some((k) => c[k]?.length) ||
+    c.ideContext ||
+    c.inAppBrowserContext ||
+    c.pullRequestMergeConflict ||
+    c.untrustedAppMessage ||
+    c.isImageEditFollowUp;
+  const images = c.imageAttachments ?? [];
+  return (
+    !complex &&
+    images.length <= 1 &&
+    images.every((i) => typeof i.src === "string" && imagePattern.test(i.src))
+  );
+}
+export function publicQueueMessage(m) {
+  const editable = editableQueueMessage(m);
+  return {
+    id: m.id,
+    text: m.text,
+    createdAt: m.createdAt,
+    pausedReason: m.pausedReason ?? null,
+    editable,
+    imageDataUrl: editable
+      ? (m.context?.imageAttachments?.[0]?.src ?? null)
+      : null,
+    attachmentCount:
+      (m.context?.imageAttachments?.length ?? 0) +
+      (m.context?.fileAttachments?.length ?? 0),
+    restriction: editable
+      ? null
+      : "此消息含其他官方上下文，请在官方桌面编辑或调整方向",
+  };
+}
+export class OfficialQueue {
+  constructor(
+    bridge,
+    file = path.join(
+      process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex"),
+      ".codex-global-state.json",
+    ),
+  ) {
+    this.bridge = bridge;
+    this.file = file;
+    this.live = new Map();
+    this.locks = new Map();
+  }
+  clear() {
+    this.live.clear();
+  }
+  frame(f) {
+    const b = this.bridge,
+      id = f.params?.conversationId;
+    if (
+      f.type !== "broadcast" ||
+      f.method !== "thread-queued-followups-changed" ||
+      !b.connected ||
+      !b.watching.has(id) ||
+      f.sourceClientId !== b.owners?.get(id) ||
+      !Array.isArray(f.params.messages)
+    )
+      return;
+    this.live.set(id, {
+      messages: f.params.messages,
+      owner: f.sourceClientId,
+      at: new Date().toISOString(),
+    });
+    b.emitEvent("queue-changed", {
+      threadId: id,
+      ownerClientId: f.sourceClientId,
+      count: f.params.messages.length,
+      revision: queueRevision(f.params.messages),
+    });
+  }
+  disk(id) {
+    // Official storage is read-only. All mutations go to its live owner by IPC.
+    const state = JSON.parse(fs.readFileSync(this.file, "utf8"))[
+      "queued-follow-ups"
+    ];
+    if (
+      state !== undefined &&
+      (!state || typeof state !== "object" || Array.isArray(state))
+    )
+      throw Error("官方队列记录不可读");
+    const messages = state?.[id] ?? [];
+    if (
+      !Array.isArray(messages) ||
+      messages.some((m) => !m?.id || typeof m.text !== "string" || !m.context)
+    )
+      throw Error("官方队列格式未知");
+    return messages;
+  }
+  read(id) {
+    this.bridge.requireConnection();
+    const live = this.live.get(id),
+      verified = !!live && live.owner === this.bridge.owners?.get(id);
+    const messages = verified ? live.messages : this.disk(id),
+      revision = queueRevision(messages);
+    return {
+      source: verified ? "official-owner-queue-broadcast" : "official-disk",
+      confirmed: !!verified,
+      observedAt: new Date().toISOString(),
+      revision,
+      messages: messages.map(publicQueueMessage),
+      recoveries: Object.entries(this.bridge.db.queueRecoveries ?? {})
+        .filter(([, r]) => r.threadId === id)
+        .map(([key, r]) => ({
+          recoveryId: key,
+          state: r.state,
+          draft: publicQueueMessage(r.message),
+        })),
+    };
+  }
+  async locked(id, fn) {
+    const previous = this.locks.get(id) ?? Promise.resolve();
+    const next = previous.catch(() => {}).then(fn);
+    this.locks.set(id, next);
+    try {
+      return await next;
+    } finally {
+      if (this.locks.get(id) === next) this.locks.delete(id);
+    }
+  }
+  async write(id, owner, messages) {
+    const b = this.bridge;
+    b.requireConnection();
+    const r = await b.desktop.ipc.request(
+      "thread-follower-set-queued-follow-ups-state",
+      { conversationId: id, state: { [id]: messages } },
+      { version: 1, targetClientId: owner, timeoutMs: 30000 },
+    );
+    if (r.handledByClientId !== owner || r.result?.ok !== true)
+      throw Error("Queue owner acknowledgement unknown");
+    b.emitEvent("queue-write-accepted", {
+      threadId: id,
+      ownerClientId: owner,
+      count: messages.length,
+      requestId: r.requestId,
+    });
+    return r;
+  }
+  clearRecovery(id, key) {
+    if (this.bridge.db.queueRecoveries?.[key]?.threadId === id) {
+      delete this.bridge.db.queueRecoveries[key];
+      this.bridge.save();
+    }
+  }
+  async beforeDispatchRetry(key, fn) {
+    const hadRecord = Object.hasOwn(this.bridge.db.requests, key);
+    let dispatched = false;
+    try {
+      return await fn(() => {
+        dispatched = true;
+      });
+    } catch (error) {
+      if (
+        !hadRecord &&
+        !dispatched &&
+        this.bridge.db.requests[key]?.operation === "queue"
+      ) {
+        delete this.bridge.db.requests[key];
+        this.bridge.save();
+      }
+      throw error;
+    }
+  }
+  async mutate(id, key, body) {
+    const b = this.bridge;
+    b.guard(id);
+    b.requireConnection();
+    if (body.action === "ack-recovery") {
+      if (b.db.queueRecoveries?.[body.recoveryId]?.threadId === id) {
+        delete b.db.queueRecoveries[body.recoveryId];
+        b.save();
+      }
+      return {
+        status: "accepted",
+        result: { disposition: "recovery-cleared" },
+      };
+    }
+    if (!["enqueue", "take", "delete", "steer"].includes(body.action))
+      throw Error("Invalid queue operation");
+    const payload = {
+      id,
+      action: body.action,
+      messageId: body.messageId,
+      prompt: body.prompt,
+      imageHash: body.imageDataUrl
+        ? createHash("sha256").update(body.imageDataUrl).digest("hex")
+        : null,
+    };
+    return this.locked(id, () =>
+      this.beforeDispatchRetry(key, (dispatch) =>
+        b.once(key, "queue", payload, async () => {
+          const r = await b.codexThread(id);
+          if (!["active", "idle"].includes(r.thread.status?.type))
+            throw Error("请先加载官方会话，再操作队列");
+          const owner = (await b.follow(id)).handledByClientId;
+          const live = this.live.get(id);
+          const messages =
+            live?.owner === owner ? live.messages : this.disk(id);
+          if (queueRevision(messages) !== body.revision)
+            throw Error("队列已经变化，请刷新后重试");
+          if (body.action === "enqueue") {
+            if (messages.some((m) => m.id === key))
+              throw Error("消息已在官方队列，请刷新核对");
+            const message = composeQueuedMessage(
+              key,
+              body.prompt,
+              r.thread.cwd,
+              body.imageDataUrl,
+            );
+            dispatch();
+            await this.write(id, owner, [...messages, message]);
+            this.clearRecovery(id, body.recoveryId);
+            return { threadId: id, messageId: key, disposition: "queued" };
+          }
+          const message = messages.find((m) => m.id === body.messageId);
+          if (!message) throw Error("消息已离开队列，请刷新核对");
+          if (r.thread.status.type !== "active" && !message.pausedReason)
+            throw Error("当前轮已结束，队列可能正在发送；请刷新核对");
+          if (body.action !== "delete" && !editableQueueMessage(message))
+            throw Error(publicQueueMessage(message).restriction);
+          // Keep a durable draft before removing: a lost response must not lose input.
+          if (body.action !== "delete") {
+            b.db.queueRecoveries ??= {};
+            b.db.queueRecoveries[key] = {
+              threadId: id,
+              message,
+              state: "withdrawal-unknown",
+            };
+            b.save();
+          }
+          // Remove before steering so the official queue cannot auto-send it again.
+          dispatch();
+          await this.write(
+            id,
+            owner,
+            messages.filter((m) => m.id !== message.id),
+          );
+          if (body.action !== "delete") {
+            b.db.queueRecoveries[key].state = "draft";
+            b.save();
+          }
+          const draft = publicQueueMessage(message);
+          if (body.action === "take")
+            return {
+              threadId: id,
+              disposition: "draft",
+              draft,
+              recoveryId: key,
+            };
+          if (body.action === "delete")
+            return {
+              threadId: id,
+              disposition: "removed",
+              messageId: message.id,
+            };
+          const latest = await b.codexThread(id);
+          if (latest.thread.status?.type !== "active")
+            return {
+              threadId: id,
+              disposition: "draft",
+              draft,
+              recoveryId: key,
+              reason: "当前轮已结束，消息已取回编辑，尚未发送",
+            };
+          const input = [
+            {
+              type: "text",
+              text: message.context.prompt ?? message.text,
+              text_elements: [],
+            },
+          ];
+          if (draft.imageDataUrl)
+            input.push({ type: "image", url: draft.imageDataUrl });
+          try {
+            b.db.queueRecoveries[key].state = "steer-unknown";
+            b.save();
+            const result = await b.desktop.ipc.request(
+              "thread-follower-steer-turn",
+              {
+                conversationId: id,
+                input,
+                restoreMessage: message,
+                clientUserMessageId: message.id,
+                attachments: [],
+              },
+              { version: 1, targetClientId: owner, timeoutMs: 60000 },
+            );
+            if (result.handledByClientId !== owner)
+              throw Error("Steer owner acknowledgement unknown");
+            b.emitEvent("queue-steered", {
+              threadId: id,
+              messageId: message.id,
+              ownerClientId: owner,
+              turnId: result.result?.result?.turnId,
+              requestId: result.requestId,
+            });
+            delete b.db.queueRecoveries[key];
+            b.save();
+            return {
+              threadId: id,
+              messageId: message.id,
+              disposition: "steered",
+              turnId: result.result?.result?.turnId,
+            };
+          } catch (e) {
+            // No start-turn fallback or automatic replay after an uncertain send.
+            return {
+              threadId: id,
+              disposition: "steer-unknown",
+              draft,
+              recoveryId: key,
+              reason: e.message,
+            };
+          }
+        }),
+      ),
+    );
+  }
+}

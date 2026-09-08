@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="bridge-csrf" content="__BRIDGE_CSRF__" />
+    <title>Remote Bridge · Agent 控制台</title>
+    <link rel="icon" href="/app-icon.ico?v=0.6.3" sizes="any" />
+    <link rel="icon" href="/app-icon.svg?v=0.6.3" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/app-icon-192.png?v=0.6.3" />
+    <link rel="manifest" href="/app.webmanifest?v=0.6.3" />
+    <meta name="theme-color" content="#edf6fa" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" type="module"></script>
+  </head>
+  <body>
+    <header class="mobile-topbar">
+      <button
+        id="mobile-menu"
+        class="mobile-menu-button"
+        aria-label="展开侧栏"
+        aria-expanded="false"
+      >
+        <span data-icon="menu"></span>
+      </button>
+      <div class="mobile-segments">
+        <button id="mobile-conversation" class="active">对话</button
+        ><button id="mobile-results">文件</button>
+      </div>
+      <button id="mobile-new" class="mobile-menu-button" aria-label="新对话">
+        <span data-icon="new"></span>
+      </button>
+    </header>
+    <button
+      id="drawer-backdrop"
+      class="drawer-backdrop"
+      aria-label="关闭侧栏"
+      hidden
+    ></button>
+    <div class="window-toolbar">
+      <button
+        id="sidebar-toggle"
+        class="icon-button"
+        aria-label="切换侧栏"
+        title="切换侧栏"
+      >
+        <span data-icon="sidebar"></span></button
+      ><button
+        id="nav-back"
+        class="icon-button"
+        aria-label="返回"
+        title="返回"
+        disabled
+      >
+        <span data-icon="back"></span></button
+      ><button
+        id="nav-forward"
+        class="icon-button"
+        aria-label="前进"
+        title="前进"
+        disabled
+      >
+        <span data-icon="forward"></span></button
+      ><span class="window-label"
+        ><img src="/app-icon.svg?v=0.6.3" width="23" height="23" alt="" />Remote
+        Bridge</span
+      >
+    </div>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-heading">
+        <span class="mode-picker">Codex</span>
+        <div>
+          <button
+            id="search-toggle"
+            class="icon-button"
+            aria-label="搜索对话"
+            title="搜索对话"
+          >
+            <span data-icon="search"></span></button
+          ><button
+            id="reconnect"
+            class="icon-button"
+            aria-label="重新连接"
+            title="重新连接"
+          >
+            <span data-icon="refresh"></span><i id="connection-dot"></i>
+          </button>
+          <button id="drawer-close" class="icon-button" aria-label="关闭侧栏">
+            <span data-icon="close"></span>
+          </button>
+        </div>
+      </div>
+      <nav class="main-nav" aria-label="主导航">
+        <button id="create"><span data-icon="new"></span>新对话</button
+        ><button id="search-nav">
+          <span data-icon="search"></span>搜索对话</button
+        ><button id="files-nav"><span data-icon="files"></span>结果文件</button
+        ><button id="devices-nav">
+          <span data-icon="device"></span>设备管理</button
+        ><button id="settings-nav">
+          <span data-icon="settings"></span>模型与权限</button
+        ><button id="remote-setup">
+          <span data-icon="more"></span>远程接入
+        </button>
+      </nav>
+      <div id="search-panel" class="search-panel" hidden>
+        <input
+          id="search"
+          placeholder="搜索对话"
+          aria-label="搜索对话名称"
+        /><select id="project-filter" aria-label="按项目筛选">
+          <option value="all">所有项目</option>
+        </select>
+      </div>
+      <div class="sidebar-scroll">
+        <div class="section-label">项目</div>
+        <div id="project-groups"></div>
+        <div class="section-label recent-label">
+          最近 <span id="thread-count"></span
+          ><button
+            id="refresh"
+            class="icon-button"
+            aria-label="刷新任务"
+            title="刷新任务"
+          >
+            <span data-icon="refresh"></span>
+          </button>
+        </div>
+        <div id="threads" role="list" aria-label="最近对话"></div>
+      </div>
+      <footer class="sidebar-footer">
+        <button
+          id="footer-agent"
+          aria-expanded="false"
+          aria-controls="agent-menu"
+          title="切换设备"
+        >
+          <span id="agent-avatar" class="device-avatar"
+            ><span data-icon="device"></span
+          ></span>
+          <span class="footer-agent-info"
+            ><span id="agent-title">这台电脑</span
+            ><span id="agent-quota" aria-live="polite"
+              >周额度 · 读取中…</span
+            ></span
+          >
+          <span class="device-chevron" data-icon="chevron"></span>
+        </button>
+        <button
+          id="help"
+          class="icon-button"
+          aria-label="使用帮助"
+          title="使用帮助"
+        >
+          <span data-icon="help"></span>
+        </button>
+        <div
+          class="device-switcher"
+          id="agent-menu"
+          role="region"
+          aria-label="设备切换"
+          hidden
+        >
+          <div class="device-switcher-heading">
+            <span>切换设备 <span id="agent-count"></span></span>
+            <div>
+              <button
+                id="add-agent"
+                class="icon-button"
+                aria-label="添加设备"
+                title="添加设备"
+              >
+                <span data-icon="plus"></span>
+              </button>
+              <button
+                id="edit-agent"
+                class="icon-button"
+                aria-label="编辑当前设备"
+                title="编辑当前设备"
+              >
+                <span data-icon="settings"></span>
+              </button>
+            </div>
+          </div>
+          <nav id="agents" aria-label="设备列表"></nav>
+          <div id="agent-endpoint" hidden></div>
+          <section class="device-usage" aria-label="当前设备周额度">
+            <div class="usage-heading">
+              <strong>周额度剩余</strong
+              ><button
+                id="refresh-usage"
+                class="icon-button"
+                aria-label="刷新额度"
+                title="刷新额度"
+              >
+                <span data-icon="refresh"></span>
+              </button>
+            </div>
+            <div id="usage-details" aria-live="polite">正在读取…</div>
+            <p class="usage-note">所选设备登录账号的共享额度</p>
+            <p id="usage-observed" class="usage-note"></p>
+          </section>
+        </div>
+      </footer>
+    </aside>
+    <main class="conversation is-new">
+      <section id="task-view">
+        <header class="conversation-heading">
+          <div class="heading-title">
+            <h1 id="title">新对话</h1>
+            <button
+              id="detail-toggle"
+              class="icon-button more-button"
+              aria-label="连接详情"
+              title="连接详情"
+            >
+              <span data-icon="more"></span>
+            </button>
+          </div>
+          <div class="heading-actions">
+            <span id="connection" class="badge neutral" role="status"
+              >正在连接</span
+            ><button
+              id="open"
+              class="icon-button"
+              aria-label="在官方桌面打开"
+              title="在官方桌面打开"
+              disabled
+            >
+              <span data-icon="external"></span></button
+            ><button
+              id="toggle-files"
+              class="icon-button"
+              aria-label="结果文件"
+              title="结果文件"
+            >
+              <span data-icon="files"></span>
+            </button>
+          </div>
+        </header>
+        <div id="error" class="error-banner" role="alert" hidden></div>
+        <pre id="metadata" hidden></pre>
+        <div id="message-scroll" class="message-scroll">
+          <div id="empty" class="empty-state">
+            <h2 id="empty-title">今天有什么安排？</h2>
+            <p id="empty-description">在下方输入，开始一个新对话</p>
+          </div>
+          <div id="mobile-suggestions" class="mobile-suggestions"></div>
+          <div class="conversation-content">
+            <button id="older" class="older" hidden>加载更早的消息</button>
+            <div id="messages"></div>
+            <div id="activity" class="activity" hidden>
+              <span></span>正在处理…
+            </div>
+            <div id="task-state" class="task-state" hidden>状态未知</div>
+          </div>
+        </div>
+        <aside id="file-tray" class="file-tray" hidden>
+          <div class="file-heading">
+            <strong>结果文件</strong
+            ><button id="listfiles" class="subtle">刷新文件</button
+            ><button
+              id="close-files"
+              class="icon-button"
+              aria-label="关闭结果文件"
+            >
+              <span data-icon="close"></span>
+            </button>
+          </div>
+          <div id="files"></div>
+        </aside>
+        <div class="composer-area">
+          <div
+            id="message-queue"
+            class="message-queue"
+            aria-label="排队消息"
+            hidden
+          ></div>
+          <form id="form" class="composer">
+            <div id="attachment" hidden></div>
+            <textarea
+              id="prompt"
+              rows="2"
+              maxlength="20000"
+              placeholder="随心输入"
+              aria-label="消息内容"
+              disabled
+            ></textarea>
+            <div class="composer-toolbar">
+              <label
+                id="attach-label"
+                class="attach-button"
+                tabindex="0"
+                title="添加图片"
+                ><input
+                  id="image"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled /><span data-icon="plus"></span></label
+              ><button
+                type="button"
+                class="permissions-label"
+                id="permission-display"
+                aria-haspopup="menu"
+                aria-expanded="false"
+                aria-controls="settings-menu"
+              >
+                <span data-icon="shield"></span
+                ><span id="permission-name">桌面默认权限</span></button
+              ><span class="composer-spacer"></span>
+              <div class="model-picker">
+                <button
+                  type="button"
+                  id="model-display"
+                  class="model-label"
+                  title="使用官方桌面的设置"
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                  aria-controls="settings-menu"
+                >
+                  桌面默认模型</button
+                ><button
+                  type="button"
+                  id="effort-display"
+                  class="model-label effort-label"
+                  aria-label="选择推理强度"
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                  aria-controls="settings-menu"
+                >
+                  默认
+                </button>
+              </div>
+              <button
+                id="interrupt"
+                type="button"
+                class="round-button interrupt-button"
+                aria-label="中断任务"
+                title="中断任务"
+                hidden
+              >
+                <span data-icon="stop"></span></button
+              ><button
+                id="send"
+                type="submit"
+                class="round-button"
+                aria-label="发送消息"
+                title="发送消息"
+                disabled
+              >
+                <span data-icon="send"></span>
+              </button>
+            </div>
+          </form>
+          <div class="composer-footnote">
+            <span id="writable"></span><span id="destination"></span>
+          </div>
+        </div>
+        <span id="task-agent" hidden></span
+        ><span id="task-project" hidden></span>
+      </section>
+    </main>
+    <div
+      id="settings-menu"
+      class="settings-menu"
+      popover="auto"
+      role="menu"
+      aria-label="模型设置"
+    ></div>
+    <dialog id="agent-dialog">
+      <form id="agent-form">
+        <div class="dialog-heading">
+          <div>
+            <span class="eyebrow">AGENT SETTINGS</span>
+            <h2 id="agent-dialog-title">添加设备</h2>
+          </div>
+          <button
+            type="button"
+            class="icon-button close-dialog"
+            aria-label="关闭"
+          >
+            ×
+          </button>
+        </div>
+        <p class="dialog-intro">给电脑取个熟悉的名字，随时切换工作现场。</p>
+        <label
+          >Agent 名称<input
+            id="agent-name"
+            maxlength="60"
+            required
+            placeholder="例如：办公室电脑"
+        /></label>
+        <div id="remote-fields">
+          <div class="field-row">
+            <label
+              >Tailscale 地址<input
+                id="agent-host"
+                placeholder="100.x.x.x 或设备名.tailnet.ts.net" /></label
+            ><label class="port-label"
+              >端口<input
+                id="agent-port"
+                type="number"
+                min="1"
+                max="65535"
+                value="43128"
+            /></label>
+          </div>
+          <label
+            >连接密钥<input
+              id="agent-key"
+              type="password"
+              autocomplete="off"
+              placeholder="从远端桥接程序复制；可先留空保存"
+          /></label>
+          <p class="field-help">
+            密钥由我们的桥接程序生成，不是 ChatGPT
+            登录凭据。保存后不会显示原值。
+          </p>
+        </div>
+        <p id="agent-form-error" class="form-error" role="alert"></p>
+        <div class="dialog-footer">
+          <button id="remove-agent" type="button" class="danger-text" hidden>
+            移除此设备</button
+          ><span class="spacer"></span
+          ><button type="button" class="subtle close-dialog">取消</button
+          ><button id="save-agent" class="primary">保存设备</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="setup-dialog">
+      <div class="dialog-heading">
+        <div>
+          <span class="eyebrow">DIRECT CONNECTION</span>
+          <h2>连接另一台 Windows</h2>
+        </div>
+        <button class="icon-button close-dialog" aria-label="关闭">×</button>
+      </div>
+      <ol class="setup-steps">
+        <li>
+          <strong>在那台电脑运行桥接程序</strong>
+          <p>
+            官方 ChatGPT 保持登录，至少已有一个 Codex 任务。使用该电脑已有的
+            Tailscale IP 启动：
+          </p>
+          <code
+            >.\Start.ps1 -Background -AgentAddress 100.x.x.x -AgentPort
+            43128</code
+          >
+        </li>
+        <li>
+          <strong>在那台电脑获取连接密钥</strong>
+          <p>打开桥接 UI 的此面板，点击下方按钮。密钥只属于我们的桥接程序。</p>
+        </li>
+        <li>
+          <strong>在控制端添加设备</strong>
+          <p>填写名称、Tailscale 地址、端口和连接密钥。保存后从左侧切换。</p>
+        </li>
+      </ol>
+      <div class="setup-local">
+        <strong>这台电脑的接入状态</strong>
+        <p id="remote-info">读取中…</p>
+        <button id="show-key" class="subtle">显示本机桥接连接密钥</button
+        ><input
+          id="pairing-key"
+          type="password"
+          readonly
+          hidden
+          aria-label="本机桥接连接密钥"
+        /><button id="copy-key" class="subtle" hidden>复制密钥</button>
+      </div>
+      <p class="field-help">
+        默认仅本机可访问。上述命令只绑定已有 Tailscale
+        地址，不修改网络、防火墙或官方应用。另一台电脑尚未实测时，不代表远程连接已经通过。
+      </p>
+    </dialog>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>
