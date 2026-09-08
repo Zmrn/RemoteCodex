@@ -18,3 +18,7 @@
 验证使用真实网页代码和隔离 HTTP 响应，未向官方任务发送测试消息，也未修改开发会话。证据：`evidence/theme-composer-ui.json` 及 `evidence/dark-theme-*.png`。复测：设置 `REMOTE_BRIDGE_PLAYWRIGHT` 后执行 `node scripts/verify-theme-composer-ui.mjs`。运行 `npm test` 验证桥接器已有协议和安全回归；其他功能 UI 脚本为 `scripts/verify-features-ui.mjs`、`scripts/verify-access-ui.mjs`。
 
 完整源码和构建说明见 `README.md` / `PORTABLE.md`。成品仍为单个固定文件名 `RemoteCodex.exe`，左下角版本 0.9.5。
+
+交付核验：36 项自动测试、原有功能 UI 回归和接入设置 UI 回归全部通过。桌面实际运行 0.9.5，桌面 EXE 与发布包 SHA-256 相同；运行服务提供的主题及输入框代码与测试源码一致。Windows 标题栏通过 DwmGetWindowAttribute 确认深色属性为 1，结果成功。
+
+更新限制：此次自动更新器报告“原桥接器尚未退出，取消替换”，保留旧版。随后正常关闭本工具窗口，确认退出后替换桌面 EXE 并重新打开，完成本机交付；官方 ChatGPT 未关闭。此次更新退出超时原因尚未修复，不将它记录为自动安装通过。证据见 `evidence/theme-composer-packaged.json`。
