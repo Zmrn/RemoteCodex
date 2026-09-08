@@ -34,6 +34,7 @@ export async function startServer({
     ["/ui.mjs", "text/javascript; charset=utf-8"],
     ["/message-content.mjs", "text/javascript; charset=utf-8"],
     ["/conversation-history.mjs", "text/javascript; charset=utf-8"],
+    ["/reconnect.mjs", "text/javascript; charset=utf-8"],
     ["/questions-ui.mjs", "text/javascript; charset=utf-8"],
     ["/queue-ui.mjs", "text/javascript; charset=utf-8"],
     ["/device-settings.mjs", "text/javascript; charset=utf-8"],
@@ -380,6 +381,7 @@ export async function startServer({
   }, 15000);
   heartbeat.unref();
   server.on("close", () => {
+    bridge.disconnect();
     access.close();
     updater.close();
     clearInterval(heartbeat);

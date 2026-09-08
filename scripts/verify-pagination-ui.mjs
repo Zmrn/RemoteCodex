@@ -67,6 +67,10 @@ bridge.threads = async () => ({
   },
 });
 bridge.models = async () => ({ models: [] });
+bridge.connect = async () => {
+  bridge.connected = true;
+  return bridge.desktop.identity;
+};
 bridge.usage = async () => ({ status: "available", weekly: [] });
 bridge.follow = async () => ({});
 bridge.queue.read = () => ({
@@ -108,6 +112,7 @@ await page.route("**/api/**", (route) => {
   if (
     r.method() === "POST" &&
     !p.endsWith("/follow") &&
+    !p.endsWith("/connect") &&
     !p.endsWith("/activity") &&
     p !== "/api/agents/select"
   )
@@ -228,6 +233,40 @@ try {
   await waitIdle();
   checks.push(
     "failed older-page request keeps visible content/input; manual retry resumes cursor",
+  );
+  const beforeRestart = await messages();
+  bridge.connected = false;
+  bridge.pages.snapshots.clear();
+  bridge.emitEvent("connection-interrupted", { reason: "fixture restart" });
+  await page.waitForFunction(() =>
+    document.querySelector("#connection").textContent.includes("自动重连"),
+  );
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#connection").textContent === "已连接官方桌面",
+  );
+  await waitIdle();
+  assert.equal(await messages(), beforeRestart);
+  // New cursors may overlap visible history; merge it once, then reach older content.
+  for (let i = 0; i < 8 && (await messages()) < items.length; i++) {
+    await page.locator("#message-scroll").evaluate((e) => {
+      e.scrollTop = 0;
+    });
+    await page.locator("#older").click();
+    await waitIdle();
+  }
+  assert.equal(await messages(), items.length);
+  assert.equal(
+    new Set(
+      await page
+        .locator("[data-item-id]")
+        .evaluateAll((es) => es.map((e) => e.dataset.itemId)),
+    ).size,
+    items.length,
+  );
+  assert.equal(await page.locator("#error").isVisible(), false);
+  checks.push(
+    "server restart replaces expired cursors while retaining history; scrolling reaches every original item once",
   );
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(

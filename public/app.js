@@ -4,6 +4,7 @@ import { DeviceSettings, accessSummary } from "./device-settings.mjs";
 import { QuestionsUI } from "./questions-ui.mjs";
 import { questionReply, userContent } from "./message-content.mjs";
 import { mergeTurns, overlaps } from "./conversation-history.mjs";
+import { Reconnector } from "./reconnect.mjs";
 import {
   windowId,
   saveRecovery,
@@ -31,6 +32,8 @@ let agents = [],
   headHash = null,
   editing = null,
   streamAbort = null,
+  viewerRecovery = null,
+  streamLastSeen = 0,
   readTimer = null,
   busy = new Set(),
   draft = new Map(),
@@ -585,7 +588,71 @@ function setConnection(connected, text) {
     $("task-state").hidden = !selected;
     $("task-state").className = "badge offline";
     $("activity").hidden = true;
+    viewerRecovery?.request();
   }
+}
+function startViewerRecovery(id, g) {
+  viewerRecovery = new Reconnector(
+    async (signal) => {
+      const options = {
+        signal: AbortSignal.any([
+          signal,
+          agentReads.signal,
+          AbortSignal.timeout(20000),
+        ]),
+      };
+      try {
+        let snapshot = await agentApi(id, "/status", undefined, options);
+        if (!snapshot.connected)
+          snapshot = await agentApi(id, "/connect", {}, options);
+        if (g !== generation || signal.aborted) return;
+        if (!snapshot.connected) throw Error("官方桌面尚未连接");
+        status = snapshot;
+        setConnection(true);
+        clearError();
+        if (!streamAbort || streamAbort.signal.aborted) stream(id, g);
+        refreshUsage();
+        if (selected) {
+          const task = selected;
+          const followSignal = AbortSignal.any([
+            signal,
+            taskReads.signal,
+            agentReads.signal,
+            AbortSignal.timeout(20000),
+          ]);
+          agentApi(
+            id,
+            "/threads/" + task + "/follow",
+            {},
+            { signal: followSignal },
+          )
+            .then(() => {
+              if (g === generation && task === selected) read();
+            })
+            .catch(() => {});
+          read();
+        }
+        await refresh(g, options);
+        if (g !== generation || signal.aborted) return;
+        if (!status.connected) throw Error("官方桌面尚未连接");
+        $("empty-title").textContent = "今天有什么安排？";
+        $("empty-description").textContent = "在下方输入，开始一个新对话";
+      } catch (e) {
+        if (g !== generation || signal.aborted) return;
+        setConnection(false);
+        throw e;
+      }
+    },
+    {
+      onRetry: (delay) => {
+        if (g === generation) {
+          $("connection").textContent = delay
+            ? `连接中断 · ${Math.ceil(delay / 1000)} 秒后自动重连`
+            : "正在重新连接…";
+        }
+      },
+    },
+  );
 }
 function resetUsage(state = "loading", reason = "") {
   usageSequence++;
@@ -846,13 +913,13 @@ function renderThreads() {
   };
   $("mobile-suggestions").append(device);
 }
-async function refresh(g = generation) {
+async function refresh(g = generation, options = {}) {
   const id = agentId,
     sequence = ++sidebarSequence;
   const [p, t, s] = await Promise.all([
-    agentApi(id, "/projects"),
-    agentApi(id, "/threads"),
-    agentApi(id, "/status"),
+    agentApi(id, "/projects", undefined, options),
+    agentApi(id, "/threads", undefined, options),
+    agentApi(id, "/status", undefined, options),
   ]);
   if (g !== generation) return;
   status = s;
@@ -929,6 +996,8 @@ function saveDraft() {
   if (saved) saved.file = $("image").files[0] ?? null;
 }
 async function switchAgent(id, record = true, resumeId = null) {
+  viewerRecovery?.stop();
+  viewerRecovery = null;
   closeSettingsMenu(false);
   saveDraft();
   const g = ++generation;
@@ -979,6 +1048,7 @@ async function switchAgent(id, record = true, resumeId = null) {
   renderAgents();
   renderThreads();
   permissions();
+  startViewerRecovery(id, g);
   try {
     await api(
       "/api/agents/select",
@@ -1008,8 +1078,9 @@ async function switchAgent(id, record = true, resumeId = null) {
     error(e);
     $("empty-title").textContent = "暂时无法连接 " + currentAgent().name;
     $("empty-description").textContent =
-      "地址已保存。确认远端桥接程序正在运行后，点击右上角重新连接。";
+      "地址已保存，正在自动重连。请保持目标电脑的桥接程序打开。";
     renderThreads();
+    if (resumeId) await selectThread(resumeId, false);
   }
 }
 async function selectThread(id, record = true) {
@@ -1050,6 +1121,10 @@ async function selectThread(id, record = true) {
   clearError();
   renderThreads();
   permissions();
+  if (!status.connected) {
+    setConnection(false);
+    return;
+  }
   agentApi(
     a,
     "/threads/" + id + "/follow",
@@ -1362,12 +1437,15 @@ async function readTask(job, older) {
     if (r.data?.thread?.id !== id || !Array.isArray(r.data?.turns))
       throw Error("设备返回的会话内容格式不受支持，请更新目标设备后重试");
     const firstLoad = !turns.length;
+    const resetPaging = !pageProtocol;
     const intersects = overlaps(turns, r.data.turns);
     const next = r.data.page?.nextCursor ?? null;
     pageProtocol = r.data.page?.pagination ?? null;
     if (older === "gap") gapCursor = intersects ? null : next;
-    else if (older || firstLoad) cursor = next;
-    else if (pageProtocol === "items-v1" && !intersects) gapCursor ??= next;
+    else if (older || firstLoad || resetPaging) {
+      cursor = next;
+      if (!firstLoad && !older && !intersects) gapCursor = next;
+    } else if (pageProtocol === "items-v1" && !intersects) gapCursor ??= next;
     if (!older) {
       headHash = r.headHash ?? null;
       taskData = r.data;
@@ -1477,6 +1555,11 @@ async function stream(id, g) {
   streamAbort?.abort();
   const controller = new AbortController();
   streamAbort = controller;
+  streamLastSeen = Date.now();
+  const watchdog = setInterval(() => {
+    if (Date.now() - streamLastSeen > 45000)
+      controller.abort(Error("事件连接长时间无响应"));
+  }, 5000);
   let reader;
   try {
     const r = await fetch(base(id) + "/events", {
@@ -1490,7 +1573,8 @@ async function stream(id, g) {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) throw Error("查看连接已断开");
-      if (g !== generation) break;
+      if (g !== generation || controller.signal.aborted) break;
+      streamLastSeen = Date.now();
       buffer += decoder.decode(value, { stream: true });
       let i;
       while ((i = buffer.indexOf("\n\n")) >= 0) {
@@ -1513,17 +1597,9 @@ async function stream(id, g) {
             );
         }
         if (e.kind === "connected") {
-          const snapshot = await agentApi(id, "/status");
-          if (g !== generation || controller.signal.aborted) return;
-          if (snapshot.connected) {
-            status = snapshot;
-            setConnection(true);
-            clearError();
-            refreshUsage();
-            if (selected) read();
-          }
+          viewerRecovery?.request(true);
         }
-        if (["thread-state", "unknown"].includes(e.kind)) {
+        if (status.connected && ["thread-state", "unknown"].includes(e.kind)) {
           rememberSidebarStatus(e.threadId, {
             ...(e.kind === "thread-state"
               ? e.status
@@ -1543,7 +1619,9 @@ async function stream(id, g) {
         if (e.kind === "resync-required") {
           if (!e.connected) setConnection(false);
           else {
+            const recovering = !status.connected;
             status = { ...status, ...e };
+            viewerRecovery?.healthy();
             setConnection(true);
             clearError();
             refreshUsage();
@@ -1554,23 +1632,25 @@ async function stream(id, g) {
               });
             updateThreadIndicators();
             if (selected) read();
+            if (recovering) viewerRecovery?.request(true);
           }
         }
       }
     }
   } catch (e) {
-    if (g === generation && e.name !== "AbortError") {
-      error(e);
+    if (
+      g === generation &&
+      streamAbort === controller &&
+      (!controller.signal.aborted ||
+        controller.signal.reason?.name !== "AbortError")
+    ) {
       setConnection(false);
-      setTimeout(() => {
-        if (g === generation) {
-          stream(id, g);
-        }
-      }, 2000);
     }
   } finally {
-    await reader?.cancel().catch(() => {});
+    clearInterval(watchdog);
     controller.abort();
+    await reader?.cancel().catch(() => {});
+    if (streamAbort === controller) streamAbort = null;
   }
 }
 function editAgent(id) {
@@ -1890,12 +1970,31 @@ setInterval(() => {
 setInterval(pollSidebar, 15000);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) return;
+  wakeViewer();
   pollSidebar();
   if (Date.now() - usageFetchedAt > 90000) resetUsage("loading");
   refreshUsage();
 });
-$("reconnect").onclick = () =>
-  switchAgent(agentId, false, selected).catch(error);
+function wakeViewer() {
+  if (booting) return;
+  if (streamAbort && Date.now() - streamLastSeen > 45000)
+    streamAbort.abort(Error("唤醒后恢复查看连接"));
+  if (!status.connected || !streamAbort) viewerRecovery?.request(true);
+  else pollSidebar();
+}
+window.addEventListener("online", wakeViewer);
+window.addEventListener("focus", wakeViewer);
+window.addEventListener("pagehide", () => {
+  viewerRecovery?.stop();
+  streamAbort?.abort();
+  agentReads.abort();
+  taskReads.abort();
+});
+$("reconnect").onclick = () => {
+  streamAbort?.abort();
+  setConnection(false);
+  viewerRecovery?.request(true);
+};
 $("refresh").onclick = () => Promise.all([refresh(), read()]).catch(error);
 $("search").oninput = renderThreads;
 function toggleSearch() {

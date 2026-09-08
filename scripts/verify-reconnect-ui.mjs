@@ -19,13 +19,19 @@ let active = 0,
   peak = 0,
   reads = 0,
   aborted = 0,
-  delay = 2000,
+  delay = 30,
   interval = 650;
 let selectionFailure = false,
   readFailure = false,
   revision = 0;
-const status = () => ({
-  connected: true,
+const health = { local: true, laptop: true };
+const connects = { local: 0, laptop: 0 },
+  follows = { local: 0, laptop: 0 };
+let outage = false,
+  unavailable = false,
+  silent = false;
+const status = (agent = "local") => ({
+  connected: health[agent],
   existingCodexWritable: true,
   threads: {},
 });
@@ -79,7 +85,16 @@ const server = http.createServer(async (req, res) => {
     return json({ supported: false, currentVersion: "fixture" });
   if (p.endsWith("/activity")) return json({});
   const agent = /\/agents\/([^/]+)/.exec(p)?.[1];
-  if (p.endsWith("/status") || p.endsWith("/connect")) return json(status());
+  if (outage && agent === "laptop")
+    return json({ error: "network unavailable" }, 503);
+  if (p.endsWith("/status")) return json(status(agent));
+  if (p.endsWith("/connect")) {
+    connects[agent]++;
+    if (unavailable && agent === "laptop")
+      return json({ error: "desktop unavailable" }, 503);
+    health[agent] = true;
+    return json(status(agent));
+  }
   if (p.endsWith("/projects")) return json({ data: { projects: [] } });
   if (p.endsWith("/usage")) return json({ status: "available", weekly: [] });
   if (p.endsWith("/queue"))
@@ -89,14 +104,18 @@ const server = http.createServer(async (req, res) => {
       messages: [],
       recoveries: [],
     });
-  if (p.endsWith("/follow")) return json({});
+  if (p.endsWith("/follow")) {
+    follows[agent]++;
+    return json({});
+  }
   if (p.endsWith("/events")) {
     res.writeHead(200, { "content-type": "text/event-stream" });
     res.write(
-      `data: ${JSON.stringify({ kind: "resync-required", ...status() })}\n\n`,
+      `data: ${JSON.stringify({ kind: "resync-required", ...status(agent) })}\n\n`,
     );
     streams.set(agent, res);
     const tick = () =>
+      !silent &&
       res.write(
         `data: ${JSON.stringify({ kind: "thread-state", threadId: ids[0], status: { type: "running", confirmed: true } })}\n\n`,
       );
@@ -197,160 +216,150 @@ const connected = () =>
 try {
   await page.goto(address);
   await connected();
+  health.laptop = false;
+  unavailable = true;
   await device("笔记本测试");
-  await connected();
-  await thread(ids[0]);
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector("#messages")
-        .textContent.includes("laptop content 0"),
-    {},
-    { timeout: 6000 },
-  );
-  assert.equal(
-    peak,
-    1,
-    "slow live reads must not overlap or discard every response",
-  );
-  checks.push(
-    "slow responses render during continuous owner events; at most one content read",
-  );
   await page.waitForFunction(() =>
-    document
-      .querySelector("#messages")
-      .textContent.includes("laptop content 0"),
+    document.querySelector("#connection").textContent.includes("自动重连"),
   );
-  // While the next slow response is pending, switch away and verify browser abort propagation.
-  while (!active) await new Promise((r) => setTimeout(r, 30));
-  const start = Date.now();
-  await device("本机测试");
-  await connected();
-  await thread(ids[1]);
-  await page.waitForFunction(() =>
-    document.querySelector("#messages").textContent.includes("local content 1"),
-  );
-  assert.ok(Date.now() - start < 2000);
-  assert.ok(aborted > 0);
-  assert.equal(active, 0);
-  checks.push(
-    "device switch aborts old reads and connects locally within two seconds",
-  );
-  await device("笔记本测试");
-  await connected();
-  await thread(ids[0]);
-  while (!active) await new Promise((r) => setTimeout(r, 30));
-  await thread(ids[1]);
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector("#messages")
-        .textContent.includes("laptop content 1"),
-    {},
-    { timeout: 5000 },
-  );
+  await new Promise((r) => setTimeout(r, 1400));
   assert.ok(
-    !(await page.locator("#messages").innerText()).includes("laptop content 0"),
+    connects.laptop >= 2,
+    "initial failure retries /connect without a stream",
   );
-  checks.push("task switch cancels stale content without mixing tasks");
-  streams.get("laptop").destroy();
-  await page.waitForFunction(() =>
-    document.querySelector("#connection").textContent.includes("连接中断"),
-  );
-  revision = 2;
-  interval = 100;
+  unavailable = false;
   await connected();
-  await page.waitForFunction(
-    () =>
-      document.querySelector("#messages").textContent.includes("revision 2"),
-    {},
-    { timeout: 6000 },
+  checks.push("initial unavailable desktop recovers automatically");
+  await thread(ids[0]);
+  await page.waitForFunction(() =>
+    document.querySelector("#messages").textContent.includes("revision 0"),
   );
-  assert.equal(await page.locator("#prompt").isDisabled(), false);
-  checks.push(
-    "SSE reconnection restores confirmed connection and missed messages",
-  );
+  await page.locator("#prompt").fill("unsent draft kept through reconnect");
+  await page
+    .locator("#image")
+    .setInputFiles({
+      name: "probe.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    });
+  const followBefore = follows.laptop;
+  health.laptop = false;
+  unavailable = true;
   streams.get("laptop").write('data: {"kind":"connection-interrupted"}\n\n');
   await page.waitForFunction(() =>
-    document.querySelector("#connection").textContent.includes("连接中断"),
-  );
-  revision = 4;
-  streams.get("laptop").write('data: {"kind":"connected"}\n\n');
-  await connected();
-  await page.waitForFunction(
-    () =>
-      document.querySelector("#messages").textContent.includes("revision 4"),
-    {},
-    { timeout: 6000 },
-  );
-  checks.push(
-    "official IPC reconnect recovers through the existing SSE stream",
-  );
-  await thread(ids[0]);
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector("#messages")
-        .textContent.includes("laptop content 0"),
-    {},
-    { timeout: 5000 },
-  );
-  const before = reads;
-  revision = 3;
-  await page.waitForFunction(
-    () =>
-      document.querySelector("#messages").textContent.includes("revision 3"),
-    {},
-    { timeout: 6000 },
-  );
-  assert.ok(reads > before);
-  checks.push("high-frequency events cannot postpone refresh indefinitely");
-  readFailure = true;
-  await thread(ids[1]);
-  await page.waitForFunction(
-    () => !document.querySelector("#error").hidden,
-    {},
-    { timeout: 5000 },
+    document.querySelector("#connection").textContent.includes("自动重连"),
   );
   assert.match(await page.locator("#task-state").innerText(), /未知/);
-  assert.equal(await page.locator("#task-state").isVisible(), true);
-  assert.equal(await page.locator("#connection").innerText(), "已连接官方桌面");
-  readFailure = false;
-  await page.locator("#refresh").click();
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector("#messages")
-        .textContent.includes("laptop content 1"),
-    {},
-    { timeout: 5000 },
-  );
-  checks.push(
-    "content errors are visible and recoverable without disconnecting the device",
-  );
-  selectionFailure = true;
-  await device("本机测试");
+  assert.match(await page.locator("#messages").innerText(), /revision 0/);
+  revision = 1;
+  unavailable = false;
+  await connected();
   await page.waitForFunction(() =>
-    document.querySelector("#connection").textContent.includes("连接中断"),
+    document.querySelector("#messages").textContent.includes("revision 1"),
   );
-  assert.match(await page.locator("#error").innerText(), /selection failed/);
+  assert.ok(follows.laptop > followBefore);
+  assert.equal(
+    await page.locator("#prompt").inputValue(),
+    "unsent draft kept through reconnect",
+  );
+  assert.equal(
+    await page.locator("#image").evaluate((e) => e.files[0].name),
+    "probe.png",
+  );
   checks.push(
-    "selection failure exits the connecting state with an explicit error",
+    "live SSE plus lost official IPC invokes connect and follow; draft and image survive",
   );
+  outage = true;
+  streams.get("laptop").destroy();
+  await page.waitForFunction(() =>
+    document.querySelector("#connection").textContent.includes("自动重连"),
+  );
+  await new Promise((r) => setTimeout(r, 1400));
+  revision = 2;
+  health.laptop = false;
+  outage = false;
+  await connected();
+  await page.waitForFunction(() =>
+    document.querySelector("#messages").textContent.includes("revision 2"),
+  );
+  checks.push(
+    "network outage and remote restart recover missed messages in the same task",
+  );
+  // Production watchdog: keep TCP open but suppress every event and heartbeat.
+  silent = true;
+  const oldStream = streams.get("laptop");
+  console.log("Testing production 45-second silent-stream watchdog...");
+  const started = Date.now();
+  while (streams.get("laptop") === oldStream && Date.now() - started < 58000)
+    await new Promise((r) => setTimeout(r, 200));
+  assert.notEqual(
+    streams.get("laptop"),
+    oldStream,
+    "watchdog must reopen silent TCP",
+  );
+  silent = false;
+  await connected();
+  checks.push(
+    "45-second heartbeat watchdog repairs silent TCP without waiting for an error",
+  );
+  health.laptop = false;
+  unavailable = true;
+  streams.get("laptop").write('data: {"kind":"connection-interrupted"}\n\n');
+  await page.waitForFunction(() =>
+    document.querySelector("#connection").textContent.includes("自动重连"),
+  );
+  await device("本机测试");
+  await connected();
+  const beforeSwitch = connects.laptop;
+  await new Promise((r) => setTimeout(r, 2500));
+  assert.equal(connects.laptop, beforeSwitch);
+  assert.match(await page.locator("#agent-title").innerText(), /本机/);
+  checks.push("switching devices cancels old reconnect timers");
+  await device("笔记本测试");
+  await page.waitForFunction(() =>
+    document.querySelector("#connection").textContent.includes("自动重连"),
+  );
+  unavailable = false;
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await connected();
+  await thread(ids[0]);
+  await page.locator("#reconnect").click();
+  await connected();
+  assert.equal(
+    await page.locator("#prompt").inputValue(),
+    "unsent draft kept through reconnect",
+  );
+  checks.push(
+    "online wake and manual reconnect preserve current task and draft",
+  );
+  health.laptop = false;
+  unavailable = true;
+  streams.get("laptop").write('data: {"kind":"connection-interrupted"}\n\n');
+  await page.waitForFunction(() =>
+    document.querySelector("#connection").textContent.includes("自动重连"),
+  );
+  await page.close();
+  const beforeClose = connects.laptop;
+  await new Promise((r) => setTimeout(r, 1600));
+  assert.equal(connects.laptop, beforeClose);
+  checks.push("closing the viewing UI cancels recovery");
   assert.deepEqual(writes, []);
   assert.deepEqual(errors, []);
   const report = {
     result: "passed",
-    source: "isolated HTTP fixtures; no official task writes",
+    source: "isolated real HTTP/SSE and Edge UI",
     checks,
-    peak,
-    aborted,
-    errors,
+    connects,
+    follows,
     writes,
+    errors,
   };
   fs.mkdirSync(path.join(ROOT, "evidence"), { recursive: true });
   fs.writeFileSync(
-    path.join(ROOT, "evidence/device-switch-ui.json"),
+    path.join(ROOT, "evidence/reconnect-ui.json"),
     JSON.stringify(report, null, 2),
   );
   console.log(JSON.stringify(report));

@@ -12,7 +12,13 @@ const dir = fs.mkdtempSync(path.join(ROOT, "work/features-ui-"));
 fs.writeFileSync(path.join(dir, "update-settings.json"), '{"automatic":false}');
 const { server, address } = await startServer({
   port: 0,
-  bridge: { dataDir: dir, on() {}, off() {}, connect: async () => {} },
+  bridge: {
+    dataDir: dir,
+    on() {},
+    off() {},
+    connect: async () => {},
+    disconnect() {},
+  },
 });
 const browser = await chromium.launch({
   executablePath:

@@ -10,6 +10,7 @@ import { OfficialQueue, composeQueuedMessage } from "./queue.mjs";
 import { assertProbeTarget, testExcludedThreadIds } from "./probe-safety.mjs";
 import { DATA_DIR } from "./runtime.mjs";
 import { MessageMedia } from "./message-media.mjs";
+import { Reconnector } from "../public/reconnect.mjs";
 import {
   ConversationPages,
   compactConversation,
@@ -30,7 +31,10 @@ export const ROOT = path.resolve(
   "..",
 );
 export class Bridge extends EventEmitter {
-  constructor(dataDir = DATA_DIR) {
+  constructor(
+    dataDir = DATA_DIR,
+    { desktopFactory = (context) => new Desktop(context), retryDelays } = {},
+  ) {
     super();
     this.dataDir = dataDir;
     fs.mkdirSync(dataDir, { recursive: true });
@@ -48,6 +52,9 @@ export class Bridge extends EventEmitter {
     this.queue = new OfficialQueue(this);
     this.media = new MessageMedia();
     this.pages = new ConversationPages();
+    this.desktopFactory = desktopFactory;
+    this.retryDelays = retryDelays;
+    this.connectionGeneration = 0;
   }
   save() {
     const tmp = this.stateFile + ".tmp";
@@ -69,30 +76,42 @@ export class Bridge extends EventEmitter {
     return e;
   }
   async connect() {
+    if (!this.reconnector?.enabled)
+      this.reconnector = new Reconnector(() => this.connect(), {
+        delays: this.retryDelays,
+      });
     if (this.connected) return this.desktop.identity;
     if (this.connecting) return this.connecting;
-    this.connecting = this._connect();
+    const generation = this.connectionGeneration;
+    const pending = this._connect(generation);
+    this.connecting = pending;
     try {
-      return await this.connecting;
+      return await pending;
+    } catch (e) {
+      if (generation === this.connectionGeneration) this.reconnector.request();
+      throw e;
     } finally {
-      this.connecting = null;
+      if (this.connecting === pending) this.connecting = null;
     }
   }
-  async _connect() {
+  async _connect(generation) {
     this.desktop?.close();
     this.live.clear();
     this.queue.clear();
     this.owners = new Map();
     const context = Object.keys(this.db.tests)[0] ?? null;
-    const desktop = new Desktop(context);
+    const desktop = this.desktopFactory(context);
     this.desktop = desktop;
     try {
       await desktop.connect();
+      if (generation !== this.connectionGeneration || this.desktop !== desktop)
+        throw Error("Viewer connection cancelled");
     } catch (e) {
       desktop.close();
       throw e;
     }
     this.connected = true;
+    this.reconnector.healthy();
     desktop.ipc.on("frame", (f) => {
       if (this.desktop === desktop) this.frame(f);
     });
@@ -100,12 +119,14 @@ export class Bridge extends EventEmitter {
       if (this.desktop === desktop && this.connected) {
         this.connected = false;
         this.emitEvent("connection-interrupted", { reason });
+        this.reconnector.request();
       }
     };
     desktop.ipc.on("disconnected", lost);
     desktop.tools.on("disconnected", lost);
     this.emitEvent("connected", { officialPid: desktop.identity.officialPid });
     for (const id of this.watching) {
+      if (generation !== this.connectionGeneration || !this.connected) break;
       try {
         await this.follow(id);
       } catch (e) {
@@ -115,6 +136,9 @@ export class Bridge extends EventEmitter {
     return desktop.identity;
   }
   disconnect() {
+    this.connectionGeneration++;
+    this.reconnector?.stop();
+    this.connecting = null;
     this.connected = false;
     this.queue.clear();
     this.desktop?.close();
@@ -287,9 +311,13 @@ export class Bridge extends EventEmitter {
   async follow(id) {
     this.requireConnection();
     this.watching.add(id);
-    const o = await this.desktop.owner(id);
+    const desktop = this.desktop;
+    const o = await desktop.owner(id);
+    this.requireConnection();
+    if (desktop !== this.desktop)
+      throw Error("Viewer connection changed during follow");
     this.owners.set(id, o.handledByClientId);
-    this.desktop.ipc.broadcast(
+    desktop.ipc.broadcast(
       "thread-stream-following-changed",
       { hostId: "local", conversationId: id, following: true },
       1,
