@@ -23,6 +23,57 @@ export class MessageMedia {
     this.threads = new Map();
     this.inline = new Map();
     this.inlineBytes = 0;
+    this.attachments = new Map();
+  }
+  addFile(threadId, source, name) {
+    // Only exact local paths actually present in a read message become download IDs.
+    // Never follow UNC/device paths or accept arbitrary paths from HTTP callers.
+    if (
+      typeof source !== "string" ||
+      !path.isAbsolute(source) ||
+      /^[\\/]{2}/.test(source)
+    )
+      return null;
+    const file = path.normalize(source);
+    const id = createHash("sha256").update(file).digest("hex");
+    let entries = this.attachments.get(threadId);
+    if (!entries) this.attachments.set(threadId, (entries = new Map()));
+    const previous = entries.get(id);
+    let real = previous?.real ?? null,
+      size = null;
+    try {
+      const stat = fs.statSync(file);
+      if (!stat.isFile()) return null;
+      real ??= fs.realpathSync(file);
+      size = stat.size;
+    } catch {}
+    const label = path.basename(name || file).replace(/[\r\n]/g, "");
+    if (entries.size < 1000 || previous)
+      entries.set(id, { file, real, name: label, size });
+    return entries.has(id) ? { id, name: label, size } : null;
+  }
+  listFiles(threadId) {
+    return [...(this.attachments.get(threadId) ?? [])].map(([id, entry]) => ({
+      id,
+      name: entry.name,
+      size: entry.size,
+    }));
+  }
+  openFile(threadId, id) {
+    const entry = this.attachments.get(threadId)?.get(id);
+    if (!entry) throw Error("文件未出现在已读取的此会话中，请刷新会话");
+    if (!entry.real || fs.realpathSync(entry.file) !== entry.real)
+      throw Error("原文件已移动、删除或替换，请重新读取会话");
+    const fd = fs.openSync(entry.real, "r");
+    try {
+      const stat = fs.fstatSync(fd);
+      if (!stat.isFile() || stat.size > 256 * 1024 * 1024)
+        throw Error("文件不可用或超过 256 MB");
+      return { fd, size: stat.size, name: entry.name };
+    } catch (e) {
+      fs.closeSync(fd);
+      throw e;
+    }
   }
   add(threadId, source, name, externalImages = false) {
     if (typeof source !== "string") return null;
@@ -82,7 +133,10 @@ export class MessageMedia {
             for (const file of parsed.files) {
               if (/\.(png|jpe?g|webp)$/i.test(file.path))
                 add(file.path, file.name);
-              else files.push({ name: file.name });
+              else {
+                const ref = this.addFile(threadId, file.path, file.name);
+                files.push(ref ?? { name: file.name });
+              }
             }
             for (const c of item.content ?? item.input ?? []) {
               if (c.type === "image") add(c.url);
@@ -108,6 +162,21 @@ export class MessageMedia {
                 return "";
               },
             );
+            text = text.replace(
+              /\[([^\]]+)\]\(<?((?:[A-Za-z]:[\\/]|\/)[^\n]*?)>?\)/g,
+              (whole, label, file) => {
+                // A line suffix is a source-navigation link, not part of the filename.
+                const source = file.replace(/:\d+(?::\d+)?$/, "");
+                const ref = this.addFile(
+                  threadId,
+                  source,
+                  path.basename(source),
+                );
+                if (!ref) return whole;
+                files.push(ref);
+                return label;
+              },
+            );
           }
           return {
             ...item,
@@ -116,7 +185,9 @@ export class MessageMedia {
               images: [
                 ...new Map(images.map((i) => [i.id ?? i.src, i])).values(),
               ],
-              files,
+              files: [
+                ...new Map(files.map((f) => [f.id ?? f.name, f])).values(),
+              ],
             },
           };
         }),

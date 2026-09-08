@@ -5,6 +5,8 @@ import { QuestionsUI } from "./questions-ui.mjs";
 import { questionReply, userContent } from "./message-content.mjs";
 import { mergeTurns, overlaps } from "./conversation-history.mjs";
 import { Reconnector } from "./reconnect.mjs";
+import { clipboardImage, validateImage } from "./clipboard-images.mjs";
+import { HelpUpdates } from "./help-updates.mjs";
 import {
   windowId,
   saveRecovery,
@@ -70,6 +72,7 @@ const deviceSettings = new DeviceSettings({
   toast,
   backupDrafts,
 });
+const helpUpdates = new HelpUpdates({ $, api, backupDrafts });
 async function backupDrafts() {
   saveDraft();
   await saveRecovery({
@@ -397,7 +400,6 @@ function messageImage(ref) {
         img.src = src;
         link.textContent = "下载原图";
         link.href = src;
-        link.target = "_blank";
         link.rel = "noopener";
       })
       .catch((e) => {
@@ -468,7 +470,7 @@ function permissions() {
       : "发送消息";
   $("send").setAttribute("aria-label", !idle ? "加入队列" : "发送消息");
   $("open").disabled = !status.connected || fresh || readOnlyTask;
-  $("listfiles").disabled = !status.connected || fresh || !probe;
+  $("listfiles").disabled = !status.connected || fresh;
   $("model-display").disabled =
     $("effort-display").disabled =
     $("permission-display").disabled =
@@ -1211,8 +1213,18 @@ function renderItem(item) {
   for (const ref of item.bridgeDisplay?.images ??
     images.map((c) => ({ src: c.url, name: "已上传的图片" })))
     body.append(messageImage(ref));
-  for (const file of item.bridgeDisplay?.files ?? [])
-    body.append(node("div", "attachment-chip", file.name));
+  for (const file of item.bridgeDisplay?.files ?? []) {
+    const button = node("button", "attachment-chip file-download", file.name);
+    button.type = "button";
+    button.prepend(icon("files"));
+    button.append(icon("download"));
+    const a = agentId,
+      t = selected;
+    button.disabled = !file.id;
+    button.title = file.id ? "下载原文件" : "原文件暂不可下载";
+    button.onclick = () => downloadFile(a, t, file).catch(error);
+    body.append(button);
+  }
   box.append(body);
   if (!user) {
     const actions = node("div", "message-actions"),
@@ -1893,7 +1905,38 @@ $("prompt").onkeydown = (e) => {
     $("form").requestSubmit();
   }
 };
-$("image").onchange = renderAttachment;
+$("image").onchange = () => {
+  try {
+    if ($("image").files[0]) validateImage($("image").files[0]);
+  } catch (e) {
+    $("image").value = "";
+    error(e);
+  }
+  renderAttachment();
+};
+$("prompt").addEventListener("paste", (event) => {
+  const file = clipboardImage(event.clipboardData);
+  if (!file) return; // Keep ordinary text paste and selection replacement native.
+  event.preventDefault();
+  if ($("image").disabled) {
+    toast(
+      selected === null
+        ? "请先发送文字创建会话，再粘贴图片"
+        : "请等待会话连接并加载完成后再粘贴图片",
+    );
+    return;
+  }
+  try {
+    validateImage(file);
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    $("image").files = transfer.files;
+    renderAttachment();
+    clearError();
+  } catch (e) {
+    error(e);
+  }
+});
 $("create").onclick = $("mobile-new").onclick = () => newConversation();
 $("nav-back").onclick = () => navigateBy(-1).catch(error);
 $("nav-forward").onclick = () => navigateBy(1).catch(error);
@@ -2073,43 +2116,53 @@ async function files() {
     $("files").replaceChildren();
     for (const f of r.files) {
       const b = node("button", "file-entry", "↓ " + f.name);
-      b.append(node("span", "", (f.size / 1024).toFixed(0) + " KB"));
+      b.append(
+        node(
+          "span",
+          "",
+          f.size === null ? "大小未知" : (f.size / 1024).toFixed(0) + " KB",
+        ),
+      );
       b.onclick = async () => {
         try {
-          const r = await fetch(
-            base(a) +
-              "/threads/" +
-              t +
-              "/file?name=" +
-              encodeURIComponent(f.name),
-            { headers: { "X-Bridge-CSRF": csrf } },
-          );
-          if (!r.ok) throw Error("文件下载失败");
-          const blob = await r.blob(),
-            url = URL.createObjectURL(blob),
-            link = node("a");
-          link.href = url;
-          link.download = f.name.split("/").at(-1);
-          link.click();
-          setTimeout(() => URL.revokeObjectURL(url), 20000);
+          await downloadFile(a, t, f);
         } catch (e) {
           error(e);
         }
       };
       $("files").append(b);
     }
-    if (!r.files.length) $("files").textContent = "此任务还没有 outputs 文件。";
+    if (!r.files.length)
+      $("files").textContent =
+        "已加载的消息中没有可下载的文件；向上翻阅可加载更早附件。";
   } catch (e) {
     if (g === generation) error(e);
   }
 }
+async function downloadFile(a, t, file) {
+  const response = await fetch(
+    base(a) +
+      "/threads/" +
+      t +
+      "/file?" +
+      (file.id
+        ? "id=" + encodeURIComponent(file.id)
+        : "name=" + encodeURIComponent(file.name)),
+    { headers: { "X-Bridge-CSRF": csrf }, signal: AbortSignal.timeout(300000) },
+  );
+  if (!response.ok) throw Error("原文件无法下载，可能已被移动或删除");
+  const url = URL.createObjectURL(await response.blob()),
+    link = node("a");
+  link.href = url;
+  link.download = file.name.split(/[\\/]/).at(-1);
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
 $("toggle-files").onclick = () => {
   $("file-tray").hidden = !$("file-tray").hidden;
-  if (
-    !$("file-tray").hidden &&
-    Object.hasOwn(status.testThreads ?? {}, selected)
-  )
-    files();
+  if (!$("file-tray").hidden && selected) files();
 };
 $("listfiles").onclick = files;
 $("close-files").onclick = () => {
@@ -2126,8 +2179,7 @@ $("files-nav").onclick = $("mobile-results").onclick = () => {
   $("file-tray").hidden = false;
   $("mobile-results").classList.add("active");
   $("mobile-conversation").classList.remove("active");
-  if (Object.hasOwn(status.testThreads ?? {}, selected)) files();
-  else $("files").textContent = "此历史对话暂不提供文件下载";
+  files();
 };
 $("mobile-conversation").onclick = () => $("close-files").click();
 const effortNames = {
@@ -2609,6 +2661,7 @@ $("agent-dialog").addEventListener("close", () => {
 });
 $("remote-setup").onclick = async () => {
   $("setup-dialog").showModal();
+  helpUpdates.refresh();
   $("remote-info").textContent = "读取中…";
   try {
     const r = await api("/api/remote-info");

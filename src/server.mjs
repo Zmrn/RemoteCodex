@@ -35,6 +35,8 @@ export async function startServer({
     ["/message-content.mjs", "text/javascript; charset=utf-8"],
     ["/conversation-history.mjs", "text/javascript; charset=utf-8"],
     ["/reconnect.mjs", "text/javascript; charset=utf-8"],
+    ["/clipboard-images.mjs", "text/javascript; charset=utf-8"],
+    ["/help-updates.mjs", "text/javascript; charset=utf-8"],
     ["/questions-ui.mjs", "text/javascript; charset=utf-8"],
     ["/queue-ui.mjs", "text/javascript; charset=utf-8"],
     ["/device-settings.mjs", "text/javascript; charset=utf-8"],
@@ -230,9 +232,32 @@ export async function startServer({
               : result,
           );
         }
-        if (match[2] === "files")
-          return json(res, 200, { files: listFiles(await outputRoot(id)) });
+        if (match[2] === "files") {
+          const attachments = bridge.media.listFiles(id);
+          const outputs = Object.hasOwn(bridge.db.tests, id)
+            ? listFiles(await outputRoot(id))
+            : [];
+          return json(res, 200, { files: [...attachments, ...outputs] });
+        }
         if (match[2] === "file") {
+          if (url.searchParams.has("id")) {
+            const file = bridge.media.openFile(id, url.searchParams.get("id"));
+            res.writeHead(200, {
+              "Content-Type": "application/octet-stream",
+              "Content-Disposition":
+                "attachment; filename*=UTF-8''" + encodeURIComponent(file.name),
+              "Content-Length": file.size,
+              "Cache-Control": "no-store",
+            });
+            const stream = fs.createReadStream(null, {
+              fd: file.fd,
+              autoClose: true,
+            });
+            res.on("close", () => stream.destroy());
+            stream.on("error", () => res.destroy());
+            stream.pipe(res);
+            return;
+          }
           const file = resolveFile(
             await outputRoot(id),
             url.searchParams.get("name"),

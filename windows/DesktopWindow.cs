@@ -12,8 +12,47 @@ public sealed class DesktopWindow : Form {
     private readonly WebView2 web = new WebView2();
     private bool closing;
     private bool readyToClose;
+    private bool exitRequested;
+    private bool initialized;
+    private bool trayDisposed;
+    private Task exitDeadline;
+    private readonly NotifyIcon tray = new NotifyIcon();
+    private readonly ContextMenuStrip trayMenu = new ContextMenuStrip();
+    private static readonly uint showMessage = RegisterWindowMessage("RemoteCodex.ShowDesktop.v1");
     private TaskCompletionSource<bool> draftSaved;
     private string draftNonce;
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterWindowMessage(string message);
+    protected override void WndProc(ref Message message) {
+        if (message.Msg == showMessage) { RestoreWindow(); return; }
+        base.WndProc(ref message);
+    }
+    private void RestoreWindow() {
+        if (closing) return;
+        Show();
+        if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+        Activate();
+    }
+    private void EnsureExitDeadline() {
+        if (exitDeadline != null) return;
+        // Only an actual exit reaches here. The process job cleans our own
+        // children if WebView2 disposal stalls; official ChatGPT is outside it.
+        exitDeadline = Task.Delay(6000).ContinueWith(task => Environment.Exit(0), TaskScheduler.Default);
+    }
+    public void RequestExit() { exitRequested = true; EnsureExitDeadline(); Close(); }
+    private async Task SaveDrafts() {
+        if (web.CoreWebView2 == null || web.IsDisposed) return;
+        draftNonce = "draft-saved-" + Guid.NewGuid().ToString("N");
+        draftSaved = new TaskCompletionSource<bool>();
+        var completion = draftSaved;
+        var execution = web.ExecuteScriptAsync("(async()=>{try{await window.remoteCodexSaveDrafts?.()}finally{window.chrome.webview.postMessage('" + draftNonce + "')}})()");
+        var observed = execution.ContinueWith(t => { var ignored = t.Exception; completion.TrySetResult(false); }, TaskContinuationOptions.OnlyOnFaulted);
+        await Task.WhenAny(completion.Task, Task.Delay(1500));
+    }
+    protected override void Dispose(bool disposing) {
+        if (disposing && !trayDisposed) { trayDisposed = true; tray.Visible = false; tray.Dispose(); trayMenu.Dispose(); }
+        base.Dispose(disposing);
+    }
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
     protected override void OnHandleCreated(EventArgs e) {
@@ -32,16 +71,42 @@ public sealed class DesktopWindow : Form {
         Width = 1440; Height = 960; MinimumSize = new Size(360, 400);
         StartPosition = FormStartPosition.CenterScreen;
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+        tray.Icon = Icon;
+        tray.Text = "Remote Codex " + version;
+        trayMenu.Items.Add("打开 Remote Codex", null, (sender, e) => RestoreWindow());
+        trayMenu.Items.Add(new ToolStripSeparator());
+        trayMenu.Items.Add("退出 Remote Codex", null, (sender, e) => RequestExit());
+        tray.ContextMenuStrip = trayMenu;
+        tray.MouseClick += (sender, e) => { if (e.Button == MouseButtons.Left) RestoreWindow(); };
+        tray.Visible = true;
         BackColor = Color.FromArgb(16, 23, 34);
         web.DefaultBackgroundColor = BackColor;
         web.Dock = DockStyle.Fill;
         Controls.Add(web);
         Shown += async (sender, e) => {
+            if (initialized) return;
+            initialized = true;
             try {
                 var environment = await CoreWebView2Environment.CreateAsync(null, Path.Combine(data, "desktop-webview"));
                 await web.EnsureCoreWebView2Async(environment);
                 web.CoreWebView2.Profile.PreferredColorScheme = CoreWebView2PreferredColorScheme.Dark;
                 web.CoreWebView2.Settings.IsStatusBarEnabled = false;
+                web.CoreWebView2.DownloadStarting += (s, args) => {
+                    var deferral = args.GetDeferral();
+                    BeginInvoke(new Action(() => {
+                    try {
+                        using (var save = new SaveFileDialog()) {
+                            save.Title = "保存会话附件";
+                            save.FileName = Path.GetFileName(args.ResultFilePath);
+                            save.Filter = "所有文件 (*.*)|*.*";
+                            args.Handled = true;
+                            if (save.ShowDialog(this) == DialogResult.OK) args.ResultFilePath = save.FileName;
+                            else args.Cancel = true;
+                        }
+                    } catch { args.Cancel = true; }
+                    finally { deferral.Complete(); }
+                    }));
+                };
                 web.CoreWebView2.WebMessageReceived += (s, args) => {
                     try { if(args.TryGetWebMessageAsString()==draftNonce && draftSaved!=null)draftSaved.TrySetResult(true); } catch{}
                 };
@@ -58,25 +123,33 @@ public sealed class DesktopWindow : Form {
                 };
                 web.Source = new Uri(address + "/?desktop=1&ui=" + version);
             } catch (Exception error) {
+                if (closing || exitRequested || IsDisposed) return;
                 MessageBox.Show(this, "界面启动失败：" + error.Message, "Remote Codex");
-                Close();
+                RequestExit();
             }
         };
         FormClosing += async (sender, e) => {
             if (readyToClose) return;
+            if (e.CloseReason == CloseReason.UserClosing && !exitRequested) {
+                e.Cancel = true;
+                Hide();
+                try { await SaveDrafts(); } catch { }
+                return;
+            }
+            if (e.CloseReason == CloseReason.WindowsShutDown || e.CloseReason == CloseReason.TaskManagerClosing) {
+                readyToClose = true;
+                tray.Visible = false;
+                return;
+            }
             e.Cancel = true;
             if (closing) return;
             closing = true;
+            EnsureExitDeadline();
             try {
-                if (web.CoreWebView2 != null) {
-                    draftNonce="draft-saved-"+Guid.NewGuid().ToString("N");
-                    draftSaved=new TaskCompletionSource<bool>();
-                    var execution=web.ExecuteScriptAsync("(async()=>{try{await window.remoteCodexSaveDrafts?.()}finally{window.chrome.webview.postMessage('"+draftNonce+"')}})()");
-                    execution.ContinueWith(t => {var ignored=t.Exception;draftSaved.TrySetResult(false);},TaskContinuationOptions.OnlyOnFaulted);
-                    await Task.WhenAny(draftSaved.Task, Task.Delay(1200));
-                }
+                await SaveDrafts();
             } catch { }
             web.Dispose();
+            tray.Visible = false;
             readyToClose=true;
             Close();
         };

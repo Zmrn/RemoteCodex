@@ -2605,6 +2605,98 @@ a {
   width: 15px;
   height: 15px;
 }
+.queue-more summary svg {
+  display: block;
+  flex: none;
+  stroke-width: 1.8;
+}
+.file-download {
+  cursor: pointer;
+  color: var(--ink);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.file-download > svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.file-download:hover {
+  border-color: #3986f6;
+}
+#help {
+  position: relative;
+  flex-shrink: 0;
+}
+#help .help-download-symbol,
+#help-download-meter,
+#help-download-percent {
+  display: none;
+}
+#help.has-update {
+  width: 38px;
+  height: 42px;
+  padding: 3px;
+  color: #69a7ff;
+}
+#help.has-update .help-symbol {
+  display: none;
+}
+#help.has-update .help-download-symbol {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 10px;
+}
+#help.has-update .help-download-symbol svg {
+  width: 18px;
+  height: 18px;
+}
+#help.has-update #help-download-percent {
+  display: block;
+  position: absolute;
+  top: 18px;
+  left: 0;
+  width: 100%;
+  font-size: 10px;
+  line-height: 13px;
+  text-align: center;
+}
+#help.has-update #help-download-meter {
+  display: block;
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  width: 30px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #34455e;
+}
+#help-download-progress {
+  display: block;
+  height: 100%;
+  background: #69a7ff;
+  transition: width 0.25s linear;
+}
+.help-update-panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 22px;
+}
+.help-update-panel h3 {
+  margin-top: 0;
+}
+.help-update-panel .check-label {
+  margin-top: 14px;
+}
+#help-update-progress {
+  width: 100%;
+  accent-color: #3986f6;
+  margin: 6px 0 12px;
+}
 .queue-recovery {
   display: flex;
   gap: 8px;

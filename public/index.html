@@ -155,10 +155,21 @@
         <button
           id="help"
           class="icon-button"
-          aria-label="使用帮助"
-          title="使用帮助"
+          aria-label="帮助与软件更新"
+          title="帮助与软件更新"
         >
-          <span data-icon="help"></span>
+          <span class="help-symbol" data-icon="help"></span>
+          <span class="help-download-symbol" data-icon="download"></span>
+          <span id="help-download-percent" aria-hidden="true"></span>
+          <span
+            id="help-download-meter"
+            role="progressbar"
+            aria-label="软件下载进度"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+            ><span id="help-download-progress"></span
+          ></span>
         </button>
         <div
           class="device-switcher"
@@ -513,11 +524,46 @@
     <dialog id="setup-dialog">
       <div class="dialog-heading">
         <div>
-          <span class="eyebrow">DIRECT CONNECTION</span>
-          <h2>连接另一台 Windows</h2>
+          <span class="eyebrow">HELP &amp; UPDATES</span>
+          <h2>帮助与更新</h2>
         </div>
         <button class="icon-button close-dialog" aria-label="关闭">×</button>
       </div>
+      <section class="help-update-panel">
+        <h3>本程序更新</h3>
+        <p id="help-update-status" role="status">正在读取版本…</p>
+        <progress
+          id="help-update-progress"
+          max="100"
+          value="0"
+          hidden
+          aria-label="更新下载进度"
+        ></progress>
+        <div class="settings-actions">
+          <button id="help-check-updates" class="subtle" type="button">
+            检查更新
+          </button>
+          <button
+            id="help-install-update"
+            class="primary"
+            type="button"
+            disabled
+          >
+            安装更新
+          </button>
+        </div>
+        <label class="check-label"
+          ><input
+            id="help-automatic-updates"
+            type="checkbox"
+          />自动检查并安装更新</label
+        >
+        <p id="help-update-error" class="form-error" role="alert"></p>
+        <p class="field-help">
+          更新当前 Windows 程序；其他电脑的更新仍可在各自的设备设置中管理。
+        </p>
+      </section>
+      <h3>连接另一台 Windows</h3>
       <ol class="setup-steps">
         <li>
           <strong>在那台电脑运行桥接程序</strong>

@@ -136,7 +136,8 @@ export class QueueUI {
       row.append(remove);
       const menu = el("details", "queue-more"),
         summary = el("summary", "icon-button");
-      summary.append(icon("more"));
+      summary.append(icon("new"));
+      summary.title = "编辑排队消息";
       summary.setAttribute("aria-label", "排队消息选项");
       const edit = el("button", "queue-edit", "编辑消息");
       edit.type = "button";

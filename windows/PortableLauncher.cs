@@ -85,8 +85,7 @@ internal static class PortableLauncher {
                     if (!locked) throw new Exception("上一个桌面启动或退出尚未结束，请稍后再试。");
                     var owner=ReadDesktopRecord();
                     if (DesktopAlive(owner) && Text(owner,"version")==PortableBuild.Version) {
-                        IntPtr handle = new IntPtr(Convert.ToInt64(owner["window"]));
-                        OwnedProcesses.ShowWindow(handle,9); OwnedProcesses.SetForegroundWindow(handle);
+                        OwnedProcesses.ShowDesktop(Convert.ToInt32(owner["pid"]));
                         return 0;
                     }
                     var old=ReadRecord();
@@ -121,7 +120,11 @@ internal static class PortableLauncher {
             }
             using(var timer=new System.Windows.Forms.Timer {Interval=400}) {
                 timer.Tick += (sender,e) => {
-                    if(!OwnedProcessAlive(record)) {window.Close();return;}
+                    if(!OwnedProcessAlive(record)) {
+                        var exit = window.GetType().GetMethod("RequestExit");
+                        if(exit != null) exit.Invoke(window, null); else window.Close();
+                        return;
+                    }
                     if(helperJob!=null) {
                         try {
                             var result=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(data,"updates/result.json")));
@@ -182,12 +185,10 @@ internal static class PortableLauncher {
         int me=Process.GetCurrentProcess().Id, session=Process.GetCurrentProcess().SessionId;
         foreach(var process in Process.GetProcesses())using(process) {
             try {
-                if(process.Id==me||process.SessionId!=session||process.MainWindowHandle==IntPtr.Zero)continue;
+                if(process.Id==me||process.SessionId!=session)continue;
                 var file=process.MainModule.FileVersionInfo;
                 if(file.FileDescription!="Remote Codex"||file.Comments!="Self-contained Windows desktop bridge launcher")continue;
-                OwnedProcesses.ShowWindow(process.MainWindowHandle,9);
-                OwnedProcesses.SetForegroundWindow(process.MainWindowHandle);
-                return true;
+                if(OwnedProcesses.ShowDesktop(process.Id))return true;
             }catch{}
         }
         return false;

@@ -36,6 +36,26 @@ internal static class OwnedProcesses {
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] internal static extern IntPtr LoadLibrary(string name);
     [DllImport("user32.dll")] internal static extern bool SetForegroundWindow(IntPtr handle);
     [DllImport("user32.dll")] internal static extern bool ShowWindow(IntPtr handle, int command);
+    private delegate bool EnumWindow(IntPtr window, IntPtr param);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindow callback, IntPtr param);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern int GetWindowText(IntPtr window, StringBuilder text, int count);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern uint RegisterWindowMessage(string message);
+    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr window, uint message, IntPtr w, IntPtr l);
+    internal static bool ShowDesktop(int pid) {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((window, param) => {
+            uint owner; GetWindowThreadProcessId(window, out owner);
+            if (owner != pid) return true;
+            var title = new StringBuilder(256); GetWindowText(window, title, title.Capacity);
+            if (!title.ToString().StartsWith("Remote Codex ")) return true;
+            found = window; return false;
+        }, IntPtr.Zero);
+        if (found == IntPtr.Zero) return false;
+        PostMessage(found, RegisterWindowMessage("RemoteCodex.ShowDesktop.v1"), IntPtr.Zero, IntPtr.Zero);
+        ShowWindow(found, 9); SetForegroundWindow(found);
+        return true;
+    }
     internal static void BindLifetime() {
         job = CreateJobObject(IntPtr.Zero, null);
         if (job == IntPtr.Zero) throw new Win32Exception();
