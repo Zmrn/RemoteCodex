@@ -1,4 +1,5 @@
 import { icon } from "./ui.mjs";
+import { zoomableImage } from "./image-viewer.mjs";
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
@@ -112,6 +113,7 @@ export class QueueUI {
         const img = el("img", "queue-image");
         img.src = m.imageDataUrl;
         img.alt = "排队图片";
+        zoomableImage(img, "排队图片.png");
         row.append(img);
       }
       const text = el("span", "queue-text", m.text);

@@ -50,7 +50,13 @@ let update = {
   progress: 0,
 };
 let queueMessages = [
-  { id: "queued-one", text: "队列中的消息", editable: true },
+  {
+    id: "queued-one",
+    text: "队列中的消息",
+    editable: true,
+    imageDataUrl:
+      "data:image/png;base64," + fs.readFileSync(image).toString("base64"),
+  },
 ];
 const fixtureFile = path.join(dir, "可下载的附件.txt");
 fs.writeFileSync(fixtureFile, "original fixture bytes\r\n原文件");
@@ -260,6 +266,71 @@ await page.route(address + "/api/**", async (route) => {
   }
   return json({});
 });
+async function checkImagePreview(
+  selector,
+  { keyboard = false, download = false } = {},
+) {
+  const thumbnail = page.locator(selector).first();
+  await thumbnail.click({ trial: true });
+  await page.waitForFunction((selector) => {
+    const image = document.querySelector(selector);
+    return image?.complete && image.naturalWidth > 0;
+  }, selector);
+  await thumbnail.evaluate((e) => e.decode());
+  if (keyboard) {
+    await thumbnail.focus();
+    await page.keyboard.press("Enter");
+  } else await thumbnail.click();
+  const viewer = page.locator("#image-viewer");
+  await viewer.waitFor();
+  await viewer.locator("img").evaluate((e) => e.decode());
+  const dimensions = await viewer.locator("img").evaluate((e) => ({
+    width: e.clientWidth,
+    height: e.clientHeight,
+    naturalWidth: e.naturalWidth,
+    naturalHeight: e.naturalHeight,
+    x: e.getBoundingClientRect().x,
+    y: e.getBoundingClientRect().y,
+  }));
+  assert.ok(dimensions.width > 0 && dimensions.height > 0);
+  assert.ok(dimensions.x >= 0 && dimensions.y >= 0);
+  assert.ok(dimensions.width <= page.viewportSize().width);
+  assert.ok(dimensions.height < page.viewportSize().height);
+  await viewer.locator("img").click();
+  assert.equal(
+    await viewer.isVisible(),
+    true,
+    "clicking the image must keep preview open",
+  );
+  await viewer.locator(".image-viewer-size").click();
+  assert.equal(
+    await viewer.locator("img").evaluate((e) => e.clientWidth),
+    dimensions.naturalWidth,
+  );
+  await viewer.locator(".image-viewer-size").click();
+  if (download) {
+    const waiting = page.waitForEvent("download");
+    await viewer.locator(".image-viewer-download").click();
+    const file = await waiting;
+    assert.deepEqual(
+      fs.readFileSync(await file.path()),
+      fs.readFileSync(image),
+    );
+    assert.equal(await viewer.isVisible(), true);
+  }
+  await page.keyboard.press("Escape");
+  assert.equal(await viewer.isVisible(), false);
+  assert.equal(
+    await thumbnail.evaluate((e) => document.activeElement === e),
+    true,
+  );
+  await thumbnail.click();
+  await viewer
+    .locator(".image-viewer-canvas")
+    .click({ position: { x: 2, y: 2 } });
+  assert.equal(await viewer.isVisible(), false);
+}
+
 try {
   await page.goto(address);
   await page.waitForFunction(() => !document.querySelector("#prompt").disabled);
@@ -309,6 +380,10 @@ try {
     );
   }, imageBytes.toString("base64"));
   await page.locator("#attachment img").waitFor();
+  await checkImagePreview("#attachment img", {
+    keyboard: true,
+    download: true,
+  });
   assert.equal(
     await page.locator("#prompt").inputValue(),
     "图片粘贴验证，保留这段文字",
@@ -323,6 +398,7 @@ try {
     imageBytes,
   );
   assert.equal(await page.locator("#attachment").isVisible(), false);
+  await checkImagePreview(".message-image img", { download: true });
   // Text-only paste is not intercepted or prevented by our handler.
   assert.equal(
     await page.locator("#prompt").evaluate((input) => {
@@ -352,6 +428,7 @@ try {
   runtime = "active";
   await page.locator("#refresh").click();
   await page.locator(".queue-more summary").waitFor();
+  await checkImagePreview(".queue-image");
   const rect = await page.locator(".queue-more summary svg").boundingBox();
   assert.ok(rect.width >= 15 && rect.height >= 15);
   assert.match(
@@ -365,6 +442,14 @@ try {
     () => document.querySelector("#prompt").value === "队列中的消息",
   );
   await page.setViewportSize({ width: 390, height: 844 });
+  await checkImagePreview("#attachment img");
+  await page.locator("#attachment img").click();
+  await page.screenshot({
+    path: path.join(ROOT, "evidence/image-preview-mobile.png"),
+  });
+  await page.locator('[aria-label="关闭图片预览"]').click();
+  await page.setViewportSize({ width: 844, height: 390 });
+  await checkImagePreview("#attachment img");
   assert.equal(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -383,6 +468,9 @@ try {
       "conversation and historical file downloads preserve original bytes",
       "queue pencil icon is visible and restores text",
       "mobile layout remains within viewport",
+      "draft, message and queue images open previews; original dimensions and bytes are preserved",
+      "image click stays open; Escape, close button and backdrop close; keyboard focus returns",
+      "image preview fits portrait and landscape viewports",
     ],
     errors,
   };

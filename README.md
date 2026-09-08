@@ -1,6 +1,6 @@
 # Remote Codex · ChatGPT 桌面会话桥接器
 
-Windows 原型 **0.9.10**。连接已经运行的官方 ChatGPT 桌面端，通过它管理的同一个 Codex 任务收发消息、查看实时状态和操作队列。提供可自由调整窗口大小的 Windows UI，窄屏竖向布局自动使用侧栏抽屉。
+Windows 原型 **0.9.11**。连接已经运行的官方 ChatGPT 桌面端，通过它管理的同一个 Codex 任务收发消息、查看实时状态和操作队列。提供可自由调整窗口大小的 Windows UI，窄屏竖向布局自动使用侧栏抽屉。
 
 现已支持**单 EXE 分发及在线更新**：`RemoteCodex.exe` 内置运行依赖，文件名固定，当前软件版本显示在界面左下角设备名旁。左下角问号直接打开检查更新、安装更新和自动更新设置；下载期间问号变成下载进度。编辑本机设备可读取 Tailscale IP、设置端口和访问密钥、开关远程访问。更新只替换桥接程序，官方任务继续运行。详见 [PORTABLE.md](PORTABLE.md)。以下启动命令适用于源码调试版；仓库根目录的 `RemoteBridge.exe` 现在转到已构建的单 EXE 桌面。
 
@@ -16,6 +16,8 @@ Windows 原型 **0.9.10**。连接已经运行的官方 ChatGPT 桌面端，通�
 
 0.9.10 支持向已加载会话粘贴剪贴板图片，以及下载消息里已读取的本地文件附件和文件链接。队列编辑按钮显示铅笔图标。Windows 关闭按钮改为隐藏到托盘；点击托盘可恢复，右键“退出 Remote Codex”才结束程序，隐藏时远程接入和自动重连继续工作。详见 [DESKTOP-UX-VALIDATION.md](DESKTOP-UX-VALIDATION.md)。
 
+0.9.11 支持点击会话、待发送及队列图片放大查看；预览可切换适应窗口/原始尺寸并下载原图，点击背景、关闭按钮或按 Esc 返回。
+
 ## 启动与停止
 
 需要 Windows、Node.js 22+、Python 3.10+、Microsoft Edge，以及已运行、已登录且至少有一个 Codex 任务的官方 ChatGPT 桌面端。`node` 和 `python` 需要在 PATH 中。服务运行只用标准库，无需 `npm install` 或 API Key。
@@ -26,7 +28,7 @@ cd remote-codex
 .\Open-UI.cmd
 ```
 
-源码需先构建 `python scripts/build_portable.py`，随后可双击单 EXE 或目录中的 `RemoteBridge.exe`。Windows UI 使用内嵌 WebView2，由主程序持有窗口和运行组件。关闭窗口退出整个桥接程序；异常退出时 Windows Job Object 清理其子进程。
+源码需先构建 `python scripts/build_portable.py`，随后可双击单 EXE 或目录中的 `RemoteBridge.exe`。Windows UI 使用内嵌 WebView2，由主程序持有窗口和运行组件。关闭窗口隐藏到托盘，右键托盘退出整个桥接程序；异常退出时 Windows Job Object 清理其子进程。
 
 只启动网页服务：
 

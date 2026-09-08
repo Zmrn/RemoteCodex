@@ -1,4 +1,4 @@
-# Windows 单 EXE 桌面版 0.9.10
+# Windows 单 EXE 桌面版 0.9.11
 
 界面统一使用深蓝灰色主题，侧栏、消息区、输入框、菜单和设备设置都保持深色。长文字发送或加入队列成功后输入框恢复默认高度；发送失败保留原文，切换会话和取回队列草稿时自动匹配文字高度。
 
@@ -23,6 +23,8 @@
 已加载会话的输入框支持 Ctrl+V 粘贴 PNG/JPEG/WebP 图片（单张 5 MB 以内），保留输入框里的文字。新建首条和未加载会话仍需先发送文字；剪贴板普通文本粘贴保持原有行为。
 
 会话里的文件附件和助手给出的本地文件链接可下载原文件（单文件最多 256 MB），消息旁和“结果文件”都提供入口。仅提供已读取消息中的准确文件引用；不会开放任意路径下载。更早的附件需先向上翻阅；源文件已删除或移动时会明确失败，不生成替代文件。Windows 下载时弹出保存位置选择框。
+
+点击会话、待发送或队列中的图片可打开全窗口预览，切换“原始尺寸”查看细节并滚动，切回“适应窗口”查看全图；点击图片外的背景、右上角关闭按钮或按 Esc 返回，预览内可下载原图。
 
 ## 运行条件与数据
 
@@ -49,7 +51,7 @@ EXE 内置 Node.js 22.19.0、Python 3.13.2、WebView2 SDK Loader 和托管组件
 ```powershell
 python scripts/build_portable.py
 # 发布到用户授权的 tx 资源服务
-python scripts/publish-update.py dist/RemoteCodex.exe --version 0.9.10
+python scripts/publish-update.py dist/RemoteCodex.exe --version 0.9.11
 # 只读诊断
 .\dist\RemoteCodex.exe --self-test
 # 可选：停止本桌面实例（平时使用托盘右键退出）

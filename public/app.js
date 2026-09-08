@@ -7,6 +7,7 @@ import { mergeTurns, overlaps } from "./conversation-history.mjs";
 import { Reconnector } from "./reconnect.mjs";
 import { clipboardImage, validateImage } from "./clipboard-images.mjs";
 import { HelpUpdates } from "./help-updates.mjs";
+import { zoomableImage } from "./image-viewer.mjs";
 import {
   windowId,
   saveRecovery,
@@ -350,6 +351,7 @@ function messageImage(ref) {
     img = node("img"),
     link = node("a", "image-download", "下载原图");
   img.alt = ref.name ?? "图片附件";
+  zoomableImage(img, ref.name ?? "image.png");
   img.loading = "lazy";
   link.download = ref.name ?? "image.png";
   box.append(img, link);
@@ -1719,6 +1721,7 @@ function renderAttachment() {
     attachmentUrl = URL.createObjectURL(f);
     im.src = attachmentUrl;
     im.alt = "待发送图片";
+    zoomableImage(im, f.name);
     const b = node("button", "", "×");
     b.type = "button";
     b.title = "移除图片";
