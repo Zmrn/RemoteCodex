@@ -342,10 +342,10 @@ try {
   );
   await page.locator("#permission-display").click();
   await menu.locator('[data-value="full"]').waitFor();
-  assert.ok(await menu.locator('[data-value="full"]').isDisabled());
-  assert.equal(await menu.locator("button:not(:disabled)").count(), 0);
-  await page.keyboard.press("Escape");
-  report.checks.unloadedPermissionsRemainUnavailable = true;
+  assert.ok(await menu.locator('[data-value="full"]').isEnabled());
+  await menu.locator('[data-value="read-only"]').click();
+  assert.equal(await page.locator("#permission-name").textContent(),"只读权限");
+  report.checks.unloadedPermissionsCanBePreselected = true;
   const delayed = gate();
   modelGate = delayed;
   await page.locator("#model-display").click();

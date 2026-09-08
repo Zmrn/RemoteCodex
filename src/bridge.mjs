@@ -6,9 +6,16 @@ import { EventEmitter } from "node:events";
 import { Desktop, localContext } from "./desktop.mjs";
 import { applyPatches, runtimeStatus, mergeLiveTurnItems } from "./state.mjs";
 import { weeklyUsage } from "./usage.mjs";
-import { OfficialQueue } from "./queue.mjs";
+import { OfficialQueue, composeQueuedMessage } from "./queue.mjs";
 import { assertProbeTarget, testExcludedThreadIds } from "./probe-safety.mjs";
 import { DATA_DIR } from "./runtime.mjs";
+import { MessageMedia } from "./message-media.mjs";
+import { withServiceTiers, tierOverride } from "./service-tiers.mjs";
+import {
+  asyncQuestions,
+  questionReply,
+  itemText,
+} from "../public/message-content.mjs";
 import {
   parseModels,
   modelOverrides,
@@ -35,6 +42,7 @@ export class Bridge extends EventEmitter {
     this.epoch = randomUUID();
     this.recovery = new Set();
     this.queue = new OfficialQueue(this);
+    this.media = new MessageMedia();
   }
   save() {
     const tmp = this.stateFile + ".tmp";
@@ -145,7 +153,9 @@ export class Bridge extends EventEmitter {
     return {
       source: "official-desktop-tools-schema-live",
       observedAt: new Date().toISOString(),
-      models: parseModels(await this.desktop.refreshCatalog()),
+      models: withServiceTiers(
+        parseModels(await this.desktop.refreshCatalog()),
+      ),
     };
   }
   async usage() {
@@ -164,7 +174,8 @@ export class Bridge extends EventEmitter {
       typeof input !== "object" ||
       Array.isArray(input) ||
       Object.keys(input).some(
-        (k) => !["model", "effort", "permissionMode"].includes(k),
+        (k) =>
+          !["model", "effort", "permissionMode", "serviceTier"].includes(k),
       )
     )
       throw Error("Invalid settings");
@@ -188,6 +199,11 @@ export class Bridge extends EventEmitter {
     const settings = {
       ...modelOverrides(modelInput, parseModels(this.desktop.catalog)),
       ...permissionOverrides(input.permissionMode, current, read.thread.cwd),
+      ...tierOverride(
+        input.serviceTier,
+        input.model ?? current.model,
+        withServiceTiers(parseModels(this.desktop.catalog)),
+      ),
     };
     if (!Object.keys(settings).length) throw Error("没有选择需要修改的设置");
     return this.once(key, "settings", { id, settings }, async () => {
@@ -313,7 +329,10 @@ export class Bridge extends EventEmitter {
     return {
       source: "official-desktop-tool-read + verified-owner-live-items",
       observedAt: new Date().toISOString(),
-      data: mergeLiveTurnItems(data, this.live.get(id)?.state),
+      data: this.media.decorate(
+        id,
+        mergeLiveTurnItems(data, this.live.get(id)?.state),
+      ),
       live: this.live.has(id)
         ? {
             ...this.live.get(id),
@@ -356,6 +375,127 @@ export class Bridge extends EventEmitter {
       throw e;
     }
   }
+  async answerQuestions(id, key, input) {
+    await this.codexThread(id);
+    const owner = await this.follow(id);
+    for (let i = 0; i < 40 && !this.live.get(id)?.state; i++)
+      await new Promise((r) => setTimeout(r, 100));
+    const state = this.live.get(id)?.state;
+    if (!state) throw Error("官方实时问答状态不可用，请刷新后再回答");
+    if (input?.kind === "request") {
+      const request = state.requests?.find(
+        (r) =>
+          String(r.id) === String(input.questionRequestId) &&
+          r.method === "item/tool/requestUserInput",
+      );
+      if (!request) throw Error("此问题已结束或已在其他窗口回答");
+      const answers = {};
+      for (const q of request.params.questions) {
+        const answer = input.answers?.[q.id];
+        if (
+          typeof answer !== "string" ||
+          !answer.trim() ||
+          answer.length > 20000
+        )
+          throw Error("请回答所有问题");
+        answers[q.id] = { answers: [answer] };
+      }
+      return this.once(
+        key,
+        "question-answer",
+        { id, requestId: request.id, answers },
+        async () => {
+          const r = await this.desktop.ipc.request(
+            "thread-follower-submit-user-input",
+            {
+              conversationId: id,
+              requestId: request.id,
+              response: { answers },
+            },
+            {
+              version: 1,
+              targetClientId: owner.handledByClientId,
+              timeoutMs: 30000,
+            },
+          );
+          if (r.handledByClientId !== owner.handledByClientId)
+            throw Error("Question reply owner acknowledgement unknown");
+          return {
+            threadId: id,
+            kind: "request",
+            ownerClientId: r.handledByClientId,
+          };
+        },
+      );
+    }
+    if (
+      input?.kind !== "async" ||
+      !Array.isArray(input.answers) ||
+      !input.answers.length
+    )
+      throw Error("Invalid question answer");
+    const read = await this.read(id);
+    const items = read.data.turns.flatMap((t) => t.items ?? []);
+    const questions = new Map(
+      items.flatMap(asyncQuestions).map((q) => [q.id, q]),
+    );
+    const answered = new Set(
+      items
+        .filter(
+          (i) =>
+            i.type === "userMessage" ||
+            (i.type === "steeringUserMessage" && i.status === "accepted"),
+        )
+        .flatMap((i) => questionReply(itemText(i)) ?? [])
+        .map((a) => a.questionItemId),
+    );
+    const rows = input.answers.map((a) => {
+      const q = questions.get(a.questionItemId);
+      if (!q || answered.has(q.id))
+        throw Error("问题已回答或不在当前读取的会话中");
+      if (
+        typeof a.answer !== "string" ||
+        !a.answer.trim() ||
+        a.answer.length > 20000
+      )
+        throw Error("请输入回答");
+      return { questionItemId: q.id, question: q.title, answer: a.answer };
+    });
+    const prompt =
+      "<send_user_message_question_reply>\n" +
+      JSON.stringify(rows) +
+      "\n</send_user_message_question_reply>";
+    const status = await this.codexThread(id);
+    if (status.thread.status.type === "idle")
+      return this.nativeSend(id, key, prompt);
+    if (status.thread.status.type !== "active")
+      throw Error("当前会话状态未知，请刷新");
+    return this.once(key, "async-question-answer", { id, rows }, async () => {
+      const r = await this.desktop.ipc.request(
+        "thread-follower-steer-turn",
+        {
+          conversationId: id,
+          input: [{ type: "text", text: prompt, text_elements: [] }],
+          restoreMessage: composeQueuedMessage(key, prompt, status.thread.cwd),
+          clientUserMessageId: key,
+          attachments: [],
+        },
+        {
+          version: 1,
+          targetClientId: owner.handledByClientId,
+          timeoutMs: 60000,
+        },
+      );
+      if (r.handledByClientId !== owner.handledByClientId)
+        throw Error("Question reply owner acknowledgement unknown");
+      return {
+        threadId: id,
+        kind: "async",
+        ownerClientId: r.handledByClientId,
+        turnId: r.result?.result?.turnId,
+      };
+    });
+  }
   async create(
     key,
     prompt = "只回复：REMOTE_BRIDGE_FIRST_OK。不要使用工具，不要创建或修改任何文件。",
@@ -365,20 +505,34 @@ export class Bridge extends EventEmitter {
     this.requireSupportedBuild();
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000)
       throw Error("Invalid message");
-    const settings = modelOverrides(options, parseModels(this.desktop.catalog));
+    if (options.serviceTier !== undefined)
+      throw Error("官方新建接口未提供首轮加速参数；请创建后切换加速");
+    const { permissionMode, ...modelInput } = options;
+    const settings = {
+      ...modelOverrides(modelInput, parseModels(this.desktop.catalog)),
+      ...permissionOverrides(permissionMode),
+    };
     return this.once(key, "create", { prompt, settings }, async () => {
+      const context =
+        permissionMode && permissionMode !== "keep"
+          ? await this.permissionContext(permissionMode)
+          : this.desktop.context;
       const name =
         "RemoteBridge-Probe-" +
         new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) +
         "-" +
         randomUUID().slice(0, 6);
-      const r = await this.desktop.call("create_thread", {
-        title: name,
-        prompt,
-        ...(settings.model ? { model: settings.model } : {}),
-        ...(settings.effort ? { thinking: settings.effort } : {}),
-        target: { type: "projectless", directoryName: name },
-      });
+      const r = await this.desktop.call(
+        "create_thread",
+        {
+          title: name,
+          prompt,
+          ...(settings.model ? { model: settings.model } : {}),
+          ...(settings.effort ? { thinking: settings.effort } : {}),
+          target: { type: "projectless", directoryName: name },
+        },
+        context,
+      );
       if (!r.threadId)
         throw Error("create-outcome-unknown: " + JSON.stringify(r));
       this.db.tests[r.threadId] = {
@@ -397,6 +551,86 @@ export class Bridge extends EventEmitter {
       });
       return r;
     });
+  }
+  async permissionContext(mode) {
+    this.permissionPreparations ??= new Map();
+    if (this.permissionPreparations.has(mode))
+      return this.permissionPreparations.get(mode);
+    const preparation = (async () => {
+      this.db.permissionContexts ??= {};
+      let id = this.db.permissionContexts[mode];
+      if (!id) {
+        const models = parseModels(this.desktop.catalog),
+          model = models.find((m) => m.id === "gpt-5.4-mini") ?? models.at(-1);
+        const created = await this.create(
+          "permission-context-" + randomUUID(),
+          "这是 Remote Bridge 的专用权限配置测试会话。只回复 READY，不要使用工具，不要访问或修改文件。",
+          { model: model.id, effort: model.efforts[0] },
+        );
+        id = created.result.threadId;
+        await this.desktop.call("set_thread_title", {
+          threadId: id,
+          title: "RemoteBridge-Settings-" + mode,
+        });
+        this.db.permissionContexts[mode] = id;
+        this.save();
+      }
+      this.guardProbe(id);
+      for (let i = 0; i < 60; i++) {
+        const read = await this.codexThread(id);
+        if (read.thread.status.type === "notLoaded") {
+          await this.open(id);
+          await new Promise((r) => setTimeout(r, 300));
+          continue;
+        }
+        if (read.thread.status.type === "idle") {
+          const previous = this.live.get(id);
+          await this.follow(id);
+          for (let j = 0; j < 30 && this.live.get(id) === previous; j++)
+            await new Promise((r) => setTimeout(r, 100));
+          if (this.live.get(id) === previous)
+            throw Error("官方权限准备状态未知，当前消息没有发送");
+          const expected = permissionOverrides(mode).permissions;
+          if (
+            this.live.get(id)?.state.currentPermissions?.activePermissionProfile
+              ?.id !== expected
+          ) {
+            // Official creation inherits effective permissions, not a draft
+            // setting. Prime only this registered, reusable setup task.
+            await this.nativeSend(
+              id,
+              "permission-prepare-" + randomUUID(),
+              "只回复 READY。不要使用工具，不要访问任何文件。",
+              undefined,
+              { permissionMode: mode },
+            );
+            let ready = false;
+            for (let j = 0; j < 90; j++) {
+              const state = await this.codexThread(id);
+              if (
+                state.thread.status.type === "idle" &&
+                this.live.get(id)?.state.currentPermissions
+                  ?.activePermissionProfile?.id === expected
+              ) {
+                ready = true;
+                break;
+              }
+              await new Promise((r) => setTimeout(r, 500));
+            }
+            if (!ready) throw Error("官方权限准备尚未确认，当前消息没有发送");
+          }
+          return id;
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      throw Error("官方权限准备会话尚未就绪，当前消息没有发送");
+    })();
+    this.permissionPreparations.set(mode, preparation);
+    try {
+      return await preparation;
+    } finally {
+      this.permissionPreparations.delete(mode);
+    }
   }
   async send(id, key, prompt) {
     await this.codexThread(id);
@@ -460,7 +694,22 @@ export class Bridge extends EventEmitter {
     )
       throw Error("Unsupported image");
     if (imageDataUrl?.length > 7 * 1024 * 1024) throw Error("Image too large");
-    const settings = modelOverrides(options, parseModels(this.desktop.catalog));
+    if (
+      !options ||
+      typeof options !== "object" ||
+      Array.isArray(options) ||
+      Object.keys(options).some(
+        (k) =>
+          !["model", "effort", "permissionMode", "serviceTier"].includes(k),
+      )
+    )
+      throw Error("Invalid settings");
+    const { permissionMode, serviceTier, ...modelInput } = options;
+    const settings = {
+      ...modelOverrides(modelInput, parseModels(this.desktop.catalog)),
+      ...permissionOverrides(permissionMode),
+      ...(serviceTier === undefined ? {} : { serviceTier }),
+    };
     return this.once(
       key,
       "native-send",
@@ -473,7 +722,23 @@ export class Bridge extends EventEmitter {
           : null,
       },
       async () => {
-        const status = await this.codexThread(id);
+        let status = await this.codexThread(id);
+        if (
+          status.thread.status.type === "notLoaded" &&
+          (settings.permissions || serviceTier !== undefined)
+        ) {
+          await this.open(id);
+          for (
+            let i = 0;
+            i < 60 && status.thread.status.type === "notLoaded";
+            i++
+          ) {
+            await new Promise((r) => setTimeout(r, 200));
+            status = await this.codexThread(id);
+          }
+          if (status.thread.status.type === "notLoaded")
+            throw Error("官方会话尚未加载，消息没有发送");
+        }
         if (status.thread.status.type === "notLoaded") {
           if (imageDataUrl)
             throw Error("此会话尚未加载，请先发送文字或在官方桌面打开后再发图");
@@ -496,6 +761,19 @@ export class Bridge extends EventEmitter {
         if (status.thread?.status?.type !== "idle")
           throw Error("Task must be idle for native start; no automatic steer");
         const owner = await this.follow(id);
+        if (settings.permissions || serviceTier !== undefined) {
+          const update = {
+            ...(permissionMode ? { permissionMode } : {}),
+            ...(serviceTier === undefined ? {} : { serviceTier }),
+            ...(settings.model ? { model: settings.model } : {}),
+            ...(settings.effort ? { effort: settings.effort } : {}),
+          };
+          await this.updateSettings(
+            id,
+            "send-settings-" + createHash("sha256").update(key).digest("hex"),
+            update,
+          );
+        }
         const input = [{ type: "text", text: prompt, text_elements: [] }];
         if (imageDataUrl) input.push({ type: "image", url: imageDataUrl });
         const r = await this.desktop.ipc.request(

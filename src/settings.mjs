@@ -39,7 +39,6 @@ export function modelOverrides(input = {}, models) {
 }
 export function permissionOverrides(mode, current, cwd) {
   if (mode === undefined || mode === "keep") return {};
-  if (!current || !cwd) throw Error("需要先读取官方会话的权限和工作目录");
   // Named profiles let the official application enforce its current requirements.
   // No global configuration or approval decision is changed here.
   const permissions = {

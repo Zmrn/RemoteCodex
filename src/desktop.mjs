@@ -76,7 +76,7 @@ export class Desktop {
         const f = await client.request(
           "tools/list",
           { threadStartKind: "all" },
-          { timeoutMs: 1200 },
+          { timeoutMs: 5000 },
         );
         if (
           f.result?.tools?.some(

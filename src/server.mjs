@@ -30,6 +30,8 @@ export async function startServer({
   const staticTypes = new Map([
     ["/app.js", "text/javascript; charset=utf-8"],
     ["/ui.mjs", "text/javascript; charset=utf-8"],
+    ["/message-content.mjs", "text/javascript; charset=utf-8"],
+    ["/questions-ui.mjs", "text/javascript; charset=utf-8"],
     ["/queue-ui.mjs", "text/javascript; charset=utf-8"],
     ["/device-settings.mjs", "text/javascript; charset=utf-8"],
     ["/update-recovery.mjs", "text/javascript; charset=utf-8"],
@@ -163,11 +165,22 @@ export async function startServer({
       if (req.method === "GET" && url.pathname === "/api/usage")
         return json(res, 200, await bridge.usage());
       const match =
-        /^\/api\/threads\/([\w-]+)(?:\/(messages|follow|open|files|file|interrupt|settings|queue))?$/.exec(
+        /^\/api\/threads\/([\w-]+)(?:\/(messages|follow|open|files|file|interrupt|settings|queue|questions|media))?$/.exec(
           url.pathname,
         );
       if (req.method === "GET" && match) {
         const id = match[1];
+        if (match[2] === "media") {
+          const file = bridge.media.read(id, url.searchParams.get("id"));
+          res.writeHead(200, {
+            "Content-Type": file.type,
+            "Content-Length": file.bytes.length,
+            "Cache-Control": "no-store",
+            "Content-Disposition":
+              "inline; filename*=UTF-8''" + encodeURIComponent(file.name),
+          });
+          return res.end(file.bytes);
+        }
         if (match[2] === "queue") return json(res, 200, bridge.queue.read(id));
         if (!match[2])
           return json(
@@ -266,6 +279,12 @@ export async function startServer({
         );
       if (match) {
         const id = match[1];
+        if (match[2] === "questions")
+          return json(
+            res,
+            200,
+            await bridge.answerQuestions(id, body.requestId, body),
+          );
         if (match[2] === "queue")
           return json(
             res,

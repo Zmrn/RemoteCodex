@@ -1,6 +1,8 @@
 import { icon, markdown } from "./ui.mjs";
 import { QueueUI } from "./queue-ui.mjs";
 import { DeviceSettings } from "./device-settings.mjs";
+import { QuestionsUI } from "./questions-ui.mjs";
+import { questionReply, userContent } from "./message-content.mjs";
 import {
   windowId,
   saveRecovery,
@@ -257,6 +259,76 @@ async function api(route, body, options = {}) {
 function agentApi(id, route, body) {
   return api(base(id) + route, body);
 }
+const questionUI = new QuestionsUI(async (context, payload) => {
+  const j = await journal(
+    context.agent,
+    context.id,
+    "question-answer",
+    payload,
+  );
+  const result = await agentApi(
+    context.agent,
+    "/threads/" + context.id + "/questions",
+    { ...payload, requestId: j.id },
+  );
+  if (result.status !== "accepted")
+    throw Error("回答结果未知，请刷新核对，不要重复发送");
+  j.clear();
+  if (context.agent === agentId && context.id === selected)
+    setTimeout(() => read(), 250);
+});
+const messageImageCache = new Map();
+function messageImage(ref) {
+  const box = node("div", "message-image"),
+    img = node("img"),
+    link = node("a", "image-download", "下载原图");
+  img.alt = ref.name ?? "图片附件";
+  img.loading = "lazy";
+  link.download = ref.name ?? "image.png";
+  box.append(img, link);
+  const key = agentId + ":" + selected + ":" + (ref.id ?? ref.src);
+  let ready = messageImageCache.get(key);
+  if (!ready) {
+    ready = ref.src
+      ? Promise.resolve(ref.src)
+      : fetch(
+          base(agentId) +
+            "/threads/" +
+            selected +
+            "/media?id=" +
+            encodeURIComponent(ref.id),
+          { headers: { "X-Bridge-CSRF": csrf } },
+        ).then(async (r) => {
+          if (!r.ok) throw Error("原图不可用（源文件可能已移动或删除）");
+          return URL.createObjectURL(await r.blob());
+        });
+    messageImageCache.set(key, ready);
+    if (messageImageCache.size > 100) {
+      const first = messageImageCache.keys().next().value;
+      messageImageCache
+        .get(first)
+        .then((url) => {
+          if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+        })
+        .catch(() => {});
+      messageImageCache.delete(first);
+    }
+  }
+  ready
+    .then((src) => {
+      img.src = src;
+      link.href = src;
+      link.target = "_blank";
+      link.rel = "noopener";
+    })
+    .catch((e) => {
+      img.hidden = true;
+      link.removeAttribute("href");
+      link.textContent = e.message;
+      messageImageCache.delete(key);
+    });
+  return box;
+}
 function permissions() {
   const fresh = selected === null;
   const readOnlyTask = (
@@ -371,7 +443,14 @@ function modelSettings(state) {
     ),
     icon("chevron"),
   );
-  const profile = settings.permissions ?? settings.activePermissionProfile?.id;
+  const profile =
+    {
+      "read-only": ":read-only",
+      workspace: ":workspace",
+      full: ":danger-full-access",
+    }[settings.permissionMode] ??
+    settings.permissions ??
+    settings.activePermissionProfile?.id;
   const policy =
     {
       ":read-only": "readOnly",
@@ -881,6 +960,12 @@ async function selectThread(id, record = true) {
   await read();
 }
 function renderItem(item) {
+  const question = questionUI.render(item, {
+    agent: agentId,
+    id: selected,
+    connected: status.connected,
+  });
+  if (question) return question;
   let text = "",
     images = [],
     user = false;
@@ -890,12 +975,27 @@ function renderItem(item) {
       .filter((c) => c.type === "text")
       .map((c) => c.text)
       .join("\n");
+    const reply = questionReply(text);
+    if (reply) {
+      if (reply.every((r) => questionUI.known?.has(r.questionItemId)))
+        return null;
+      const card = node("section", "question-card answered");
+      for (const row of reply)
+        card.append(
+          node("p", "question-title", row.question),
+          node("p", "question-answer", row.answer),
+        );
+      card.append(node("small", "question-state", "已回答"));
+      return card;
+    }
+    text = item.bridgeDisplay?.text ?? userContent(text).text;
     images = (item.content ?? item.input ?? []).filter(
       (c) =>
         c.type === "image" &&
         /^data:image\/(png|jpeg|webp);base64,/.test(c.url),
     );
-  } else if (item.type === "agentMessage") text = item.text;
+  } else if (item.type === "agentMessage")
+    text = item.bridgeDisplay?.text ?? item.text;
   else if (
     item.type === "functionCallOutput" &&
     item.namespace === "codex_app"
@@ -904,9 +1004,12 @@ function renderItem(item) {
       typeof item.output === "string" ? item.output : item.output?.text;
     const m = /<input>([\s\S]*?)<\/input>/.exec(out ?? "");
     if (!m) return null;
-    text = m[1];
+    text = item.bridgeDisplay?.text ?? userContent(m[1]).text;
     user = true;
-  } else if (item.type === "imageGeneration")
+  } else if (
+    item.type === "imageGeneration" &&
+    !item.bridgeDisplay?.images?.length
+  )
     return node(
       "div",
       "tool-summary",
@@ -915,7 +1018,7 @@ function renderItem(item) {
           ? "图片已生成 · 可在结果文件中取回原图"
           : "正在生成图片…"),
     );
-  else return null;
+  else if (item.type !== "imageGeneration") return null;
   const box = node(
     "article",
     "message " + (user ? "user-message" : "assistant-message"),
@@ -923,12 +1026,11 @@ function renderItem(item) {
   const body = node("div", "message-body");
   if (user) body.textContent = text ?? "";
   else body.append(markdown(text));
-  for (const c of images) {
-    const im = node("img");
-    im.src = c.url;
-    im.alt = "已上传的图片";
-    body.append(im);
-  }
+  for (const ref of item.bridgeDisplay?.images ??
+    images.map((c) => ({ src: c.url, name: "已上传的图片" })))
+    body.append(messageImage(ref));
+  for (const file of item.bridgeDisplay?.files ?? [])
+    body.append(node("div", "attachment-chip", file.name));
   box.append(body);
   if (!user) {
     const actions = node("div", "message-actions"),
@@ -948,6 +1050,7 @@ function renderItem(item) {
   return box;
 }
 function displayTurns() {
+  questionUI.index(turns);
   $("messages").replaceChildren();
   for (const t of [...turns].sort(
     (a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0),
@@ -1029,6 +1132,28 @@ function displayTurns() {
           ),
         );
       wrapper.append(card);
+    }
+    for (const request of liveSettingsState?.requests ?? []) {
+      if (
+        request.method !== "item/tool/requestUserInput" ||
+        request.params?.turnId !== t.id ||
+        (t.items ?? []).some(
+          (i) =>
+            i.type === "userInputResponse" &&
+            String(i.requestId) === String(request.id),
+        )
+      )
+        continue;
+      const card = questionUI.render(
+        {
+          type: "userInputResponse",
+          requestId: request.id,
+          questions: request.params.questions,
+          completed: false,
+        },
+        { agent: agentId, id: selected, connected: status.connected },
+      );
+      if (card) wrapper.append(card);
     }
     $("messages").append(wrapper);
   }
@@ -1795,7 +1920,7 @@ function renderSettingsMenu(focus = false) {
     }
   } else if (t.kind === "permission") {
     menu.append(node("div", "setting-heading", "此会话的访问权限"));
-    const selectedMode = permissionMode(t.current);
+    const selectedMode = choice.permissionMode ?? permissionMode(t.current);
     for (const [mode, name, description, symbol] of [
       ["read-only", "只读", "查看文件；审批由官方策略决定", "shield"],
       [
@@ -1819,7 +1944,7 @@ function renderSettingsMenu(focus = false) {
         description,
         symbol,
       );
-      row.disabled = !t.loaded;
+      row.disabled = false;
       if (mode === "full") row.classList.add("full-access");
       menu.append(row);
     }
@@ -1829,7 +1954,7 @@ function renderSettingsMenu(focus = false) {
         "setting-note",
         t.loaded
           ? "点击即应用到此会话，下一轮生效。"
-          : "会话加载后可调整权限；先发送一条文字，再打开此菜单。",
+          : "已选权限将在发送时应用；新对话的首条消息也使用该权限。",
       ),
     );
   } else {
@@ -1852,7 +1977,28 @@ function renderSettingsMenu(focus = false) {
     reset.disabled = !t.baselineEffort || t.baselineEffort === choice.effort;
     reset.onclick = () =>
       applySetting({ model: choice.model, effort: t.baselineEffort }, true);
-    head.append(icon("bolt"), title, reset);
+    const speed = node("button", "icon-button speed-toggle");
+    speed.type = "button";
+    speed.id = "speed-toggle";
+    const fast = model?.serviceTiers?.find((t) =>
+      ["priority", "fast"].includes(t.id),
+    );
+    const active = ["priority", "fast"].includes(
+      choice.serviceTier ?? t.current?.serviceTier,
+    );
+    speed.append(icon("bolt"));
+    speed.setAttribute("aria-pressed", String(active));
+    speed.title = !t.id
+      ? "官方新建接口尚未提供首轮加速参数，创建后可切换"
+      : !fast
+        ? "此模型暂未提供加速档位"
+        : (choice.model === "gpt-6-astra" ? "2× speed" : "1.5× speed") +
+          " · 用量更多";
+    speed.setAttribute("aria-label", speed.title);
+    speed.disabled = !t.loaded || (!fast && !active);
+    speed.onclick = () =>
+      applySetting({ serviceTier: active ? "default" : fast.id }, true);
+    head.append(speed, title, reset);
     menu.append(head);
     if (!model?.efforts.length) {
       const choose = node("button", "setting-option", "先选择一个模型");
@@ -1993,13 +2139,21 @@ async function applySetting(choice, keepOpen = false) {
   renderSettingsMenu();
   try {
     if (!loaded || choice.model === "") {
-      if (choice.permissionMode) throw Error("需等待官方会话加载后再调整权限");
-      if (choice.model) pendingSettings.set(key, choice);
+      const next = { ...(pendingSettings.get(key) ?? {}), ...choice };
+      if (choice.model === "") {
+        delete next.model;
+        delete next.effort;
+      }
+      if (Object.keys(next).length) pendingSettings.set(key, next);
       else pendingSettings.delete(key);
       modelSettings(liveSettingsState);
       t.choice = pendingSettings.get(key) ?? t.current ?? {};
       if (!keepOpen) closeSettingsMenu();
-      toast(choice.model ? "已选择，下一次发送时使用" : "已沿用官方模型设置");
+      toast(
+        Object.keys(next).length
+          ? "已选择，下一次发送时使用"
+          : "已沿用官方模型设置",
+      );
       return;
     }
     const j = await journal(a, id, "settings", choice);

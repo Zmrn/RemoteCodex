@@ -35,16 +35,16 @@ internal static class PortableLauncher {
             // now starts an owned, visible desktop, never an orphan service.
             if (quiet && !options.ContainsKey("--self-test") && !options.ContainsKey("--prepare-only"))
                 return LaunchCompatibility(options);
-            string root = Extract();
-            if (options.ContainsKey("--prepare-only")) return 0;
+            if (options.ContainsKey("--prepare-only")) { Extract(); return 0; }
             if (options.ContainsKey("--self-test")) {
+                string root = Extract();
                 OwnedProcesses.BindLifetime();
                 using (Process check = RunNode(root, "src/portable-check.mjs", new List<string>(), Guid.NewGuid().ToString())) {
                     if (!check.WaitForExit(60000)) throw new Exception("只读自检超时。");
                     return check.ExitCode;
                 }
             }
-            return RunDesktop(root, options);
+            return RunSingleDesktop(options);
         } catch (Exception error) {
             try { if (data != null) File.WriteAllText(Path.Combine(data, "launcher-error.txt"), error.ToString(), Encoding.UTF8); } catch { }
             if (!quiet) MessageBox.Show(error.Message, "Remote Codex", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -53,6 +53,7 @@ internal static class PortableLauncher {
     }
 
     private static int LaunchCompatibility(Dictionary<string,string> options) {
+        if(FocusExistingDesktop())return 0;
         string arguments = "";
         foreach (var item in options) if (item.Key != "--headless") arguments += " " + item.Key + " " + Quote(item.Value);
         using (Process desktop = Process.Start(new ProcessStartInfo {
@@ -155,6 +156,41 @@ internal static class PortableLauncher {
     }
     private static Dictionary<string,object> ReadDesktopRecord() {
         try{return Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(data,"desktop.json")));}catch{return null;}
+    }
+
+    private static int RunSingleDesktop(Dictionary<string,string> options) {
+        // One visible app per Windows user on this machine, independent of
+        // executable copy, version and --home. Keep the mutex for its full life.
+        string user=System.Security.Principal.WindowsIdentity.GetCurrent().User.Value;
+        using(var mutex=new Mutex(false,"Global\\RemoteCodex-Desktop-"+user)) {
+            bool locked=false;
+            try {
+                for(int attempt=0;attempt<120;attempt++) {
+                    try {locked=mutex.WaitOne(0);}catch(AbandonedMutexException){locked=true;}
+                    if(locked) {
+                        if(FocusExistingDesktop())return 0;
+                        return RunDesktop(Extract(),options);
+                    }
+                    if(FocusExistingDesktop())return 0;
+                    Thread.Sleep(250);
+                }
+                throw new Exception("桌面正在启动或退出，请稍后再试。");
+            } finally {if(locked)mutex.ReleaseMutex();}
+        }
+    }
+    private static bool FocusExistingDesktop() {
+        int me=Process.GetCurrentProcess().Id, session=Process.GetCurrentProcess().SessionId;
+        foreach(var process in Process.GetProcesses())using(process) {
+            try {
+                if(process.Id==me||process.SessionId!=session||process.MainWindowHandle==IntPtr.Zero)continue;
+                var file=process.MainModule.FileVersionInfo;
+                if(file.FileDescription!="Remote Codex"||file.Comments!="Self-contained Windows desktop bridge launcher")continue;
+                OwnedProcesses.ShowWindow(process.MainWindowHandle,9);
+                OwnedProcesses.SetForegroundWindow(process.MainWindowHandle);
+                return true;
+            }catch{}
+        }
+        return false;
     }
     private static string ReusablePort(Dictionary<string,object> old) {
         Uri uri;
