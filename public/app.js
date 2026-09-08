@@ -342,11 +342,12 @@ function permissions() {
       (probe ||
         (status.existingCodexWritable && taskData?.thread?.kind === "codex")));
   const inFlight = busy.has(fresh ? agentId + ":create" : taskKey());
-  if (
-    settingsTarget &&
-    (!writable || (!fresh && taskData?.thread?.status?.type === "active"))
-  )
-    closeSettingsMenu(false);
+  const settingsAvailable =
+    status.connected &&
+    writable &&
+    (fresh ||
+      ["idle", "active", "notLoaded"].includes(taskData?.thread?.status?.type));
+  if (settingsTarget && !settingsAvailable) closeSettingsMenu(false);
   const submitting = inFlight || queueUI.busy;
   queueWritable = writable && !booting;
   const idle =
@@ -384,10 +385,7 @@ function permissions() {
     $("effort-display").disabled =
     $("permission-display").disabled =
     $("settings-nav").disabled =
-      !status.connected ||
-      !writable ||
-      inFlight ||
-      (!fresh && taskData?.thread?.status?.type === "active");
+      !settingsAvailable || inFlight;
   $("interrupt").hidden = !(
     status.connected &&
     probe &&
@@ -2098,7 +2096,8 @@ async function openSettingsMenu(kind) {
     current,
     choice,
     baselineEffort: choice.effort,
-    loaded: !!current && taskData?.thread?.status?.type === "idle",
+    // Loaded tasks always use their official owner, even before settings arrive.
+    loaded: ["idle", "active"].includes(taskData?.thread?.status?.type),
   });
   trigger.setAttribute("aria-expanded", "true");
   $("settings-menu").showPopover();

@@ -174,3 +174,65 @@ test("notLoaded read discards stale live completion and settings", async () => {
   assert.equal(got.data.thread.status.type, "notLoaded");
   assert.equal(b.owners.has("old"), false);
 });
+
+test("active settings use the existing owner once without starting or interrupting a turn", async () => {
+  const id = "55555555-5555-4555-8555-555555555555";
+  const b = new Bridge(
+    fs.mkdtempSync(path.join(ROOT, "test/scratch/active-settings-")),
+  );
+  b.connected = true;
+  let status = "active";
+  const calls = [];
+  b.desktop = {
+    catalog,
+    identity: { appToolsPipe: { image: "OpenAI.Codex_26.901.6511.0_x64__" } },
+    call: async (name) => {
+      assert.equal(name, "read_thread");
+      return { thread: { id, kind: "codex", status: { type: status } } };
+    },
+    ipc: {
+      request: async (method, params, options) => {
+        calls.push({ method, params, options });
+        return { handledByClientId: "official-owner", result: { ok: true } };
+      },
+    },
+  };
+  b.follow = async () => ({ handledByClientId: "official-owner" });
+  b.live.set(id, {
+    state: { latestThreadSettings: { model: "gpt-5.4-mini", effort: "low" } },
+  });
+  const input = {
+    model: "gpt-5.4-mini",
+    effort: "medium",
+    permissionMode: "read-only",
+    serviceTier: "default",
+  };
+  const result = await b.updateSettings(id, "active-settings-001", input);
+  assert.equal(result.status, "accepted");
+  assert.equal(result.result.appliesTo, "next-turn");
+  await b.updateSettings(id, "active-settings-001", input);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, "thread-follower-update-thread-settings");
+  assert.equal(calls[0].options.targetClientId, "official-owner");
+  assert.deepEqual(calls[0].params, {
+    conversationId: id,
+    threadSettings: {
+      model: "gpt-5.4-mini",
+      effort: "medium",
+      permissions: ":read-only",
+      serviceTier: "default",
+    },
+  });
+  for (status of ["notLoaded", "unknown", "systemError"]) {
+    await assert.rejects(
+      () => b.updateSettings(id, "blocked-settings-" + status, input),
+      /状态尚不可确认/,
+    );
+  }
+  b.connected = false;
+  await assert.rejects(
+    () => b.updateSettings(id, "disconnected-settings", input),
+    /connection-interrupted/,
+  );
+  assert.equal(calls.length, 1);
+});

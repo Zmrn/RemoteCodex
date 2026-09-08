@@ -179,8 +179,10 @@ export class Bridge extends EventEmitter {
       )
     )
       throw Error("Invalid settings");
-    if (read.thread.status?.type !== "idle")
-      throw Error("请等待会话空闲；尚未加载的会话可先在官方桌面打开");
+    // The desktop owner applies these settings to the next turn while the
+    // current turn continues. Unknown/unloaded states are not write evidence.
+    if (!["idle", "active"].includes(read.thread.status?.type))
+      throw Error("官方会话状态尚不可确认；尚未加载的会话可先在官方桌面打开");
     const owner = await this.follow(id);
     // Wait only for the owner's live snapshot, never infer settings from history.
     for (

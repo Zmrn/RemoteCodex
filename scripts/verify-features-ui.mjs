@@ -32,7 +32,9 @@ let current = {
     serviceTier: "default",
     permissions: ":workspace",
   },
-  answer = null;
+  answer = null,
+  runtime = "idle",
+  connected = true;
 const items = [
   {
     id: "question-fixture",
@@ -73,7 +75,7 @@ await page.route(address + "/api/**", async (route) => {
   if (p.endsWith("/updates"))
     return json({ supported: false, automatic: false });
   if (p.endsWith("/status") || p.endsWith("/connect"))
-    return json({ connected: true, existingCodexWritable: true });
+    return json({ connected, existingCodexWritable: true });
   if (p.endsWith("/projects")) return json({ data: { projects: [] } });
   if (p.endsWith("/usage")) return json({ status: "unknown", weekly: [] });
   if (p.endsWith("/models"))
@@ -84,6 +86,11 @@ await page.route(address + "/api/**", async (route) => {
           efforts: ["low", "medium", "high"],
           description: "Fixture",
           serviceTiers: [{ id: "priority", name: "Fast" }],
+        },
+        {
+          id: "gpt-5.4-mini",
+          efforts: ["low", "medium", "high"],
+          description: "Fixture",
         },
       ],
     });
@@ -107,7 +114,13 @@ await page.route(address + "/api/**", async (route) => {
   if (p.endsWith("/settings")) {
     const body = req.postDataJSON();
     writes.push({ route: p, ...body });
-    current = { ...current, ...body.settings };
+    current = {
+      ...current,
+      ...body.settings,
+      ...(body.settings.permissionMode
+        ? { permissions: ":" + body.settings.permissionMode }
+        : {}),
+    };
     return json({ status: "accepted" });
   }
   if (p.endsWith("/questions")) {
@@ -123,7 +136,9 @@ await page.route(address + "/api/**", async (route) => {
     }
     return json({
       data: {
-        threads: [{ id, kind: "codex", title: "功能测试会话", status: "idle" }],
+        threads: [
+          { id, kind: "codex", title: "功能测试会话", status: runtime },
+        ],
       },
     });
   }
@@ -159,19 +174,22 @@ await page.route(address + "/api/**", async (route) => {
           kind: "codex",
           title: "功能测试会话",
           cwd: "C:/Fixture",
-          status: { type: "idle" },
+          status: { type: runtime },
         },
         turns: [
           {
             id: "turn",
-            status: "completed",
+            status: runtime === "active" ? "inProgress" : "completed",
             startedAt: 1,
             items: [...items, ...replies],
           },
         ],
       }),
       live: {
-        status: { type: "idle", confirmed: true },
+        status: {
+          type: runtime === "active" ? "running" : runtime,
+          confirmed: ["idle", "active"].includes(runtime),
+        },
         state: { latestThreadSettings: current },
       },
     });
@@ -223,6 +241,83 @@ try {
     path: path.join(ROOT, "evidence/features-ui-desktop.png"),
   });
   await page.keyboard.press("Escape");
+  runtime = "active";
+  await page.goto(address + "/?thread=" + id);
+  await page.locator("#permission-display:not(:disabled)").waitFor();
+  await page.locator("#permission-display").click();
+  await page.locator('#settings-menu [data-value="read-only"]').click();
+  await page.waitForFunction(
+    () => !document.querySelector("#permission-display").disabled,
+  );
+  assert.equal(
+    writes.at(-1).settings.permissionMode,
+    "read-only",
+    "running permissions must POST to owner",
+  );
+  assert.equal(
+    await page.locator("#permission-name").textContent(),
+    "只读权限",
+  );
+  await page.locator("#model-display").click();
+  await page.locator('#settings-menu [data-value="gpt-5.4-mini"]').click();
+  await page.waitForFunction(
+    () => !document.querySelector("#model-display").disabled,
+  );
+  assert.equal(
+    writes.at(-1).settings.model,
+    "gpt-5.4-mini",
+    "running model must POST to owner",
+  );
+  await page.locator("#effort-display").click();
+  await page.locator('#settings-menu [aria-label="设为中"]').click();
+  await page.waitForFunction(
+    () => !document.querySelector("#effort-slider").disabled,
+  );
+  assert.equal(writes.at(-1).settings.effort, "medium");
+  assert.equal(
+    await page
+      .locator("#settings-menu")
+      .evaluate((el) => el.matches(":popover-open")),
+    true,
+    "running read must keep menu open",
+  );
+  await page.keyboard.press("Escape");
+  await page.locator("#model-display").click();
+  await page.locator('#settings-menu [data-value="gpt-6-astra"]').click();
+  await page.waitForFunction(
+    () => !document.querySelector("#model-display").disabled,
+  );
+  await page.locator("#effort-display").click();
+  await page.locator("#speed-toggle:not(:disabled)").click();
+  await page.waitForFunction(
+    () => !document.querySelector("#speed-toggle").disabled,
+  );
+  assert.equal(writes.at(-1).settings.serviceTier, "default");
+  await page.screenshot({
+    path: path.join(ROOT, "evidence/running-settings-ui.png"),
+  });
+  await page.keyboard.press("Escape");
+  const count = writes.length;
+  runtime = "unknown";
+  await page.reload();
+  await page.waitForFunction(() =>
+    document.querySelector("#messages").textContent.includes("图片正文"),
+  );
+  assert.equal(await page.locator("#model-display").isDisabled(), true);
+  assert.equal(await page.locator("#permission-display").isDisabled(), true);
+  runtime = "active";
+  connected = false;
+  await page.reload();
+  await page.waitForFunction(() =>
+    document.querySelector("#writable").textContent.includes("连接中断"),
+  );
+  assert.equal(await page.locator("#model-display").isDisabled(), true);
+  assert.equal(await page.locator("#permission-display").isDisabled(), true);
+  assert.equal(writes.length, count);
+  runtime = "idle";
+  connected = true;
+  await page.reload();
+  await page.locator("#permission-display:not(:disabled)").waitFor();
   await page.locator("#create").click();
   await page.locator("#permission-display").click();
   await page.locator('#settings-menu [data-value="read-only"]').click();
@@ -252,6 +347,9 @@ try {
           "image-preview-and-download",
           "fast-toggle",
           "new-task-permission",
+          "running-model-effort-permission-and-speed-owner-post",
+          "running-menu-survives-settings-read",
+          "unknown-and-disconnected-settings-disabled",
         ],
         errors,
       },
