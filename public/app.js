@@ -16,6 +16,9 @@ let agents = [],
   selected = null,
   generation = 0,
   readSequence = 0,
+  agentReads = new AbortController(),
+  taskReads = new AbortController(),
+  readInFlight = null,
   status = {},
   taskData = null,
   projects = [],
@@ -239,25 +242,66 @@ function toast(text) {
   toast.timer = setTimeout(() => ($("toast").hidden = true), 3200);
 }
 async function api(route, body, options = {}) {
-  const r = await fetch(route, {
-    method: body === undefined ? "GET" : "POST",
-    headers: {
-      "X-Bridge-CSRF": csrf,
-      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    ...options,
-  });
-  const d = await r.json();
-  if (!r.ok) {
-    const e = Error(d.error ?? "请求失败");
-    e.status = r.status;
+  const signal = AbortSignal.any([
+    AbortSignal.timeout(body === undefined ? 75000 : 90000),
+    ...(options.signal ? [options.signal] : []),
+  ]);
+  try {
+    const r = await fetch(route, {
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        "X-Bridge-CSRF": csrf,
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      ...options,
+      signal,
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      const e = Error(d.error ?? "请求失败");
+      e.status = r.status;
+      throw e;
+    }
+    return d;
+  } catch (e) {
+    if (e.name === "TimeoutError")
+      throw Error(
+        body === undefined
+          ? "读取超时，请刷新重试；官方任务继续运行"
+          : "请求超时，提交结果未知；请先刷新核对，不要重复发送",
+      );
     throw e;
   }
-  return d;
 }
-function agentApi(id, route, body) {
-  return api(base(id) + route, body);
+function agentApi(id, route, body, options = {}) {
+  // Cancel viewing requests only. Never cancel or replay a dispatched task write.
+  const signals = options.signal ? [options.signal] : [];
+  if (body === undefined && id === agentId) {
+    signals.push(agentReads.signal);
+    if (selected && route.startsWith("/threads/" + selected))
+      signals.push(taskReads.signal);
+  }
+  return api(base(id) + route, body, {
+    ...options,
+    ...(signals.length ? { signal: AbortSignal.any(signals) } : {}),
+  });
+}
+function resetTaskReads() {
+  readSequence++;
+  clearTimeout(readTimer);
+  readTimer = null;
+  taskReads.abort();
+  taskReads = new AbortController();
+  readInFlight = null;
+}
+function scheduleRead(older = false) {
+  // Throttle instead of debounce: continuous events must still make progress.
+  if (readTimer !== null) return;
+  readTimer = setTimeout(() => {
+    readTimer = null;
+    read(older);
+  }, 500);
 }
 const questionUI = new QuestionsUI(async (context, payload) => {
   const j = await journal(
@@ -297,7 +341,14 @@ function messageImage(ref) {
             selected +
             "/media?id=" +
             encodeURIComponent(ref.id),
-          { headers: { "X-Bridge-CSRF": csrf } },
+          {
+            headers: { "X-Bridge-CSRF": csrf },
+            signal: AbortSignal.any([
+              agentReads.signal,
+              taskReads.signal,
+              AbortSignal.timeout(75000),
+            ]),
+          },
         ).then(async (r) => {
           if (!r.ok) throw Error("原图不可用（源文件可能已移动或删除）");
           return URL.createObjectURL(await r.blob());
@@ -405,7 +456,9 @@ function permissions() {
     : !writable
       ? readOnlyTask
         ? "此设备将该会话设为只读"
-        : "当前仅支持 Codex 对话写入"
+        : !fresh && !taskData
+          ? "会话内容尚未读入，请等待或刷新重试"
+          : "当前仅支持 Codex 对话写入"
       : inFlight
         ? "正在提交…"
         : !fresh && !idle
@@ -476,7 +529,8 @@ function modelSettings(state) {
 function setConnection(connected, text) {
   if (!connected) {
     closeSettingsMenu(false);
-    readSequence++;
+    resetTaskReads();
+    taskData = null;
     sidebarSequence++;
     for (const t of threads)
       rememberSidebarStatus(t.id, { type: "unknown", confirmed: false });
@@ -494,6 +548,7 @@ function setConnection(connected, text) {
     queueUI.reset(true);
     resetUsage("unknown", "连接中断，额度未知");
     $("task-state").textContent = "连接中断 · 状态未知";
+    $("task-state").hidden = !selected;
     $("task-state").className = "badge offline";
     $("activity").hidden = true;
   }
@@ -592,7 +647,7 @@ async function refreshUsage() {
   usagePending = true;
   renderUsage();
   try {
-    const result = await api(base(id) + "/usage", undefined, {
+    const result = await agentApi(id, "/usage", undefined, {
       signal: AbortSignal.timeout(15000),
     });
     if (
@@ -803,7 +858,8 @@ async function refresh(g = generation) {
 }
 async function pollSidebar() {
   if (sidebarPolling || booting || document.hidden || !status.connected) return;
-  sidebarPolling = true;
+  const polling = {};
+  sidebarPolling = polling;
   const a = agentId,
     g = generation,
     sequence = ++sidebarSequence;
@@ -830,7 +886,7 @@ async function pollSidebar() {
   } catch {
     if (g === generation) setConnection(false, "状态读取失败 · 状态未知");
   } finally {
-    sidebarPolling = false;
+    if (sidebarPolling === polling) sidebarPolling = false;
   }
 }
 function saveDraft() {
@@ -842,8 +898,10 @@ async function switchAgent(id, record = true, resumeId = null) {
   closeSettingsMenu(false);
   saveDraft();
   const g = ++generation;
-  readSequence++;
-  clearTimeout(readTimer);
+  agentReads.abort();
+  agentReads = new AbortController();
+  resetTaskReads();
+  sidebarPolling = false;
   streamAbort?.abort();
   agentId = id;
   sidebarStates.clear();
@@ -873,6 +931,7 @@ async function switchAgent(id, record = true, resumeId = null) {
   setPromptValue(draft.get(taskKey()) ?? "");
   $("image").value = "";
   await restoreTakenImage();
+  if (g !== generation) return;
   renderAttachment();
   $("search").value = "";
   $("project-filter").replaceChildren(new Option("所有项目", "all"));
@@ -886,11 +945,16 @@ async function switchAgent(id, record = true, resumeId = null) {
   renderAgents();
   renderThreads();
   permissions();
-  await api("/api/agents/select", { id });
-  if (g !== generation) return;
   try {
+    await api(
+      "/api/agents/select",
+      { id },
+      { signal: AbortSignal.timeout(10000) },
+    );
+    if (g !== generation) return;
     let s = await agentApi(id, "/status");
-    if (!s.connected) s = await agentApi(id, "/connect", {});
+    if (!s.connected)
+      s = await agentApi(id, "/connect", {}, { signal: agentReads.signal });
     if (g !== generation) return;
     status = s;
     setConnection(!!s.connected);
@@ -915,6 +979,8 @@ async function switchAgent(id, record = true, resumeId = null) {
   }
 }
 async function selectThread(id, record = true) {
+  const a = agentId,
+    g = generation;
   closeSettingsMenu(false);
   viewEpoch++;
   document.querySelector(".conversation").classList.remove("is-new");
@@ -923,12 +989,13 @@ async function selectThread(id, record = true) {
   saveDraft();
   selected = id;
   queueUI.reset();
-  readSequence++;
+  resetTaskReads();
   taskData = null;
   modelSettings(null);
   turns = [];
   cursor = null;
   $("messages").replaceChildren();
+  $("messages").append(node("p", "read-notice", "正在读取会话内容…"));
   $("files").replaceChildren();
   $("file-tray").hidden = true;
   $("empty").hidden = true;
@@ -937,20 +1004,28 @@ async function selectThread(id, record = true) {
     threads.find((t) => t.id === id)?.title ?? "读取任务…";
   $("task-agent").textContent = currentAgent().name;
   $("task-state").textContent = "读取中";
+  $("task-state").hidden = false;
+  $("activity").hidden = true;
+  $("older").hidden = true;
   $("task-state").className = "badge neutral";
   setPromptValue(draft.get(taskKey()) ?? "");
   $("image").value = "";
   await restoreTakenImage();
+  if (g !== generation || a !== agentId || id !== selected) return;
   renderAttachment();
   clearError();
   renderThreads();
   permissions();
-  const a = agentId,
-    g = generation;
-  agentApi(a, "/threads/" + id + "/follow", {}).catch((e) => {
+  agentApi(
+    a,
+    "/threads/" + id + "/follow",
+    {},
+    { signal: taskReads.signal },
+  ).catch((e) => {
     if (
       g === generation &&
       selected === id &&
+      e.name !== "AbortError" &&
       !e.message.includes("no-client-found")
     )
       error(Error("历史可读；实时状态尚不可用：" + e.message));
@@ -1156,19 +1231,31 @@ function displayTurns() {
     $("messages").append(wrapper);
   }
 }
-async function read(older = false) {
-  if (!selected) return;
-  const a = agentId,
-    id = selected,
-    g = generation,
-    seq = ++readSequence,
-    sidebarSeq = ++sidebarSequence;
+function read(older = false) {
+  if (!selected || !status.connected) return Promise.resolve();
+  if (readInFlight) {
+    readInFlight.pending = true;
+    readInFlight.older ||= older;
+    return readInFlight.promise;
+  }
+  const job = { a: agentId, id: selected, g: generation, seq: readSequence };
+  readInFlight = job;
+  job.promise = readTask(job, older).finally(() => {
+    if (readInFlight !== job) return;
+    readInFlight = null;
+    if (job.pending) scheduleRead(job.older);
+  });
+  return job.promise;
+}
+async function readTask({ a, id, g, seq }, older) {
+  const sidebarSeq = ++sidebarSequence;
   try {
     const r = await agentApi(
       a,
       "/threads/" +
         id +
-        (older && cursor ? "?cursor=" + encodeURIComponent(cursor) : ""),
+        "?view=conversation" +
+        (older && cursor ? "&cursor=" + encodeURIComponent(cursor) : ""),
     );
     if (
       g !== generation ||
@@ -1177,7 +1264,10 @@ async function read(older = false) {
       !status.connected
     )
       return;
+    if (r.data?.thread?.id !== id || !Array.isArray(r.data?.turns))
+      throw Error("设备返回的会话内容格式不受支持，请更新目标设备后重试");
     taskData = r.data;
+    clearError();
     modelSettings(r.live?.state);
     const entry = threads.find((t) => t.id === id);
     const listChanged = !entry || entry.title !== taskData.thread.title;
@@ -1253,24 +1343,37 @@ async function read(older = false) {
     queueUI.refresh();
     if (!older && atBottom) scroll.scrollTop = scroll.scrollHeight;
   } catch (e) {
-    if (g === generation && id === selected) {
+    if (
+      g === generation &&
+      id === selected &&
+      seq === readSequence &&
+      e.name !== "AbortError"
+    ) {
       error(e);
-      setConnection(false, "读取失败 · 状态未知");
+      taskData = null;
+      $("messages").querySelector(".read-notice")?.remove();
+      $("task-state").textContent = "内容读取失败 · 状态未知";
+      $("task-state").className = "badge offline";
+      $("task-state").hidden = false;
+      $("activity").hidden = true;
+      permissions();
     }
   }
 }
 async function stream(id, g) {
+  if (g !== generation) return;
   streamAbort?.abort();
   const controller = new AbortController();
   streamAbort = controller;
+  let reader;
   try {
     const r = await fetch(base(id) + "/events", {
       headers: { "X-Bridge-CSRF": csrf },
       signal: controller.signal,
     });
     if (!r.ok) throw Error("事件连接失败");
-    const reader = r.body.getReader(),
-      decoder = new TextDecoder();
+    reader = r.body.getReader();
+    const decoder = new TextDecoder();
     let buffer = "";
     for (;;) {
       const { done, value } = await reader.read();
@@ -1304,15 +1407,15 @@ async function stream(id, g) {
           $("task-state").textContent = "状态未知";
           $("task-state").className = "badge neutral";
         }
-        if (e.threadId === selected && e.kind === "thread-state") {
-          clearTimeout(readTimer);
-          readTimer = setTimeout(() => {
-            if (g === generation) read();
-          }, 500);
-        }
+        if (e.threadId === selected && e.kind === "thread-state")
+          scheduleRead();
         if (e.kind === "resync-required") {
           if (!e.connected) setConnection(false);
           else {
+            status = { ...status, ...e };
+            setConnection(true);
+            clearError();
+            refreshUsage();
             for (const [threadId, snapshot] of Object.entries(e.threads ?? {}))
               rememberSidebarStatus(threadId, {
                 ...snapshot.status,
@@ -1331,10 +1434,12 @@ async function stream(id, g) {
       setTimeout(() => {
         if (g === generation) {
           stream(id, g);
-          if (selected) read();
         }
       }, 2000);
     }
+  } finally {
+    await reader?.cancel().catch(() => {});
+    controller.abort();
   }
 }
 function editAgent(id) {
@@ -1438,7 +1543,7 @@ function newConversation(record = true) {
   closeSettingsMenu(false);
   saveDraft();
   viewEpoch++;
-  readSequence++;
+  resetTaskReads();
   selected = null;
   queueUI.reset();
   turns = [];
@@ -1658,8 +1763,9 @@ document.addEventListener("visibilitychange", () => {
   if (Date.now() - usageFetchedAt > 90000) resetUsage("loading");
   refreshUsage();
 });
-$("reconnect").onclick = () => switchAgent(agentId).catch(error);
-$("refresh").onclick = () => refresh().catch(error);
+$("reconnect").onclick = () =>
+  switchAgent(agentId, false, selected).catch(error);
+$("refresh").onclick = () => Promise.all([refresh(), read()]).catch(error);
 $("search").oninput = renderThreads;
 function toggleSearch() {
   $("search-panel").hidden = !$("search-panel").hidden;

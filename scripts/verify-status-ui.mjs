@@ -7,7 +7,7 @@ const { chromium } = await import(
   process.env.REMOTE_BRIDGE_PLAYWRIGHT || "playwright-core"
 );
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const base = "http://127.0.0.1:43127";
+const base = process.env.REMOTE_BRIDGE_URL || "http://127.0.0.1:43127";
 const id = "77777777-7777-4777-8777-777777777777";
 const completedId = "88888888-8888-4888-8888-888888888888";
 const unknownId = "99999999-9999-4999-8999-999999999999";

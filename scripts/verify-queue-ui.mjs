@@ -7,7 +7,7 @@ const { chromium } = await import(
   process.env.REMOTE_BRIDGE_PLAYWRIGHT || "playwright-core"
 );
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
-  base = "http://127.0.0.1:43127",
+  base = process.env.REMOTE_BRIDGE_URL || "http://127.0.0.1:43127",
   id = "77777777-7777-4777-8777-777777777777";
 const developmentExcluded = process.argv.includes("--development-excluded");
 const image =

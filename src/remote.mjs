@@ -82,6 +82,9 @@ export function relay(req, res, { hostname, port, route, headers }) {
         method: req.method,
         headers: {
           ...headers,
+          ...(req.headers["accept-encoding"]
+            ? { "accept-encoding": req.headers["accept-encoding"] }
+            : {}),
           ...(req.headers["content-type"]
             ? { "content-type": req.headers["content-type"] }
             : {}),
@@ -94,6 +97,8 @@ export function relay(req, res, { hostname, port, route, headers }) {
           "content-type",
           "content-length",
           "content-disposition",
+          "content-encoding",
+          "vary",
         ])
           if (r.headers[h]) responseHeaders[h] = r.headers[h];
         res.writeHead(r.statusCode, responseHeaders);
@@ -150,6 +155,7 @@ export async function proxyAgent(
   const a = agents.get(id),
     key = await agents.key(id);
   const hostname = await resolve(a.host);
+  if (res.destroyed || req.aborted) return;
   return relay(req, res, {
     hostname,
     port: a.port,

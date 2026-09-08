@@ -1,4 +1,27 @@
 const bad = new Set(["__proto__", "constructor", "prototype"]);
+// The merged page already carries messages. The UI needs live settings and
+// pending questions, not another copy of every turn and tool output.
+export function conversationView(result) {
+  if (!result.live?.state) return result;
+  const state = result.live.state;
+  return {
+    ...result,
+    live: {
+      ...result.live,
+      state: Object.fromEntries(
+        [
+          "latestThreadSettings",
+          "latestModel",
+          "latestReasoningEffort",
+          "threadRuntimeStatus",
+          "requests",
+        ]
+          .filter((key) => Object.hasOwn(state, key))
+          .map((key) => [key, state[key]]),
+      ),
+    },
+  };
+}
 export function mergeLiveTurnItems(data, state) {
   if (!Array.isArray(data.turns) || !state) return data;
   const live = new Map(

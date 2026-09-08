@@ -11,6 +11,8 @@ import { proxyAgent, allowedRoute } from "./remote.mjs";
 import { LocalAccess } from "./local-access.mjs";
 import { Updater } from "./updater.mjs";
 import { DATA_DIR, INSTANCE } from "./runtime.mjs";
+import { createGzip } from "node:zlib";
+import { conversationView } from "./state.mjs";
 export async function startServer({
   port = 43127,
   bridge = new Bridge(),
@@ -43,11 +45,34 @@ export async function startServer({
     ["/app.webmanifest", "application/manifest+json"],
   ]);
   const json = (res, code, data) => {
+    if (res.destroyed || res.writableEnded) return;
+    const payload = JSON.stringify(data);
+    const compress =
+      Buffer.byteLength(payload) >= 4096 &&
+      String(res.req?.headers["accept-encoding"] ?? "")
+        .split(",")
+        .some((part) => {
+          const [encoding, ...parameters] = part.trim().split(";");
+          const quality = parameters
+            .map((p) => p.trim())
+            .find((p) => p.startsWith("q="));
+          return (
+            encoding === "gzip" && (!quality || Number(quality.slice(2)) > 0)
+          );
+        });
     res.writeHead(code, {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
+      Vary: "Accept-Encoding",
+      ...(compress ? { "Content-Encoding": "gzip" } : {}),
     });
-    res.end(JSON.stringify(data));
+    if (compress) {
+      const gzip = createGzip({ level: 1 });
+      res.on("close", () => gzip.destroy());
+      gzip.on("error", () => res.destroy());
+      gzip.pipe(res);
+      gzip.end(payload);
+    } else res.end(payload);
   };
   const sourceError = (e) => ({
     error: e.message,
@@ -182,12 +207,16 @@ export async function startServer({
           return res.end(file.bytes);
         }
         if (match[2] === "queue") return json(res, 200, bridge.queue.read(id));
-        if (!match[2])
+        if (!match[2]) {
+          const result = await bridge.read(id, url.searchParams.get("cursor"));
           return json(
             res,
             200,
-            await bridge.read(id, url.searchParams.get("cursor")),
+            url.searchParams.get("view") === "conversation"
+              ? conversationView(result)
+              : result,
           );
+        }
         if (match[2] === "files")
           return json(res, 200, { files: listFiles(await outputRoot(id)) });
         if (match[2] === "file") {
@@ -269,6 +298,9 @@ export async function startServer({
         bridge.disconnect();
         for (const s of sse) s.end();
         server.close();
+        // Closing a viewer must also release slow proxy requests and SSE
+        // sockets. This does not send interrupts to any official task.
+        setTimeout(() => server.closeAllConnections(), 250).unref();
         return;
       }
       if (url.pathname === "/api/threads")
