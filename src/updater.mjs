@@ -12,6 +12,13 @@ import {
 const source = JSON.parse(
   fs.readFileSync(new URL("./update-source.json", import.meta.url)),
 );
+// Source runs may use the ignored publisher config; packages inject only the public URL.
+try {
+  if (!source.manifestUrl) {
+    const local = JSON.parse(fs.readFileSync(new URL("../release.local.json", import.meta.url)));
+    source.manifestUrl = local.baseUrl.replace(/\/$/, "") + "/latest.json";
+  }
+} catch {}
 
 export class Updater {
   constructor(dir, notify = () => {}) {
@@ -24,7 +31,7 @@ export class Updater {
     this.phase = "idle";
     this.error = "";
     this.supported =
-      INSTANCE.portable && !!process.env.REMOTE_BRIDGE_LAUNCHER_EXE;
+      INSTANCE.portable && !!process.env.REMOTE_BRIDGE_LAUNCHER_EXE && !!source.manifestUrl;
     this.clients = new Map();
   }
   start(address) {

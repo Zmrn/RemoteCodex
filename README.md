@@ -1,6 +1,8 @@
 # Remote Codex · ChatGPT 桌面会话桥接器
 
-Windows 原型 **0.9.12**。连接已经运行的官方 ChatGPT 桌面端，通过它管理的同一个 Codex 任务收发消息、查看实时状态和操作队列。提供可自由调整窗口大小的 Windows UI，窄屏竖向布局自动使用侧栏抽屉。
+Windows / Android 原型 **0.10.0**。连接已经运行的官方 ChatGPT 桌面端，通过它管理的同一个 Codex 任务收发消息、查看实时状态和操作队列。Windows 可自由调整窗口大小；Android 竖屏使用侧栏抽屉，横屏使用桌面布局。
+
+Android APK 的安装、自动下载更新、系统确认安装和复测方法见 [ANDROID.md](ANDROID.md)。每次正式迭代必须同时构建并发布 `RemoteCodex.apk` 和 `RemoteCodex.exe`；发布地址配置在被忽略的 `release.local.json`，模板是 `release.example.json`，开发发布约定见 [AGENTS.md](AGENTS.md)。
 
 现已支持**单 EXE 分发及在线更新**：`RemoteCodex.exe` 内置运行依赖，文件名固定，当前软件版本显示在界面左下角设备名旁。左下角问号直接打开检查更新、安装更新和自动更新设置；下载期间问号变成下载进度。编辑本机设备可读取 Tailscale IP、设置端口和访问密钥、开关远程访问。更新只替换桥接程序，官方任务继续运行。详见 [PORTABLE.md](PORTABLE.md)。以下启动命令适用于源码调试版；仓库根目录的 `RemoteBridge.exe` 现在转到已构建的单 EXE 桌面。
 
@@ -30,7 +32,7 @@ cd remote-codex
 .\Open-UI.cmd
 ```
 
-源码需先构建 `python scripts/build_portable.py`，随后可双击单 EXE 或目录中的 `RemoteBridge.exe`。Windows UI 使用内嵌 WebView2，由主程序持有窗口和运行组件。关闭窗口隐藏到托盘，右键托盘退出整个桥接程序；异常退出时 Windows Job Object 清理其子进程。
+源码需从 `release.example.json` 创建并填写本机 `release.local.json`，构建 `python scripts/build-release.py`，随后可双击单 EXE 或目录中的 `RemoteBridge.exe`。Windows UI 使用内嵌 WebView2，由主程序持有窗口和运行组件。关闭窗口隐藏到托盘，右键托盘退出整个桥接程序；异常退出时 Windows Job Object 清理其子进程。
 
 只启动网页服务：
 
@@ -42,7 +44,7 @@ cd remote-codex
 .\Stop.ps1
 ```
 
-这些独立 Node/PowerShell 命令仅用于源码调试，不是桌面软件启动方式。正式桌面关闭窗口即停止接入；最小化窗口则继续运行。停止桥接程序只断开查看连接，官方任务继续执行。桌面使用独立的随机回环端口，源码调试默认 43127。
+这些独立 Node/PowerShell 命令仅用于源码调试，不是桌面软件启动方式。正式桌面关闭窗口隐藏到托盘并继续接入；托盘右键退出才停止本程序。停止桥接程序只断开查看连接，官方任务继续执行。桌面使用独立的随机回环端口，源码调试默认 43127。
 
 ## 使用
 

@@ -1,5 +1,5 @@
 const windowKey = "remote-codex-window-id";
-const storage = window.chrome?.webview ? localStorage : sessionStorage;
+const storage = window.chrome?.webview || document.querySelector('meta[name="bridge-platform"]')?.content === "android" ? localStorage : sessionStorage;
 export const windowId = storage.getItem(windowKey) || crypto.randomUUID();
 storage.setItem(windowKey, windowId);
 function database() {

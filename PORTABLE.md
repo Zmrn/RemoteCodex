@@ -1,4 +1,4 @@
-# Windows 单 EXE 桌面版 0.9.12
+# Windows 单 EXE 桌面版 0.10.0
 
 界面统一使用深蓝灰色主题，侧栏、消息区、输入框、菜单和设备设置都保持深色。长文字发送或加入队列成功后输入框恢复默认高度；发送失败保留原文，切换会话和取回队列草稿时自动匹配文字高度。
 
@@ -46,14 +46,15 @@ EXE 内置 Node.js 22.19.0、Python 3.13.2、WebView2 SDK Loader 和托管组件
 
 更新先校验发布签名、平台、版本、长度和 SHA-256，再保存草稿、退出旧窗口、替换 EXE、打开新版窗口。更新助手只在安装期间短暂运行，不作为常驻服务。安装失败会尝试回退本机备份。更新源只分发软件，不接收任务、图片或账号数据。
 
-资源服务：`http://100.75.83.51:43130/latest.json`，要求能连接 tx 的 Tailscale 网络。远端 `/opt/remote-codex-updates` 只保留一个 `RemoteCodex.exe` 与一份签名清单。新版本应提高版本号后覆盖发布。
+资源服务地址和目标目录由被忽略的 `release.local.json` 配置，要求能连接该地址的 Tailscale 网络。远端只保留一个 `RemoteCodex.exe`、一个 `RemoteCodex.apk`，以及各自的签名清单。每次更新提高版本号，同时构建并覆盖发布双端；详细约定见 `AGENTS.md`。
 
 ## 开发与诊断
 
 ```powershell
-python scripts/build_portable.py
-# 发布到用户授权的 tx 资源服务
-python scripts/publish-update.py dist/RemoteCodex.exe --version 0.9.12
+# 先从 release.example.json 创建并填写 release.local.json
+python scripts/build-release.py
+# 发布到本机配置指定的资源目录，必须同时具备 APK 和 EXE
+python scripts/publish-update.py
 # 只读诊断
 .\dist\RemoteCodex.exe --self-test
 # 可选：停止本桌面实例（平时使用托盘右键退出）

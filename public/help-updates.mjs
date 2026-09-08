@@ -41,8 +41,11 @@ export class HelpUpdates {
       error: state.error || "更新失败，请重试",
     };
     const label = labels[phase] || "更新状态未知";
+    const displayLabel = state.platform === "android" && phase === "waiting"
+      ? "下载完成，点击安装后由 Android 系统确认"
+      : label;
     $("help-update-status").textContent =
-      `当前版本 ${state.currentVersion ?? "未知"} · ${label}`;
+      `当前版本 ${state.currentVersion ?? "未知"} · ${displayLabel}`;
     $("help-update-progress").hidden = !active;
     $("help-update-progress").value = progress;
     $("help-automatic-updates").checked = !!state.automatic;

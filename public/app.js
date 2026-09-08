@@ -16,6 +16,26 @@ import {
 } from "./update-recovery.mjs";
 const $ = (id) => document.getElementById(id),
   csrf = document.querySelector("meta[name=bridge-csrf]").content;
+const android = document.querySelector('meta[name="bridge-platform"]')?.content === "android";
+if (android) {
+  document.querySelector('.setup-local').hidden = true;
+  document.querySelector('#help-automatic-updates').parentElement.lastChild.textContent = '自动检查并下载更新';
+  document.querySelector('#help-update-error + .field-help').textContent = '更新当前 Android 应用；安装新版时需由系统确认。';
+  document.querySelector('#setup-dialog > .field-help:last-of-type').textContent = '手机需连接 Tailscale。选择电脑后，消息由那台电脑上正在运行的官方 ChatGPT 处理。';
+  document.addEventListener('click', async event => {
+    const link = event.target.closest?.('a[download]');
+    if (!link) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    try {
+      if (!/^(blob:|data:image\/)/.test(link.href)) throw Error('此下载格式暂不支持');
+      const blob = await (await fetch(link.href)).blob();
+      if (blob.size > 6 * 1024 * 1024) throw Error('图片超过 6 MB，请从附件下载原文件');
+      const dataUrl = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(blob); });
+      await api('/api/downloads/start', { dataUrl, name: link.download || 'image.png' });
+    } catch (e) { error(e); }
+  }, true);
+}
 let agents = [],
   agentId = "local",
   selected = null,
@@ -429,7 +449,7 @@ function permissions() {
   ).includes(selected);
   const probe = Object.hasOwn(status.testThreads ?? {}, selected);
   const writable =
-    fresh ||
+    (fresh && !!currentAgent()) ||
     (!readOnlyTask &&
       (probe ||
         (status.existingCodexWritable && taskData?.thread?.kind === "codex")));
@@ -1043,6 +1063,18 @@ async function switchAgent(id, record = true, resumeId = null) {
   $("search").value = "";
   $("project-filter").replaceChildren(new Option("所有项目", "all"));
   clearError();
+  if (!currentAgent()) {
+    agentId = "";
+    $("agent-title").textContent = "添加电脑";
+    $("agent-endpoint").textContent = "通过 Tailscale 连接";
+    $("empty-title").textContent = "连接你的电脑";
+    $("empty-description").textContent = "从左下角添加设备，填写电脑的 Tailscale IP、端口和访问密钥。";
+    $("connection").textContent = "尚未添加设备";
+    $("connection").className = "badge neutral";
+    resetUsage("unknown", "先添加一台电脑");
+    renderAgents(); renderThreads(); permissions();
+    return;
+  }
   $("agent-title").textContent = currentAgent().name;
   $("agent-endpoint").textContent = endpoint(currentAgent());
   $("empty-title").textContent = "今天有什么安排？";
@@ -1766,6 +1798,7 @@ async function navigateBy(delta) {
   else newConversation(false);
 }
 function newConversation(record = true) {
+  if (!currentAgent()) { editAgent(null); return; }
   closeSettingsMenu(false);
   saveDraft();
   viewEpoch++;
@@ -1960,7 +1993,8 @@ $("agent-form").onsubmit = async (e) => {
     $("agent-dialog").close();
     $("agent-key").value = "";
     renderAgents();
-    if (editing === agentId) await switchAgent(agentId);
+    if (!currentAgent()) await switchAgent(d.selectedId || agents[0]?.id);
+    else if (editing === agentId) await switchAgent(agentId);
     toast("设备已保存");
   } catch (e) {
     $("agent-form-error").textContent = e.message;
@@ -1974,7 +2008,7 @@ $("remove-agent").onclick = async () => {
       d = await api("/api/agents/remove", { id: removed });
     agents = d.agents;
     $("agent-dialog").close();
-    if (agentId === removed) await switchAgent("local");
+    if (agentId === removed) await switchAgent(d.selectedId || agents[0]?.id || "");
     else renderAgents();
     toast("设备配置已移除，电脑上的任务不受影响");
   } catch (e) {
@@ -2143,6 +2177,14 @@ async function files() {
   }
 }
 async function downloadFile(a, t, file) {
+  if (android) {
+    await api('/api/downloads/start', {
+      route: base(a) + '/threads/' + t + '/file?' + (file.id ? 'id=' + encodeURIComponent(file.id) : 'name=' + encodeURIComponent(file.name)),
+      name: file.name.split(/[\\/]/).at(-1),
+    });
+    toast('正在读取原文件，随后选择保存位置');
+    return;
+  }
   const response = await fetch(
     base(a) +
       "/threads/" +

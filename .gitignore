@@ -1,5 +1,8 @@
 # Local state, pairing secrets, browser profiles, conversations and attachments
 /data/
+/release.local.json
+*.p12
+*.jks
 /evidence/
 /downloads/
 /test/scratch/

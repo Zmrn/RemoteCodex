@@ -32,6 +32,7 @@ if (process.argv[2] === "--init") {
   );
 } else {
   const [exePath, version, outputPath] = process.argv.slice(2);
+  const android = path.extname(exePath ?? "").toLowerCase() === ".apk";
   if (!exePath || !outputPath || !/^\d+\.\d+\.\d+$/.test(version ?? ""))
     throw Error("Usage: node scripts/sign-release.mjs EXE VERSION OUTPUT_JSON");
   const privateKey = await protect(
@@ -50,8 +51,9 @@ if (process.argv[2] === "--init") {
     JSON.stringify({
       schema: 1,
       version,
-      platform: "windows-x64",
-      file: "RemoteCodex.exe",
+      platform: android ? "android" : "windows-x64",
+      file: android ? "RemoteCodex.apk" : "RemoteCodex.exe",
+      ...(android ? {packageName: "com.anso.remotecodex", versionCode: version.split('.').reduce((n, v) => n * 1000 + Number(v), 0)} : {}),
       bytes: bytes.length,
       sha256: createHash("sha256").update(bytes).digest("hex"),
       publishedAt: new Date().toISOString(),

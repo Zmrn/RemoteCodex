@@ -11,7 +11,8 @@ parser.add_argument("--root",type=Path,required=True)
 args=parser.parse_args()
 class Handler(BaseHTTPRequestHandler):
     def send_file(self,head=False):
-        name={"/latest.json":"latest.json","/RemoteCodex.exe":"RemoteCodex.exe"}.get(self.path)
+        if (args.root/'.publishing').exists(): self.send_error(503);return
+        name={"/latest.json":"latest.json","/RemoteCodex.exe":"RemoteCodex.exe","/android-latest.json":"android-latest.json","/RemoteCodex.apk":"RemoteCodex.apk"}.get(self.path)
         if not name: self.send_error(404);return
         try: stream=(args.root/name).open("rb")
         except FileNotFoundError: self.send_error(404);return

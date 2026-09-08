@@ -1,0 +1,9 @@
+{
+  "sshHost": "user@resource-host",
+  "remoteDirectory": "/opt/remote-codex-updates",
+  "baseUrl": "http://100.64.0.1:43130/",
+  "androidSdk": "C:/Users/YOUR_NAME/AppData/Local/Android/Sdk",
+  "javaHome": "C:/Program Files/Android/Android Studio/jbr",
+  "buildTools": "35.0.1",
+  "androidPlatform": "android-35"
+}

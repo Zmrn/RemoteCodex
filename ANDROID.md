@@ -1,0 +1,50 @@
+# Android 控制端 0.10.0
+
+安装 `dist/RemoteCodex.apk`（固定文件名）。支持 Android 8.0 / API 26 及以上，使用系统 Android System WebView；较旧系统请保持 WebView 更新。APK 无原生 CPU 库，可在 ARM64、ARM 和 x86 系列设备上安装；本轮实际运行验证使用 Android 15 / API 35 x86_64 隔离模拟器，未安装到用户物理手机。
+
+手机打开 Tailscale 并接入同一网络。Windows 电脑运行 Remote Codex，官方 ChatGPT 保持登录；在电脑编辑本机设备，开启已有 Tailscale 地址上的接入，取得 IP、端口和访问密钥。手机从设备菜单添加电脑并命名，之后可切换设备。
+
+竖屏默认收起左侧栏，点击左上角展开，设备菜单仍在侧栏左下角；横屏使用桌面布局。新任务从主输入框发送文字后创建。没有设备时，新任务按钮引导添加电脑，不会创建手机本地 Codex 后端。
+
+消息、项目、任务、队列、问答、模型和权限界面共用 Windows 前端，均转交所选电脑。图片从系统文件选择器选取；点击图片可放大。附件下载读取电脑上的原文件，再由 Android 系统选择保存位置。首条消息仍需要文字；不同输入法能否将剪贴板图片作为文件交给 WebView 尚未实测，图片选择器是当前手机上传入口。普通 Chat 模式尚未接通。
+
+返回键先关闭弹层或侧栏，否则将应用切入后台。手机切后台、断开或系统回收控制端进程不会中断电脑上的官方任务；回到前台时重新连接。Android 不持有常驻前台服务，系统省电策略可能暂停后台查看连接。
+
+## 自动更新
+
+左下角问号直接显示当前版本、检查更新、安装更新和自动更新开关。默认前台每小时检查，Android 后台任务约每六小时检查（执行时机由系统省电与网络条件决定）。有新版时自动下载，进度显示在问号及更新面板，下载完成后通知用户安装。
+
+**普通 APK 不能静默安装。** 首次更新时允许 Remote Codex 安装应用，此后每次仍需在 Android 系统安装器确认。必须能访问构建时配置的 Tailscale 更新资源地址；网络不可用时显示错误，后续检查会重试。
+
+更新验证独立 RSA 签名清单、APK 大小与 SHA-256、包名、versionCode 和当前安装证书，拒绝篡改、降级和其他签名的 APK。设备列表与加密访问密钥留在应用数据中，正常覆盖安装不清除。不要先卸载旧版：卸载会删除设备、密钥和草稿。
+
+## 本地构建与发布
+
+构建使用 Python 3.10+、Node.js 22+、Android SDK platform 35 / build-tools 35.0.1 和 JDK 21。通过 SDK 自带 aapt2、javac、D8、zipalign、apksigner 构建，无 Gradle 下载依赖。本机构建环境来自 Android Studio，没有修改 Unity SDK 或现有 Android 虚拟设备。
+
+```powershell
+Copy-Item release.example.json release.local.json
+# 编辑 release.local.json，填入本机 SDK/JDK 路径、SSH 地址、目标目录和公共资源 baseUrl。
+python scripts/build-release.py
+# 确认 Android 行为测试后，同时发布 APK、EXE 和两个签名清单：
+python scripts/publish-update.py
+# 后续迭代的一步构建发布入口：
+python scripts/build-release.py --publish
+```
+
+`release.local.json` 被 Git 忽略；实际 SSH 配置不写入应用，只有公共更新资源 URL 会注入构建产物。服务端使用 `scripts/serve-updates.py`，仅提供四个固定资源，不接收用户对话或账号信息。第一次从仅支持 EXE 的资源服务升级时，需要替换此脚本并重启资源服务。发布器在两个构建的版本、大小、哈希全部一致后才上传，服务端再验签并覆盖；远端每个平台只保留一份正式程序。
+
+已有 RSA 发布身份不能重新生成。首次 Android 构建创建 `data/android-signing.p12` 和 DPAPI 加密的 `data/android-signing-password.json`。签名文件不入 Git、不打包；安全备份该身份，否则无法为已安装 APK 继续签发可覆盖安装的更新。
+
+## 复测
+
+`android/test/Probe.java` 是单独的同签名 instrumentation 测试，不包含在交付 APK 中。先构建主 APK，再运行 `python scripts/build_android_test.py`，测试包在 `work/RemoteCodex-tests.apk`。安装、卸载、启动和截图命令必须写明测试模拟器 serial，不对未经指定的物理手机执行。
+
+```powershell
+adb -s emulator-5580 install -r dist/RemoteCodex.apk
+adb -s emulator-5580 install -r work/RemoteCodex-tests.apk
+adb -s emulator-5580 shell am instrument -w -e stage smoke com.anso.remotecodex.tests/.Probe
+adb -s emulator-5580 shell am instrument -w -e stage layout com.anso.remotecodex.tests/.Probe
+```
+
+`smoke` 要求空设备列表；不要清空真实使用数据来满足它。真实读取测试使用已保存的设备以及显式指定的专用测试任务 ID。测试程序不向真实任务发消息。升级验证使用相同签名、较小版本号的隔离 APK，确认自动下载后，实际点击系统安装器，再核对安装版本与保留数据。详细本轮结果见 `ANDROID-VALIDATION.md`。

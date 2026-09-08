@@ -8,6 +8,7 @@ import os
 import subprocess
 import urllib.request
 import zipfile
+from release_config import config
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIMES = {
@@ -70,6 +71,7 @@ def main():
         files[name] = (ROOT / name).read_bytes()
     package["version"] = version
     files["package.json"] = json.dumps(package, indent=2).encode()
+    files["src/update-source.json"] = json.dumps({"manifestUrl": config()["baseUrl"] + "latest.json", "checkIntervalMs": 3600000}).encode()
     with zipfile.ZipFile(io.BytesIO(download(args.cache, RUNTIMES["node"]))) as archive:
         for name in ("node.exe", "LICENSE"):
             files["runtime/node/" + name] = archive.read("node-v22.19.0-win-x64/" + name)
