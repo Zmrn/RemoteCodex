@@ -1,5 +1,5 @@
 import { normalizeMode, matchesMode, modeTaskKey, modeCatalog, chatComposer, chatNotice, chatEmpty } from "./modes.mjs";
-import { icon, markdown } from "./ui.mjs";
+import { icon, markdown, copyMarkdown } from "./ui.mjs";
 import { QueueUI } from "./queue-ui.mjs";
 import { DeviceSettings, accessSummary } from "./device-settings.mjs";
 import { QuestionsUI } from "./questions-ui.mjs";
@@ -1282,7 +1282,7 @@ function renderItem(item) {
     copy.append(icon("copy"));
     copy.onclick = () =>
       navigator.clipboard
-        .writeText(text ?? "")
+        .writeText(copyMarkdown(text))
         .then(() => toast("已复制"))
         .catch(() => toast("复制失败，请手动选择文本"));
     actions.append(copy);

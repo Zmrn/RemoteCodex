@@ -33,6 +33,7 @@ export async function startServer({
     ["/app.js", "text/javascript; charset=utf-8"],
     ["/modes.mjs", "text/javascript; charset=utf-8"],
     ["/ui.mjs", "text/javascript; charset=utf-8"],
+    ["/citations.mjs", "text/javascript; charset=utf-8"],
     ["/message-content.mjs", "text/javascript; charset=utf-8"],
     ["/conversation-history.mjs", "text/javascript; charset=utf-8"],
     ["/reconnect.mjs", "text/javascript; charset=utf-8"],

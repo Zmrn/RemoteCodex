@@ -43,6 +43,11 @@ let current = {
   connected = true;
 const items = [
   {
+    id: "citation-fixture",
+    type: "agentMessage",
+    text: "引用渲染测试 **结论 \ue200cite\ue202turn1view0\ue202turn2search1\ue201**\n- 再次引用 \ue200cite\ue202turn2search1\ue201\n[普通来源](https://example.com/)\n`\ue200cite\ue202turnLiteral\ue201`\n```text\n\ue200cite\ue202turnCode\ue201\n```",
+  },
+  {
     id: "question-fixture",
     type: "agentMessage",
     delivery: "async",
@@ -203,11 +208,23 @@ await page.route(address + "/api/**", async (route) => {
   return json({});
 });
 try {
+  await page.addInitScript(() => Object.defineProperty(navigator, "clipboard", {value: {writeText: async text => { window.__copiedReply = text; }}}));
   await page.goto(address);
   await page.locator('[data-thread-id="' + id + '"]').click();
   await page.waitForFunction(() =>
     document.querySelector("#messages").textContent.includes("图片正文"),
   );
+  const citationMessage = page.locator(".assistant-message").filter({hasText:"引用渲染测试"});
+  assert.deepEqual(await citationMessage.locator(".citation-ref").allTextContents(), ["[1, 2]", "[2]"]);
+  assert.equal(await citationMessage.locator("code").count(), 2);
+  assert.equal(await citationMessage.locator("a").getAttribute("href"), "https://example.com/");
+  await citationMessage.locator(".citation-ref").first().click();
+  assert.equal(await citationMessage.locator(".citation-notice").getAttribute("open"), "");
+  assert.ok((await citationMessage.locator(".citation-notice").innerText()).includes("官方会话读取接口未提供"));
+  await citationMessage.locator('[aria-label="复制回复"]').click();
+  const copied = await page.evaluate(() => window.__copiedReply);
+  assert.ok(copied.includes("结论 [来源 1, 2]"));
+  assert.equal((copied.match(/\ue200cite/g) ?? []).length, 2, "only literal code keeps markers");
   assert.ok(
     !(await page.locator("#messages").innerText()).includes(
       "# Files mentioned",

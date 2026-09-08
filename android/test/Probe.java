@@ -45,6 +45,14 @@ public final class Probe extends Instrumentation {
       require(read.getJSONObject("data").has("thread") && read.getJSONObject("data").getJSONArray("turns").length()>0,"real task read through APK proxy");result.putString("taskId",thread);result.putString("source",read.getString("source"));
       js("document.getElementById('prompt').value='ANDROID_UPGRADE_DRAFT';window.remoteCodexSaveDrafts()");SystemClock.sleep(700);
       require(true,"draft saved without sending a task message");
+    }else if(stage.equals("citations")){
+      js("window.__citationProbe=null;import(location.origin+'/ui.mjs').then(({markdown,copyMarkdown})=>{const marker='\\ue200cite\\ue202turn1view0\\ue202turn2search1\\ue201';const text='测试 **'+marker+'**\\n[网页](https://example.com/)\\n`'+marker+'`';const node=markdown(text);node.id='citation-probe';document.body.append(node);window.__citationProbe={copied:copyMarkdown(text)};}).catch(e=>window.__citationProbe={error:String(e)})");
+      until("window.__citationProbe!=null",15);
+      require("true".equals(js("!window.__citationProbe.error && document.querySelector('#citation-probe .citation-ref').textContent==='[1, 2]'")),"APK renders grouped citation numbers: "+js("JSON.stringify({error:window.__citationProbe?.error,text:document.querySelector('#citation-probe .citation-ref')?.textContent})"));
+      js("document.querySelector('#citation-probe .citation-ref').click()");
+      require("true".equals(js("document.querySelector('#citation-probe .citation-notice').open && document.querySelector('#citation-probe .citation-notice').textContent.includes('官方会话读取接口未提供')")),"tap explains unavailable source URLs");
+      require("true".equals(js("document.querySelector('#citation-probe code').textContent.includes('\\ue200cite') && window.__citationProbe.copied.includes('[来源 1, 2]') && document.querySelector('#citation-probe a').href==='https://example.com/'")),"APK copy cleanup preserves literal code and normal links");
+      js("document.getElementById('citation-probe').remove()");
     }else if(stage.equals("chat")){
       until("document.getElementById('connection').textContent==='已连接官方桌面'",60);
       js("document.querySelector('#mode-menu [data-mode=chat]').click()");

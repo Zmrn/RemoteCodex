@@ -1,3 +1,6 @@
+import { citationParts, fenceStart, fenceEnd, missingCitationSource } from "./citations.mjs";
+export { copyMarkdown } from "./citations.mjs";
+let citationViewId = 0;
 const paths = {
   bolt: "m14 2-10 12h7l-1 8 10-12h-7Z",
   queue: "M4 5v10a2 2 0 0 0 2 2h12 m-3-3 3 3-3 3 M9 5h10 M9 9h7",
@@ -49,19 +52,37 @@ export function icon(name) {
 }
 // Small DOM-only renderer: raw HTML, embedded remote media and unsafe URLs never
 // enter innerHTML. Markdown text is untrusted official task content.
-export function inline(parent, text) {
+export function inline(parent, text, citations) {
+  const append = value => {
+    for (const part of citationParts(value, citations?.numbers)) {
+      if (part.text !== undefined) { parent.append(document.createTextNode(part.text)); continue; }
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "citation-ref";
+      button.textContent = part.refs.length ? "[" + part.refs.join(", ") + "]" : "[引用]";
+      button.title = (part.refs.length ? "来源 " + part.refs.join("、") : "引用信息不完整") + " · 链接未提供";
+      button.setAttribute("aria-label", button.title);
+      if (citations) {
+        citations.used = true;
+        button.setAttribute("aria-controls", citations.id);
+        button.onclick = () => { citations.notice.open = true; citations.notice.querySelector("summary").focus(); };
+      }
+      parent.append(button);
+    }
+  };
   const re =
-    /(`[^`\n]+`|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\((?:https?:\/\/)[^\s)]+\))/g;
+    /((`+)[^`\n]+\2|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\((?:https?:\/\/)[^\s)]+\))/g;
   let start = 0;
   for (const m of text.matchAll(re)) {
-    parent.append(document.createTextNode(text.slice(start, m.index)));
+    append(text.slice(start, m.index));
     let n;
     if (m[0].startsWith("`")) {
       n = document.createElement("code");
-      n.textContent = m[0].slice(1, -1);
+      const count = /^`+/.exec(m[0])[0].length;
+      n.textContent = m[0].slice(count, -count);
     } else if (m[0].startsWith("**")) {
       n = document.createElement("strong");
-      n.textContent = m[0].slice(2, -2);
+      inline(n, m[0].slice(2, -2), citations);
     } else {
       const parts = /^\[(.+)\]\((.+)\)$/.exec(m[0]);
       n = document.createElement("a");
@@ -73,11 +94,18 @@ export function inline(parent, text) {
     parent.append(n);
     start = m.index + m[0].length;
   }
-  parent.append(document.createTextNode(text.slice(start)));
+  append(text.slice(start));
 }
 export function markdown(text) {
   const root = document.createElement("div");
   root.className = "markdown";
+  const notice = document.createElement("details"), summary = document.createElement("summary"), explanation = document.createElement("p");
+  notice.className = "citation-notice";
+  notice.id = "citation-sources-" + ++citationViewId;
+  summary.textContent = "来源链接未提供";
+  explanation.textContent = missingCitationSource;
+  notice.append(summary, explanation);
+  const citations = { numbers: new Map(), id: notice.id, notice, used: false };
   const lines = String(text ?? "").split(/\r?\n/);
   let i = 0;
   while (i < lines.length) {
@@ -86,13 +114,14 @@ export function markdown(text) {
       i++;
       continue;
     }
-    if (line.startsWith("```")) {
+    const fence = fenceStart(line);
+    if (fence) {
       const pre = document.createElement("pre"),
         code = document.createElement("code");
-      const lang = line.slice(3).trim();
+      const lang = fence[2].trim();
       i++;
       const block = [];
-      while (i < lines.length && !lines[i].startsWith("```"))
+      while (i < lines.length && !fenceEnd(lines[i], fence[1]))
         block.push(lines[i++]);
       if (i < lines.length) i++;
       code.textContent = block.join("\n");
@@ -106,7 +135,7 @@ export function markdown(text) {
       const n = document.createElement(
         "h" + Math.min(heading[1].length + 1, 5),
       );
-      inline(n, heading[2]);
+      inline(n, heading[2], citations);
       root.append(n);
       i++;
       continue;
@@ -117,7 +146,7 @@ export function markdown(text) {
         n = document.createElement(ordered ? "ol" : "ul");
       while (i < lines.length && /^\s*(?:[-*+]\s+|\d+\.\s+)/.test(lines[i])) {
         const li = document.createElement("li");
-        inline(li, lines[i++].replace(/^\s*(?:[-*+]\s+|\d+\.\s+)/, ""));
+        inline(li, lines[i++].replace(/^\s*(?:[-*+]\s+|\d+\.\s+)/, ""), citations);
         n.append(li);
       }
       root.append(n);
@@ -129,11 +158,13 @@ export function markdown(text) {
     while (
       i < lines.length &&
       lines[i].trim() &&
-      !/^(?:```|#{1,4}\s|\s*[-*+]\s|\s*\d+\.\s)/.test(lines[i])
+      !fenceStart(lines[i]) &&
+      !/^(?:#{1,4}\s|\s*[-*+]\s|\s*\d+\.\s)/.test(lines[i])
     )
       paragraph.push(lines[i++]);
-    inline(n, paragraph.join("\n"));
+    inline(n, paragraph.join("\n"), citations);
     root.append(n);
   }
+  if (citations.used) root.append(notice);
   return root;
 }

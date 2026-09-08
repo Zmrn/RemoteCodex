@@ -40,6 +40,8 @@ python scripts/build-release.py --publish
 
 ## 复测
 
+0.10.3 同步修复网页引用标记显示与复制，Android `stage=citations` 验证结果和官方来源元数据限制见 `CITATIONS.md`。
+
 `android/test/Probe.java` 是单独的同签名 instrumentation 测试，不包含在交付 APK 中。先构建主 APK，再运行 `python scripts/build_android_test.py`，测试包在 `work/RemoteCodex-tests.apk`。安装、卸载、启动和截图命令必须写明测试模拟器 serial，不对未经指定的物理手机执行。
 
 ```powershell

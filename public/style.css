@@ -575,6 +575,23 @@ body[data-mode="chat"] .composer-footnote { line-height: 1.5; }
 .markdown a:hover {
   text-decoration: underline;
 }
+.citation-ref {
+  display: inline;
+  margin: 0 2px;
+  padding: 1px 5px;
+  border: 1px solid #41516a;
+  border-radius: 6px;
+  background: #26354a;
+  color: #b9d8ff;
+  font: inherit;
+  font-size: 0.75em;
+  vertical-align: 0.12em;
+  cursor: pointer;
+}
+.citation-ref:hover, .citation-ref:focus-visible { background: #354b68; }
+.citation-notice { margin-top: 12px; color: var(--muted); font-size: 12px; }
+.citation-notice summary { cursor: pointer; width: fit-content; }
+.citation-notice p { margin: 6px 0; }
 .markdown code {
   font:
     14px Consolas,
