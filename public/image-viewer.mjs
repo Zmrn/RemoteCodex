@@ -59,8 +59,18 @@ function createViewer() {
     title.title = name;
     image.alt = name;
     image.src = src;
+    image.referrerPolicy = "no-referrer";
     download.href = src;
-    download.download = name;
+    const remote = /^https:\/\//.test(src);
+    download.textContent = remote ? "打开原图" : "下载原图";
+    if (remote) {
+      download.removeAttribute("download");
+      download.target = "_blank";
+      download.rel = "noopener noreferrer";
+    } else {
+      download.download = name;
+      download.removeAttribute("target");
+    }
     dialog.showModal();
     close.focus();
     // Keep the original available if a background refresh releases the thumbnail URL.

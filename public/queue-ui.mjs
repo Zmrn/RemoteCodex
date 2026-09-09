@@ -1,3 +1,4 @@
+import { imageUrls } from "./image-input.mjs";
 import { icon } from "./ui.mjs";
 import { zoomableImage } from "./image-viewer.mjs";
 const el = (tag, cls, text) => {
@@ -64,7 +65,7 @@ export class QueueUI {
       return;
     }
     try {
-      const result = await this.api(c.agent, `/threads/${c.id}/queue`);
+      const result = await this.api(c.agent, `/threads/${c.id}/queue?images=multi-v1`);
       if (seq !== this.sequence || c.key !== this.getContext().key) return;
       this.current = result;
     } catch {
@@ -109,13 +110,15 @@ export class QueueUI {
       const row = el("div", "queued-message");
       row.dataset.messageId = m.id;
       row.append(icon("queue"));
-      if (m.imageDataUrl) {
+      const images = el("span", "queue-images");
+      for (const url of imageUrls(m.imageDataUrls ?? m.imageDataUrl)) {
         const img = el("img", "queue-image");
-        img.src = m.imageDataUrl;
+        img.src = url;
         img.alt = "排队图片";
         zoomableImage(img, "排队图片.png");
-        row.append(img);
+        images.append(img);
       }
+      if (images.childElementCount) row.append(images);
       const text = el("span", "queue-text", m.text);
       text.title = m.text;
       row.append(text);
@@ -181,19 +184,19 @@ export class QueueUI {
         r.state === "draft" ? "继续编辑" : "状态未知",
       );
       b.type = "button";
-      b.disabled = r.state !== "draft" || this.busy || !c.writable;
+      b.disabled = r.state !== "draft" || !r.draft.editable || this.busy || !c.writable;
       b.onclick = () =>
         this.restoreDraft(r.draft, r.recoveryId, c).catch(this.onError);
       row.append(b);
       this.root.append(row);
     }
   }
-  async enqueue(prompt, imageDataUrl, key, recoveryId, c) {
+  async enqueue(prompt, images, key, recoveryId, c) {
     const q = await this.api(c.agent, `/threads/${c.id}/queue`);
     return this.api(c.agent, `/threads/${c.id}/queue`, {
       action: "enqueue",
       prompt,
-      ...(imageDataUrl ? { imageDataUrl } : {}),
+      ...images,
       revision: q.revision,
       requestId: key,
       recoveryId,

@@ -1,3 +1,4 @@
+import { REQUEST_BYTES } from "../public/image-input.mjs";
 import http from "node:http";
 import os from "node:os";
 import { timingSafeEqual } from "node:crypto";
@@ -133,7 +134,7 @@ export function relay(req, res, { hostname, port, route, headers }) {
     upstream.on("error", fail);
     req.on("data", (chunk) => {
       total += chunk.length;
-      if (total > 8 * 1024 * 1024) upstream.destroy();
+      if (total > REQUEST_BYTES) upstream.destroy();
     });
     req.on("aborted", () => upstream.destroy());
     res.on("close", () => {

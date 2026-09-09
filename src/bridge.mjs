@@ -1,3 +1,4 @@
+import { validateImageUrls, IMAGE_LIMITS } from "../public/image-input.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -752,7 +753,7 @@ export class Bridge extends EventEmitter {
     this.requireConnection();
     if (!this.chatCapabilities().sendText) throw Error("此官方桌面版本尚未验证 Chat 文字入口");
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000) throw Error("Invalid message");
-    if (imageDataUrl || (settings && Object.keys(settings).length))
+    if (validateImageUrls(imageDataUrl).length || (settings && Object.keys(settings).length))
       throw Error("Chat 暂不支持图片或模型/权限参数；请在官方桌面操作");
     // Journal before checking state: retries of an accepted or uncertain send
     // must return its original outcome, never submit the prompt a second time.
@@ -807,12 +808,7 @@ export class Bridge extends EventEmitter {
     this.requireConnection();
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000)
       throw Error("Invalid message");
-    if (
-      imageDataUrl &&
-      !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(imageDataUrl)
-    )
-      throw Error("Unsupported image");
-    if (imageDataUrl?.length > 7 * 1024 * 1024) throw Error("Image too large");
+    const images = validateImageUrls(imageDataUrl);
     if (
       !options ||
       typeof options !== "object" ||
@@ -836,8 +832,8 @@ export class Bridge extends EventEmitter {
         id,
         prompt,
         settings,
-        imageHash: imageDataUrl
-          ? createHash("sha256").update(imageDataUrl).digest("hex")
+        imageHash: images.length
+          ? createHash("sha256").update(images.length === 1 ? images[0] : JSON.stringify(images)).digest("hex")
           : null,
       },
       async () => {
@@ -859,7 +855,7 @@ export class Bridge extends EventEmitter {
             throw Error("官方会话尚未加载，消息没有发送");
         }
         if (status.thread.status.type === "notLoaded") {
-          if (imageDataUrl)
+          if (images.length)
             throw Error("此会话尚未加载，请先发送文字或在官方桌面打开后再发图");
           // The desktop tool resumes its own existing task. Choose this route
           // before dispatch; never retry a failed native write through it.
@@ -894,7 +890,7 @@ export class Bridge extends EventEmitter {
           );
         }
         const input = [{ type: "text", text: prompt, text_elements: [] }];
-        if (imageDataUrl) input.push({ type: "image", url: imageDataUrl });
+        for (const url of images) input.push({ type: "image", url });
         const r = await this.desktop.ipc.request(
           "thread-follower-start-turn",
           {
@@ -954,6 +950,8 @@ export class Bridge extends EventEmitter {
       protectedThreadId: null,
       protectedThreadIds: [],
       existingCodexWritable: true,
+      multiImageInput: true,
+      imageLimits: IMAGE_LIMITS,
       chat: this.chatCapabilities(),
       testThreads: this.db.tests,
       epoch: this.epoch,

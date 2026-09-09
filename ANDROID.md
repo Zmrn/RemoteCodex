@@ -1,4 +1,4 @@
-# Android 控制端 0.10.0
+# Android 控制端
 
 安装 `dist/RemoteCodex.apk`（固定文件名）。支持 Android 8.0 / API 26 及以上，使用系统 Android System WebView；较旧系统请保持 WebView 更新。APK 无原生 CPU 库，可在 ARM64、ARM 和 x86 系列设备上安装；本轮实际运行验证使用 Android 15 / API 35 x86_64 隔离模拟器，未安装到用户物理手机。
 
@@ -39,6 +39,25 @@ python scripts/build-release.py --publish
 已有 RSA 发布身份不能重新生成。首次 Android 构建创建 `data/android-signing.p12` 和 DPAPI 加密的 `data/android-signing-password.json`。签名文件不入 Git、不打包；安全备份该身份，否则无法为已安装 APK 继续签发可覆盖安装的更新。
 
 ## 复测
+
+0.10.4 源码调整：WebView 放入原生安全区域容器，系统栏、刘海和键盘的 Insets 用来缩小 WebView 实际尺寸；不再把 padding 加在 WebView 内部。API 30+ 使用明确的 systemBars、displayCutout、ime 类型；API 26–29 保留 adjustResize 和旧 Insets 兼容路径。
+
+Codex 图片选择器允许一次选择多张，多次选择或粘贴追加到草稿，单张移除。缩略图横向滚动，不撑高输入区。每条最多 20 张、每张 5 MiB、合计 10 MiB；保持原始图片字节，不自动压缩。草稿切换、更新恢复、队列取回和调整方向均保留多张图片及顺序。被控 Windows 需更新到 0.10.4，旧版目标明确拒绝多图发送并保留草稿；单图继续兼容旧版。Chat 图片仍未接入，Codex 首条消息仍需文字。
+
+0.10.4 同时接入回复中的 HTTPS Markdown 图片（`![说明](地址)`），在原来的文字位置显示缩略图，支持点击放大和打开原图。图片从原网站加载，不转发会话文字、桥接密钥或页面 Referrer；原网站不可用时保留原图链接与重试按钮。原生附件仍使用原来的鉴权下载通道。验证结果见 [MOBILE-IMAGES-VALIDATION.md](MOBILE-IMAGES-VALIDATION.md)。
+
+多图单元测试为 `test/multi-images.test.mjs`、`test/queue.test.mjs`；超过旧请求大小上限的传输测试在 `test/agents.test.mjs`。`scripts/verify-multi-images-ui.mjs` 使用隔离浏览器与假 API，测试追加、单独移除、无效批次、草稿恢复、队列与跨导航发送确认。`scripts/verify-multi-images-live.mjs` 使用 `work/multi-image-official-probe/` 持久化专用测试任务和请求 ID，经真实官方 owner 发送两张非敏感图并验证描述；不能将假 API 测试视为真实图片接收证据。
+
+原生安全区域复测（仅针对隔离模拟器）：
+
+```powershell
+adb -s emulator-5580 shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.threebutton
+adb -s emulator-5580 shell am instrument -w -e stage safe-area com.anso.remotecodex.tests/.Probe
+adb -s emulator-5580 shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.gestural
+adb -s emulator-5580 shell am instrument -w -e stage safe-area com.anso.remotecodex.tests/.Probe
+```
+
+`safe-area` 对比系统实际 Insets 与 WebView 屏幕矩形，包含竖屏、横屏、键盘弹出、回到竖屏以及多选 ClipData 顺序。刘海设备及旧 Android 版本仍需各自的运行验证，不能仅靠 API 35 构建通过作结论。
 
 0.10.3 同步修复网页引用标记显示与复制，Android `stage=citations` 验证结果和官方来源元数据限制见 `CITATIONS.md`。
 

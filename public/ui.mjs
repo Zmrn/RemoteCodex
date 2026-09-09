@@ -1,4 +1,5 @@
 import { citationParts, fenceStart, fenceEnd, missingCitationSource } from "./citations.mjs";
+import { markdownImageAt, webImageUrl, remoteMarkdownImage } from "./markdown-images.mjs";
 export { copyMarkdown } from "./citations.mjs";
 let citationViewId = 0;
 const paths = {
@@ -50,7 +51,7 @@ export function icon(name) {
   n.append(p);
   return n;
 }
-// Small DOM-only renderer: raw HTML, embedded remote media and unsafe URLs never
+// Small DOM-only renderer: raw HTML and unsafe URLs never
 // enter innerHTML. Markdown text is untrusted official task content.
 export function inline(parent, text, citations) {
   const append = value => {
@@ -71,10 +72,20 @@ export function inline(parent, text, citations) {
     }
   };
   const re =
-    /((`+)[^`\n]+\2|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\((?:https?:\/\/)[^\s)]+\))/g;
+    /((`+)[^`\n]+\2|\*\*[^*\n]+\*\*|!\[|\[[^\]\n]+\]\((?:https?:\/\/)[^\s)]+\))/g;
   let start = 0;
-  for (const m of text.matchAll(re)) {
+  let m;
+  while ((m = re.exec(text))) {
     append(text.slice(start, m.index));
+    if (m[0] === "![") {
+      const parsed = markdownImageAt(text, m.index);
+      const url = parsed && webImageUrl(parsed.url);
+      if (url) parent.append(remoteMarkdownImage(url, parsed.alt));
+      else append(parsed ? text.slice(m.index, parsed.end) : m[0]);
+      start = parsed?.end ?? m.index + m[0].length;
+      re.lastIndex = start;
+      continue;
+    }
     let n;
     if (m[0].startsWith("`")) {
       n = document.createElement("code");

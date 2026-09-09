@@ -1,3 +1,4 @@
+import { validateImageBatch, imagePayload, imageUrls } from "./image-input.mjs";
 import { normalizeMode, matchesMode, modeTaskKey, modeCatalog, chatComposer, chatNotice, chatEmpty } from "./modes.mjs";
 import { icon, markdown, copyMarkdown } from "./ui.mjs";
 import { QueueUI } from "./queue-ui.mjs";
@@ -6,7 +7,7 @@ import { QuestionsUI } from "./questions-ui.mjs";
 import { questionReply, userContent } from "./message-content.mjs";
 import { mergeTurns, overlaps } from "./conversation-history.mjs";
 import { Reconnector } from "./reconnect.mjs";
-import { clipboardImage, validateImage } from "./clipboard-images.mjs";
+import { clipboardImages } from "./clipboard-images.mjs";
 import { HelpUpdates } from "./help-updates.mjs";
 import { zoomableImage } from "./image-viewer.mjs";
 import {
@@ -66,7 +67,7 @@ let agents = [],
   viewEpoch = 0,
   routeHistory = [],
   routeIndex = -1,
-  attachmentUrl = null;
+  attachmentUrls = [], composerImages = [];
 let liveSettingsState = null,
   settingsTarget = null,
   pendingSettings = new Map(),
@@ -108,7 +109,7 @@ async function backupDrafts() {
     taken: [...takenDrafts],
     settings: [...pendingSettings],
     prompt: $("prompt").value,
-    file: $("image").files[0] ?? null,
+    files: [...composerImages],
   });
 }
 window.remoteCodexSaveDrafts = backupDrafts;
@@ -121,7 +122,7 @@ const queueUI = new QueueUI({
     connected: !!status.connected,
     writable: queueWritable,
     active: taskData?.thread?.status?.type === "active",
-    hasDraft: !!$("prompt").value.trim() || !!$("image").files[0],
+    hasDraft: !!$("prompt").value.trim() || !!composerImages[0],
     recoveryId: takenDrafts.get(taskKey())?.recoveryId,
   }),
   api: agentApi,
@@ -134,7 +135,7 @@ const queueUI = new QueueUI({
       toast("消息已取回并保存，切回原会话可继续编辑");
       return;
     }
-    if ($("prompt").value.trim() || $("image").files[0]) {
+    if ($("prompt").value.trim() || composerImages[0]) {
       toast("输入框已有草稿，取回的消息已另外保存");
       return;
     }
@@ -148,29 +149,23 @@ const queueUI = new QueueUI({
     $("prompt").focus();
   },
 });
+function setImages(files) {
+  composerImages = [...files];
+  const transfer = new DataTransfer();
+  for (const file of composerImages) transfer.items.add(file);
+  $("image").files = transfer.files;
+}
 async function restoreTakenImage() {
   const saved = takenDrafts.get(taskKey());
-  if (saved && Object.hasOwn(saved, "file")) {
-    if (saved.file) {
-      const transfer = new DataTransfer();
-      transfer.items.add(saved.file);
-      $("image").files = transfer.files;
-    }
+  if (saved && (Object.hasOwn(saved, "files") || Object.hasOwn(saved, "file"))) {
+    setImages(saved.files ?? (saved.file ? [saved.file] : []));
     return;
   }
-  const data = saved?.message.imageDataUrl;
-  if (!data) return;
-  const bytes = Uint8Array.from(atob(data.split(",")[1]), (c) =>
-    c.charCodeAt(0),
-  );
-  const mime = data.slice(5, data.indexOf(";")),
-    dt = new DataTransfer();
-  dt.items.add(
-    new File([bytes], "queued-image." + (mime.split("/")[1] ?? "png"), {
-      type: mime,
-    }),
-  );
-  $("image").files = dt.files;
+  setImages(imageUrls(saved?.message?.imageDataUrls ?? saved?.message?.imageDataUrl).map((data, i) => {
+    const bytes = Uint8Array.from(atob(data.split(",")[1]), c => c.charCodeAt(0));
+    const mime = data.slice(5, data.indexOf(";"));
+    return new File([bytes], "queued-image-" + (i + 1) + "." + mime.split("/")[1], { type: mime });
+  }));
 }
 const stateNames = {
   history: "历史记录",
@@ -485,7 +480,7 @@ function permissions() {
     taskData?.thread?.status?.type === "notLoaded";
   $("attach-label").title = fresh
     ? "先发送第一条文字消息，创建对话后可添加图片"
-    : "添加图片（PNG / JPEG / WebP）";
+    : "添加图片（最多 20 张，每张 5 MB，合计 10 MB；PNG / JPEG / WebP）";
   $("send").disabled =
     booting ||
     !status.connected ||
@@ -1024,9 +1019,9 @@ async function pollSidebar() {
 function saveDraft() {
   draft.set(taskKey(), $("prompt").value);
   const saved = takenDrafts.get(taskKey());
-  const file = $("image").files[0] ?? null;
-  if (saved) saved.file = file;
-  else if (file) takenDrafts.set(taskKey(), { file });
+  const files = [...composerImages];
+  if (saved) { saved.files = files; delete saved.file; }
+  else if (files.length) takenDrafts.set(taskKey(), { files });
 }
 async function switchAgent(id, record = true, resumeId = null, nextMode = mode) {
   $("mode-menu").hidePopover();
@@ -1070,7 +1065,7 @@ async function switchAgent(id, record = true, resumeId = null, nextMode = mode) 
   $("empty").hidden = false;
   $("file-tray").hidden = true;
   setPromptValue(draft.get(taskKey()) ?? "");
-  $("image").value = "";
+  setImages([]);
   await restoreTakenImage();
   if (g !== generation) return;
   renderAttachment();
@@ -1164,7 +1159,7 @@ async function selectThread(id, record = true) {
   $("older").hidden = true;
   $("task-state").className = "badge neutral";
   setPromptValue(draft.get(taskKey()) ?? "");
-  $("image").value = "";
+  setImages([]);
   await restoreTakenImage();
   if (g !== generation || a !== agentId || id !== selected) return;
   renderAttachment();
@@ -1759,28 +1754,35 @@ function journal(a, t, operation, payload) {
     });
 }
 function renderAttachment() {
-  if (attachmentUrl) URL.revokeObjectURL(attachmentUrl);
-  attachmentUrl = null;
-  const f = $("image").files[0];
-  $("attachment").hidden = !f;
+  attachmentUrls.forEach(url => URL.revokeObjectURL(url));
+  attachmentUrls = [];
+  $("attachment").hidden = !composerImages.length;
   $("attachment").replaceChildren();
-  if (f) {
-    const chip = node("span", "attachment-chip"),
-      im = node("img");
-    attachmentUrl = URL.createObjectURL(f);
-    im.src = attachmentUrl;
-    im.alt = "待发送图片";
+  composerImages.forEach((f, index) => {
+    const chip = node("span", "attachment-chip"), im = node("img");
+    im.src = URL.createObjectURL(f);
+    attachmentUrls.push(im.src);
+    im.alt = "待发送图片 " + (index + 1);
     zoomableImage(im, f.name);
+    const label = node("span", "attachment-name", f.name);
+    label.title = f.name;
     const b = node("button", "", "×");
     b.type = "button";
-    b.title = "移除图片";
+    b.title = "移除图片 " + (index + 1);
+    b.setAttribute("aria-label", b.title);
     b.onclick = () => {
-      $("image").value = "";
-      renderAttachment();
+      if ($("image").disabled) return;
+      setImages(composerImages.filter((_, i) => i !== index));
+      saveDraft(); renderAttachment(); permissions();
     };
-    chip.append(im, document.createTextNode(f.name), b);
+    chip.append(im, label, b);
     $("attachment").append(chip);
-  }
+  });
+}
+function appendImages(files) {
+  const combined = validateImageBatch([...composerImages, ...files]);
+  setImages(combined);
+  saveDraft(); renderAttachment(); permissions(); clearError();
 }
 async function fileData(file) {
   if (!file) return undefined;
@@ -1875,7 +1877,7 @@ function newConversation(record = true) {
   modeUI();
   setPromptValue("");
   draft.delete(taskKey());
-  $("image").value = "";
+  setImages([]);
   renderAttachment();
   modelSettings(null);
   clearError();
@@ -1897,7 +1899,8 @@ $("form").onsubmit = async (e) => {
     enqueue = m === "codex" && !fresh && taskData?.thread?.status?.type === "active",
     k = fresh ? a + ":create" : taskKey(),
     prompt = $("prompt").value,
-    file = $("image").files[0];
+    files = [...composerImages],
+    multiImageSupported = status.multiImageInput === true;
   if (!prompt.trim()) return;
   const sendSettings = pendingSettings.get(taskKey(a, t));
   busy.add(k);
@@ -1915,14 +1918,14 @@ $("form").onsubmit = async (e) => {
   }
   try {
     if (m === "chat" && fresh) throw Error(chatEmpty);
-    const imageDataUrl = await fileData(file),
+    const images = imagePayload(await Promise.all(files.map(fileData)), multiImageSupported),
       payload = {
         mode: m,
         prompt,
         ...(takenDrafts.get(taskKey(a, t))
           ? { recoveryId: takenDrafts.get(taskKey(a, t)).recoveryId }
           : {}),
-        ...(imageDataUrl ? { imageDataUrl } : {}),
+        ...images,
         ...(sendSettings ? { settings: sendSettings } : {}),
       };
     const j = await journal(
@@ -1932,7 +1935,7 @@ $("form").onsubmit = async (e) => {
       payload,
     );
     const r = enqueue
-      ? await queueUI.enqueue(prompt, imageDataUrl, j.id, payload.recoveryId, {
+      ? await queueUI.enqueue(prompt, images, j.id, payload.recoveryId, {
           agent: a,
           id: t,
         })
@@ -1943,12 +1946,16 @@ $("form").onsubmit = async (e) => {
     if (r.status !== "accepted" || (fresh && !r.result?.threadId))
       throw Error("提交结果未知，已阻止重复发送；请先核对官方对话。");
     j.clear();
-    takenDrafts.delete(taskKey(a, t, m));
-    draft.delete(taskKey(a, t, m));
+    const originKey = taskKey(a, t, m);
+    const atOrigin = taskKey() === originKey;
+    const savedFiles = takenDrafts.get(originKey)?.files ?? [];
+    const sameImages = candidate => candidate.length === files.length && candidate.every((f, i) => f === files[i]);
+    const unchanged = atOrigin ? $("prompt").value === prompt && sameImages(composerImages) : draft.get(originKey) === prompt && sameImages(savedFiles);
+    if (unchanged) { takenDrafts.delete(originKey); draft.delete(originKey); }
     pendingSettings.delete(taskKey(a, t, m));
-    if (g === generation && v === viewEpoch) {
+    if (atOrigin && unchanged) {
       setPromptValue("");
-      $("image").value = "";
+      setImages([]);
       renderAttachment();
       if (fresh) {
         await refresh(g);
@@ -1998,36 +2005,19 @@ $("prompt").onkeydown = (e) => {
   }
 };
 $("image").onchange = () => {
-  try {
-    if ($("image").files[0]) validateImage($("image").files[0]);
-  } catch (e) {
-    $("image").value = "";
-    error(e);
-  }
-  renderAttachment();
+  const picked = [...$("image").files];
+  try { appendImages(picked); }
+  catch (e) { setImages(composerImages); error(e); }
 };
-$("prompt").addEventListener("paste", (event) => {
-  const file = clipboardImage(event.clipboardData);
-  if (!file) return; // Keep ordinary text paste and selection replacement native.
+$("prompt").addEventListener("paste", event => {
+  const files = clipboardImages(event.clipboardData);
+  if (!files.length) return;
   event.preventDefault();
   if ($("image").disabled) {
-    toast(
-      selected === null
-        ? "请先发送文字创建会话，再粘贴图片"
-        : "请等待会话连接并加载完成后再粘贴图片",
-    );
+    toast(selected === null ? "请先发送文字创建会话，再粘贴图片" : "请等待会话连接并加载完成后再粘贴图片");
     return;
   }
-  try {
-    validateImage(file);
-    const transfer = new DataTransfer();
-    transfer.items.add(file);
-    $("image").files = transfer.files;
-    renderAttachment();
-    clearError();
-  } catch (e) {
-    error(e);
-  }
+  try { appendImages(files); } catch (e) { error(e); }
 });
 $("create").onclick = $("mobile-new").onclick = () => newConversation();
 $("nav-back").onclick = () => navigateBy(-1).catch(error);
@@ -2825,11 +2815,7 @@ api("/api/agents")
       takenDrafts.clear();
       for (const [key, value] of saved.taken || []) takenDrafts.set(key, value);
       setPromptValue(saved.prompt || "");
-      if (saved.file) {
-        const dt = new DataTransfer();
-        dt.items.add(saved.file);
-        $("image").files = dt.files;
-      }
+      setImages(saved.files ?? (saved.file ? [saved.file] : []));
       renderAttachment();
       await clearRecovery();
     }
@@ -2858,7 +2844,7 @@ setInterval(async () => {
       busy:
         !!document.querySelector("dialog[open]") ||
         !!$("prompt").value ||
-        !!$("image").files[0] ||
+        !!composerImages[0] ||
         busy.size > 0 ||
         [...draft.values()].some(Boolean),
     });

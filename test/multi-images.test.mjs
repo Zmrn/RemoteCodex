@@ -1,0 +1,44 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { clipboardImages } from "../public/clipboard-images.mjs";
+import { IMAGE_LIMITS, validateImageBatch, imagesFromBody, imagePayload } from "../public/image-input.mjs";
+import { Bridge, ROOT } from "../src/bridge.mjs";
+test("clipboard returns every image once across files/items views; limits reject the whole batch", () => {
+  const a={type:"image/png",size:42}, b={type:"image/jpeg",size:100};
+  assert.deepEqual(clipboardImages({files:[a,b],items:[{kind:"file",getAsFile:()=>({...a})}]}),[a,b]);
+  assert.deepEqual(clipboardImages({items:[a,b].map(f=>({kind:"file",getAsFile:()=>f}))}),[a,b]);
+  assert.throws(()=>validateImageBatch(Array(21).fill(a)),/20/);
+  assert.throws(()=>validateImageBatch([{...a,size:IMAGE_LIMITS.fileBytes+1}]),/5 MB/);
+  assert.throws(()=>validateImageBatch(Array(4).fill({...a,size:IMAGE_LIMITS.fileBytes})),/10 MB/);
+  assert.throws(()=>validateImageBatch([a,{type:"image/gif",size:20}]),/PNG/);
+  assert.equal(validateImageBatch(Array(20).fill(a)).length,20);
+});
+test("multi-image wire format requires target capability and rejects ambiguous or malformed input", () => {
+  const a="data:image/png;base64,AAAA",b="data:image/jpeg;base64,AQID";
+  assert.deepEqual(imagePayload([a],false),{imageDataUrl:a});
+  assert.throws(()=>imagePayload([a,b],false),/0.10.4/);
+  assert.deepEqual(imagesFromBody(imagePayload([a,b],true)),[a,b]);
+  assert.throws(()=>imagesFromBody({imageDataUrls:[a,b],imageDataUrl:a}),/Conflicting/);
+  assert.throws(()=>imagesFromBody({imageDataUrls:[a,42]}),/Invalid/);
+  assert.throws(()=>imagesFromBody({imageDataUrls:["data:image/png;base64,A"]}),/Invalid/);
+  const large="data:image/png;base64,"+Buffer.alloc(5*1024*1024).toString("base64");
+  assert.equal(imagesFromBody({imageDataUrls:[large,large]}).length,2);
+  assert.throws(()=>imagesFromBody({imageDataUrls:[large,large,large]}),/10 MB/);
+});
+test("native multi-image send uses one official owner turn with ordered images and ordered dedup hash", async () => {
+  const dir=fs.mkdtempSync(path.join(ROOT,"test/scratch/multi-send-"));
+  const b=new Bridge(dir),id="77777777-7777-4777-8777-777777777777",owner="image-test-owner",calls=[];
+  b.connected=true;b.follow=async()=>({handledByClientId:owner});
+  b.codexThread=async()=>({thread:{id,kind:"codex",status:{type:"idle"}}});
+  b.desktop={identity:{appToolsPipe:{image:"OpenAI.Codex_26.901.6511.0_x64__"}},catalog:[{namespace:"codex_app",name:"send_message_to_thread",inputSchema:{properties:{model:{description:"gpt-5.4-mini (Fixture; supported reasoning efforts: low, medium)."}}}}],ipc:{request:async(method,params,options)=>{calls.push({method,params,options});return {handledByClientId:owner,result:{result:{turn:{id:"same-turn"}}}};}}};
+  const urls=["data:image/png;base64,AAAA","data:image/jpeg;base64,AQID"];
+  await b.nativeSend(id,"image-send-001","describe in order",urls);
+  await b.nativeSend(id,"image-send-001","describe in order",urls);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].method,"thread-follower-start-turn");
+  assert.equal(calls[0].options.targetClientId,owner);
+  assert.deepEqual(calls[0].params.turnStart.request.input.filter(i=>i.type==="image").map(i=>i.url),urls);
+  await assert.rejects(b.nativeSend(id,"image-send-001","describe in order",[...urls].reverse()));
+});

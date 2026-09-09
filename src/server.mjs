@@ -1,3 +1,4 @@
+import { imagesFromBody, REQUEST_BYTES } from "../public/image-input.mjs";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -33,10 +34,12 @@ export async function startServer({
     ["/app.js", "text/javascript; charset=utf-8"],
     ["/modes.mjs", "text/javascript; charset=utf-8"],
     ["/ui.mjs", "text/javascript; charset=utf-8"],
+    ["/markdown-images.mjs", "text/javascript; charset=utf-8"],
     ["/citations.mjs", "text/javascript; charset=utf-8"],
     ["/message-content.mjs", "text/javascript; charset=utf-8"],
     ["/conversation-history.mjs", "text/javascript; charset=utf-8"],
     ["/reconnect.mjs", "text/javascript; charset=utf-8"],
+    ["/image-input.mjs", "text/javascript; charset=utf-8"],
     ["/clipboard-images.mjs", "text/javascript; charset=utf-8"],
     ["/help-updates.mjs", "text/javascript; charset=utf-8"],
     ["/image-viewer.mjs", "text/javascript; charset=utf-8"],
@@ -109,7 +112,7 @@ export async function startServer({
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
     );
     const expected = "127.0.0.1:" + server.address().port;
     if (
@@ -213,7 +216,7 @@ export async function startServer({
           });
           return res.end(file.bytes);
         }
-        if (match[2] === "queue") return json(res, 200, bridge.queue.read(id));
+        if (match[2] === "queue") return json(res, 200, bridge.queue.read(id, url.searchParams.get("images") === "multi-v1"));
         if (!match[2]) {
           if (url.searchParams.get("paging") === "items-v1")
             return json(
@@ -289,7 +292,7 @@ export async function startServer({
         chunks = [];
       for await (const chunk of req) {
         total += chunk.length;
-        if (total > 8 * 1024 * 1024)
+        if (total > REQUEST_BYTES)
           return json(res, 413, { error: "Request too large" });
         chunks.push(chunk);
       }
@@ -376,16 +379,16 @@ export async function startServer({
             await bridge.updateSettings(id, body.requestId, body.settings),
           );
         if (match[2] === "messages") {
-          if (body.mode === "chat") return json(res, 200, await bridge.chatSend(id, body.requestId, body.prompt, body.imageDataUrl, body.settings));
+          const images = imagesFromBody(body);
+          if (body.mode === "chat") return json(res, 200, await bridge.chatSend(id, body.requestId, body.prompt, images, body.settings));
           if (body.mode && body.mode !== "codex") throw Error("Unknown conversation mode");
           bridge.guard(id);
-          if (body.imageDataUrl)
-            saveUpload(path.join(bridge.dataDir, "uploads"), body.imageDataUrl);
+          for (const url of images) saveUpload(path.join(bridge.dataDir, "uploads"), url);
           const result = await bridge.nativeSend(
             id,
             body.requestId,
             body.prompt,
-            body.imageDataUrl,
+            images,
             body.settings,
           );
           if (result.status === "accepted")

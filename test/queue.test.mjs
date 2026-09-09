@@ -211,3 +211,26 @@ test("steer acknowledgement uses same turn; uncertain steering is saved and neve
   assert.equal(requests.length, count);
   assert.equal(q.read(id).recoveries[0].state, "steer-unknown");
 });
+
+test("multiple images survive official queue enqueue, take, restart recovery and same-turn steer in order", async () => {
+  const {q,b,requests}=fixture();
+  const urls=["data:image/png;base64,AAAA", "data:image/jpeg;base64,AQID", "data:image/webp;base64,BAUG"];
+  const body={action:"enqueue",prompt:"all images",imageDataUrls:urls,revision:q.read(id).revision};
+  await q.mutate(id,"multi-enqueue-1",body);
+  assert.deepEqual(q.read(id).messages[0].imageDataUrls,urls);
+  assert.equal(q.read(id,false).messages[0].editable,false,"old clients cannot take a partially supported image draft");
+  const ownerImages=requests[0].params.state[id][0].context.imageAttachments;
+  assert.deepEqual(ownerImages.map(i=>i.src),urls);
+  assert.equal(new Set(ownerImages.map(i=>i.id)).size,3);
+  await q.mutate(id,"multi-enqueue-1",body);assert.equal(requests.length,1);
+  await assert.rejects(q.mutate(id,"multi-enqueue-1",{...body,imageDataUrls:[...urls].reverse()}));
+  const taken=await q.mutate(id,"multi-take-1",{action:"take",messageId:"multi-enqueue-1",revision:q.read(id).revision});
+  assert.deepEqual(taken.result.draft.imageDataUrls,urls);
+  const recovered=new Bridge(b.dataDir).db.queueRecoveries["multi-take-1"].message;
+  assert.deepEqual(recovered.context.imageAttachments.map(i=>i.src),urls);
+  await q.mutate(id,"multi-enqueue-2",{...body,revision:q.read(id).revision,recoveryId:"multi-take-1"});
+  await q.mutate(id,"multi-steer-1",{action:"steer",messageId:"multi-enqueue-2",revision:q.read(id).revision});
+  assert.equal(requests.at(-1).method,"thread-follower-steer-turn");
+  assert.equal(requests.at(-1).opts.targetClientId,owner);
+  assert.deepEqual(requests.at(-1).params.input.filter(i=>i.type==="image").map(i=>i.url),urls);
+});

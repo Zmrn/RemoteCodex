@@ -1,20 +1,16 @@
+import { validateImageUrls, imagesFromBody } from "../public/image-input.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { createHash } from "node:crypto";
 export const queueRevision = (messages) =>
   createHash("sha256").update(JSON.stringify(messages)).digest("hex");
-const imagePattern = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 export function composeQueuedMessage(id, prompt, cwd, imageDataUrl) {
   if (typeof cwd !== "string" || !cwd.trim())
     throw Error("官方会话工作目录未知");
   if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000)
     throw Error("Invalid message");
-  if (
-    imageDataUrl &&
-    (!imagePattern.test(imageDataUrl) || imageDataUrl.length > 7 * 1024 * 1024)
-  )
-    throw Error("Invalid queued image");
+  const images = validateImageUrls(imageDataUrl);
   return {
     id,
     text: prompt,
@@ -23,9 +19,7 @@ export function composeQueuedMessage(id, prompt, cwd, imageDataUrl) {
       addedFiles: [],
       fileAttachments: [],
       ideContext: null,
-      imageAttachments: imageDataUrl
-        ? [{ id: id + "-image", src: imageDataUrl, filename: "image.png" }]
-        : [],
+      imageAttachments: images.map((src, index) => ({ id: id + "-image-" + index, src, filename: "image-" + (index + 1) + "." + src.slice(11, src.indexOf(";")) })),
       commentAttachments: [],
       workspaceRoots: [cwd],
     },
@@ -56,21 +50,20 @@ export function editableQueueMessage(message) {
     c.untrustedAppMessage ||
     c.isImageEditFollowUp;
   const images = c.imageAttachments ?? [];
-  return (
-    !complex &&
-    images.length <= 1 &&
-    images.every((i) => typeof i.src === "string" && imagePattern.test(i.src))
-  );
+  if (complex) return false;
+  try { validateImageUrls(images.map(i => i.src)); return true; }
+  catch { return false; }
 }
-export function publicQueueMessage(m) {
-  const editable = editableQueueMessage(m);
+export function publicQueueMessage(m, multiImageInput = true) {
+  const editable = editableQueueMessage(m) && (multiImageInput || (m.context?.imageAttachments?.length ?? 0) <= 1);
   return {
     id: m.id,
     text: m.text,
     createdAt: m.createdAt,
     pausedReason: m.pausedReason ?? null,
     editable,
-    imageDataUrl: editable
+    imageDataUrls: editable ? (m.context?.imageAttachments ?? []).map(i => i.src) : [],
+    imageDataUrl: editable && (m.context?.imageAttachments?.length ?? 0) <= 1
       ? (m.context?.imageAttachments?.[0]?.src ?? null)
       : null,
     attachmentCount:
@@ -139,7 +132,7 @@ export class OfficialQueue {
       throw Error("官方队列格式未知");
     return messages;
   }
-  read(id) {
+  read(id, multiImageInput = true) {
     this.bridge.requireConnection();
     const live = this.live.get(id),
       verified = !!live && live.owner === this.bridge.owners?.get(id);
@@ -150,13 +143,13 @@ export class OfficialQueue {
       confirmed: !!verified,
       observedAt: new Date().toISOString(),
       revision,
-      messages: messages.map(publicQueueMessage),
+      messages: messages.map(m => publicQueueMessage(m, multiImageInput)),
       recoveries: Object.entries(this.bridge.db.queueRecoveries ?? {})
         .filter(([, r]) => r.threadId === id)
         .map(([key, r]) => ({
           recoveryId: key,
           state: r.state,
-          draft: publicQueueMessage(r.message),
+          draft: publicQueueMessage(r.message, multiImageInput),
         })),
     };
   }
@@ -229,13 +222,14 @@ export class OfficialQueue {
     }
     if (!["enqueue", "take", "delete", "steer"].includes(body.action))
       throw Error("Invalid queue operation");
+    const images = imagesFromBody(body);
     const payload = {
       id,
       action: body.action,
       messageId: body.messageId,
       prompt: body.prompt,
-      imageHash: body.imageDataUrl
-        ? createHash("sha256").update(body.imageDataUrl).digest("hex")
+      imageHash: images.length
+        ? createHash("sha256").update(images.length === 1 ? images[0] : JSON.stringify(images)).digest("hex")
         : null,
     };
     return this.locked(id, () =>
@@ -257,10 +251,12 @@ export class OfficialQueue {
               key,
               body.prompt,
               r.thread.cwd,
-              body.imageDataUrl,
+              images,
             );
+            const next = [...messages, message];
+            if (Buffer.byteLength(JSON.stringify(next)) > 24 * 1024 * 1024) throw Error("官方队列图片总量过大，请先发送或取回已有队列消息");
             dispatch();
-            await this.write(id, owner, [...messages, message]);
+            await this.write(id, owner, next);
             this.clearRecovery(id, body.recoveryId);
             return { threadId: id, messageId: key, disposition: "queued" };
           }
@@ -321,8 +317,7 @@ export class OfficialQueue {
               text_elements: [],
             },
           ];
-          if (draft.imageDataUrl)
-            input.push({ type: "image", url: draft.imageDataUrl });
+          for (const url of draft.imageDataUrls) input.push({ type: "image", url });
           try {
             b.db.queueRecoveries[key].state = "steer-unknown";
             b.save();

@@ -181,6 +181,14 @@ test("authenticated two-hop transport forwards exact writes, SSE and original by
     });
     assert.deepEqual(await r.json(), body);
     assert.equal(writes, 1);
+    // Two 4 MiB images exceed the former 8 MiB JSON limit after base64.
+    const many = { requestId: "multi-two-hop", prompt: "fixture", imageDataUrls: [0, 1].map(n => "data:image/png;base64," + Buffer.alloc(4 * 1024 * 1024, n).toString("base64")) };
+    r = await fetch(via + "/api/threads/probe/messages", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(many),
+    });
+    assert.equal(r.status, 200);
+    assert.deepEqual(await r.json(), many);
+    assert.equal(writes, 2);
     r = await fetch(via + "/api/threads/probe/file?name=image.png");
     assert.deepEqual(Buffer.from(await r.arrayBuffer()), binary);
     r = await fetch(via + "/api/events");
@@ -195,7 +203,7 @@ test("authenticated two-hop transport forwards exact writes, SSE and original by
     });
     assert.equal(r.status, 502);
     assert.equal((await r.json()).confirmed, false);
-    assert.equal(writes, 2);
+    assert.equal(writes, 3);
     await assert.rejects(
       () =>
         startRemoteListener({
