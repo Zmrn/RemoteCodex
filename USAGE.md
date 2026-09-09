@@ -33,4 +33,5 @@ adb -s emulator-5580 shell am instrument -w -e stage usage com.anso.remotecodex.
 - 已通过：生产界面浏览器测试，验证普通 Codex 5h/周排序、Spark 明确标注、各自的重置时间、切换设备后的迟到响应隔离，以及手机菜单边界；项目选择回归通过。
 - 已通过：API 35 Android 隔离模拟器的 `stage=usage`，10 项原生 WebView 检查；未安装到物理手机。
 - 已通过：Windows 单 EXE 在 PATH 仅含 System32 时完成内置运行库与官方桌面只读自检。
-- 已通过：同步构建并签名发布 0.10.9 APK/EXE，更新服务器每个平台保留一份固定名称资源。真实 Plus/Pro 设备升级后的读取结果另附于完成验证后。
+- 已通过：同步构建并签名发布 0.10.9 APK/EXE，更新服务器每个平台保留一份固定名称资源。
+- 已通过：本机与笔记本均已自动升级到 0.10.9，官方连接正常，两个已保存设备均保留。真实本机返回 `planType=pro`，普通 `codex` 只有 10080 分钟窗口，主显示周额度；笔记本返回 `planType=plus`，普通 `codex` 同时有 300 与 10080 分钟窗口，主显示 5h。Spark 未替代主显示。脱敏验证及当时数值保存在忽略目录 `work/usage-deployed-result.json`，不将具体账户用量提交 Git。
