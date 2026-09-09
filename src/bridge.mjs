@@ -6,7 +6,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { Desktop, localContext } from "./desktop.mjs";
 import { applyPatches, runtimeStatus, mergeLiveTurnItems } from "./state.mjs";
-import { weeklyUsage } from "./usage.mjs";
+import { accountUsage } from "./usage.mjs";
 import { OfficialQueue, composeQueuedMessage } from "./queue.mjs";
 import { assertProbeTarget, testExcludedThreadIds } from "./probe-safety.mjs";
 import { DATA_DIR } from "./runtime.mjs";
@@ -203,7 +203,7 @@ export class Bridge extends EventEmitter {
     this.requireConnection();
     if (desktop !== this.desktop)
       throw Error("额度读取期间连接已更换，请重新读取");
-    return weeklyUsage(raw);
+    return accountUsage(raw);
   }
   async updateSettings(id, key, input) {
     const read = await this.codexThread(id);

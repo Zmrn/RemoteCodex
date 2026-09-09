@@ -1,5 +1,7 @@
 # Android 控制端
 
+0.10.9 的设备菜单同时显示普通 Codex 的 5h 和周额度。Plus 主显示优先 5h，Pro 主额度只提供周窗口时显示周额度；Spark 独立额度只在详情出现。两类窗口由目标电脑的官方数据识别，被控 Windows 同样需更新到 0.10.9。复测为 `stage=usage`，见 `USAGE.md`。
+
 0.10.8 在 Codex 新对话的输入框上方增加项目下拉，可搜索当前电脑的官方项目，选择后在其当前目录/分支本地执行；按设备保留选择。被控电脑也需更新到 0.10.8。Android WebView 的设备隔离、下拉交互与横竖屏边界已在隔离模拟器验证，见 `PROJECT-CREATION.md`；此更新不包含仍暂停的 Chat 新建/模型联动。
 
 安装 `dist/RemoteCodex.apk`（固定文件名）。支持 Android 8.0 / API 26 及以上，使用系统 Android System WebView；较旧系统请保持 WebView 更新。APK 无原生 CPU 库，可在 ARM64、ARM 和 x86 系列设备上安装；本轮实际运行验证使用 Android 15 / API 35 x86_64 隔离模拟器，未安装到用户物理手机。

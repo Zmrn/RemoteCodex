@@ -11,6 +11,7 @@ import { clipboardImages } from "./clipboard-images.mjs";
 import { HelpUpdates } from "./help-updates.mjs";
 import { zoomableImage } from "./image-viewer.mjs";
 import { ProjectPicker } from "./project-picker.mjs";
+import { renderQuota } from "./usage-view.mjs";
 import {
   windowId,
   saveRecovery,
@@ -734,81 +735,8 @@ function resetUsage(state = "loading", reason = "") {
   renderUsage();
 }
 function renderUsage() {
-  const details = $("usage-details");
-  details.replaceChildren();
   $("refresh-usage").disabled = usagePending || !status.connected;
-  const weekly = usageData?.weekly ?? [];
-  const main = weekly.find((w) => w.limitId === "codex") ?? weekly[0];
-  const valid = usageState === "available" && status.connected;
-  const percent = (value) =>
-    new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 }).format(value) +
-    "%";
-  $("agent-quota").textContent =
-    valid && main?.remainingPercent !== null && main
-      ? (main.limitId === "codex" ? "周额度剩余 " : main.label + " 周剩余 ") +
-        percent(main.remainingPercent)
-      : usageState === "loading"
-        ? "周额度 · 读取中…"
-        : "周额度 · 未知";
-  const observed = usageData?.observedAt;
-  $("usage-observed").textContent =
-    observed && valid
-      ? "官方实时接口 · " +
-        new Date(observed).toLocaleTimeString("zh-CN") +
-        " 读取"
-      : "";
-  $("agent-quota").title = valid
-    ? "所选设备登录账号的共享额度；" + $("usage-observed").textContent
-    : usageReason || "正在读取官方账号额度";
-  if (!valid) {
-    details.append(
-      node(
-        "div",
-        "usage-unknown",
-        usageState === "loading"
-          ? "正在读取…"
-          : usageReason || "官方未提供可用的周额度",
-      ),
-    );
-    return;
-  }
-  for (const w of weekly) {
-    const row = node("div", "usage-row");
-    const line = node("div", "usage-value");
-    line.append(
-      node("span", "", w.label),
-      node(
-        "strong",
-        "",
-        w.remainingPercent === null ? "未知" : percent(w.remainingPercent),
-      ),
-    );
-    row.append(line);
-    if (w.remainingPercent !== null) {
-      const bar = node("progress");
-      bar.max = 100;
-      bar.value = w.remainingPercent;
-      bar.setAttribute("aria-label", w.label + " 周额度剩余");
-      row.append(bar);
-    }
-    if (w.resetsAt) {
-      const reset = new Date(w.resetsAt * 1000);
-      if (Number.isFinite(reset.getTime()))
-        row.append(
-          node(
-            "div",
-            "usage-reset",
-            reset.toLocaleString("zh-CN", {
-              month: "long",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            }) + " 重置",
-          ),
-        );
-    }
-    details.append(row);
-  }
+  renderQuota({ $ , data: usageData, state: usageState, connected: status.connected, reason: usageReason });
 }
 async function refreshUsage() {
   if (!status.connected || usagePending) return;
@@ -830,10 +758,10 @@ async function refreshUsage() {
       return;
     usageData = result;
     usageState =
-      result.status === "available" && Array.isArray(result.weekly)
+      result.status === "available" && (Array.isArray(result.weekly) || Array.isArray(result.fiveHour))
         ? "available"
         : "unknown";
-    usageReason = "官方未提供可用的周额度";
+    usageReason = "官方未提供可用的额度";
     usageFetchedAt = Date.now();
   } catch {
     if (id !== agentId || g !== generation || sequence !== usageSequence)

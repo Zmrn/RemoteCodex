@@ -161,6 +161,21 @@ public final class Probe extends Instrumentation {
       runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
       until("document.body.classList.contains('mobile-layout') && !document.body.classList.contains('drawer-open')",15);
       require(true,"portrait drawer remains closed; no real task writes");
+    }else if(stage.equals("usage")){
+      js("window.__usageProbe=null;import(location.origin+'/usage-view.mjs').then(({renderQuota})=>{const root=document.createElement('div');root.id='usage-probe';root.style.cssText='position:fixed;inset:0;z-index:900;background:#161e2a;padding:24px;overflow:auto';for(const id of ['agent-quota','usage-details','usage-observed','usage-account-note']){const n=document.createElement('div');n.dataset.quota=id;root.append(n)}document.body.append(root);const $=id=>root.querySelector('[data-quota='+id+']');const row=(duration,value,id='codex')=>({limitId:id,label:id==='codex'?'Codex':'Spark',remainingPercent:value,windowDurationMins:duration,resetsAt:1789435536});const data={schemaVersion:2,planType:'plus',observedAt:new Date().toISOString(),fiveHour:[row(300,32),row(300,99,'spark')],weekly:[row(10080,79)]};const draw=connected=>renderQuota({$,data,state:'available',connected});draw(true);window.__usageProbe={$,data,draw}}).catch(e=>window.__usageProbe={error:String(e)})");
+      until("window.__usageProbe!=null",15);
+      require("true".equals(js("!window.__usageProbe.error")),"APK loads bundled quota renderer: "+js("window.__usageProbe.error||'ready'"));
+      require("true".equals(js("window.__usageProbe.$('agent-quota').textContent==='5h 额度剩余 32%' && window.__usageProbe.$('usage-account-note').textContent.startsWith('Plus')")),"Plus footer prioritizes ordinary Codex five-hour quota");
+      require("true".equals(js("(()=>{const rows=window.__usageProbe.$('usage-details').querySelectorAll('.usage-row');return rows.length===3&&rows[0].dataset.limitId==='codex'&&rows[0].dataset.duration==='300'&&rows[1].dataset.duration==='10080'&&rows[2].dataset.limitId==='spark'&&rows[0].querySelector('progress').value===32})()")),"Android details put Codex five-hour and week before separate Spark quota");
+      js("window.__usageProbe.data.planType='pro';window.__usageProbe.data.fiveHour.shift();window.__usageProbe.draw(true)");
+      require("true".equals(js("window.__usageProbe.$('agent-quota').textContent==='周额度剩余 79%' && window.__usageProbe.$('usage-account-note').textContent.startsWith('Pro')")),"Pro footer uses Codex week and never substitutes Spark five-hour quota");
+      js("window.__usageProbe.data.planType='plus';window.__usageProbe.data.fiveHour.unshift({limitId:'codex',label:'Codex',remainingPercent:0});window.__usageProbe.draw(true)");
+      require("true".equals(js("window.__usageProbe.$('agent-quota').textContent==='5h 额度剩余 0%'")),"exhausted five-hour quota shows zero");
+      js("window.__usageProbe.data.fiveHour[0].remainingPercent=null;window.__usageProbe.draw(true)");
+      require("true".equals(js("window.__usageProbe.$('agent-quota').textContent==='5h 额度 · 未知' && !window.__usageProbe.$('usage-details').querySelector('.usage-row').querySelector('progress')")),"unknown five-hour quota is never replaced by available week");
+      js("window.__usageProbe.draw(false)");
+      require("true".equals(js("window.__usageProbe.$('agent-quota').textContent==='额度 · 未知' && !window.__usageProbe.$('usage-details').querySelector('progress')")),"disconnect clears stale quota percentages");
+      js("document.getElementById('usage-probe').remove()");
     }else if(stage.equals("projects")){
       // Exercise the shipped picker on the real WebView with isolated DOM/data.
       // The existing controller and its real devices/tasks are never changed.
