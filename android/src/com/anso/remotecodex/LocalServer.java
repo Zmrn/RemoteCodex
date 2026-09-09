@@ -16,13 +16,18 @@ public final class LocalServer {
     new Thread(()->{while(!socket.isClosed())try{Socket client=socket.accept();pool.execute(()->handle(client));}catch(Exception ignored){}},"android-view-server").start();
   }
   private static String line(InputStream in)throws Exception{ByteArrayOutputStream b=new ByteArrayOutputStream();int v;while((v=in.read())!=-1){if(v==10)break;if(v!=13)b.write(v);if(b.size()>16384)throw new Exception("HTTP header too large");}return b.toString("ISO-8859-1");}
-  private static byte[] read(InputStream in,int size)throws Exception{if(size<0||size>24*1024*1024)throw new Exception("请求过大");byte[] b=new byte[size];int n=0,k;while(n<size&&(k=in.read(b,n,size-n))>0)n+=k;if(n!=size)throw new EOFException();return b;}
+  private static byte[] read(InputStream in,int size,int max)throws Exception{if(size<0||size>max)throw new Exception("请求过大");byte[] b=new byte[size];int n=0,k;while(n<size&&(k=in.read(b,n,size-n))>0)n+=k;if(n!=size)throw new EOFException();return b;}
   private void handle(Socket client){boolean started=false;try{Socket c=client;c.setSoTimeout(15000);InputStream in=c.getInputStream();OutputStream out=c.getOutputStream();String[] first=line(in).split(" ");if(first.length!=3)return;String method=first[0],target=first[1];Map<String,String> h=new HashMap<>();int total=0;for(String s;(s=line(in)).length()>0;){if((total+=s.length())>32768)throw new Exception("HTTP headers too large");int at=s.indexOf(':');if(at>0)h.put(s.substring(0,at).toLowerCase(Locale.ROOT),s.substring(at+1).trim());}
     if(!h.getOrDefault("host","").equals("127.0.0.1:"+socket.getLocalPort())||!Arrays.asList(h.getOrDefault("cookie","").split(";\\s*")).contains("bridgeSession="+session)){reply(out,403,"application/json","{\"error\":\"App session required\"}".getBytes("UTF-8"));return;}
     String source=h.get("origin");if(source!=null&&!origin.equals(source)){reply(out,403,"application/json","{}".getBytes());return;}
     URI uri=new URI(target);String route=uri.getPath();if(route==null||!target.startsWith("/")||target.startsWith("//"))throw new Exception("Invalid path");
     boolean api=route.startsWith("/api/");if(api&&!csrf.equals(h.get("x-bridge-csrf"))){reply(out,403,"application/json","{}".getBytes());return;}
-    if(h.containsKey("transfer-encoding"))throw new Exception("Chunked requests are not supported");byte[] body=read(in,Integer.parseInt(h.getOrDefault("content-length","0")));
+    if(h.containsKey("transfer-encoding"))throw new Exception("Chunked requests are not supported");byte[] body=read(in,Integer.parseInt(h.getOrDefault("content-length","0")),(route.equals("/api/downloads/image")?25:24)*1024*1024);
+    if(route.equals("/api/downloads/image")&&method.equals("POST")){
+      MainActivity a=app.activity.get();if(a==null)throw new Exception("请打开应用后保存文件");
+      String name=android.net.Uri.parse(target).getQueryParameter("name");a.downloadImage(body,name==null?"image.png":name);
+      reply(out,200,"application/json","{\"accepted\":true}".getBytes("UTF-8"));return;
+    }
     if(api&&route.matches("/api/agents/[a-f0-9-]{36}/bridge/.*")){
       String[] parts=route.split("/",6);String id=parts[3],remote="/api/"+parts[5]+(uri.getRawQuery()==null?"":"?"+uri.getRawQuery());
       if(!allowed(method,remote))throw new Exception("此设备操作不支持转发");

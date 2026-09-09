@@ -11,6 +11,7 @@ import { OfficialQueue, composeQueuedMessage } from "./queue.mjs";
 import { assertProbeTarget, testExcludedThreadIds } from "./probe-safety.mjs";
 import { DATA_DIR } from "./runtime.mjs";
 import { MessageMedia } from "./message-media.mjs";
+import { SubscriptionLeases } from "./subscriptions.mjs";
 import { Reconnector } from "../public/reconnect.mjs";
 import {
   ConversationPages,
@@ -56,6 +57,9 @@ export class Bridge extends EventEmitter {
     this.desktopFactory = desktopFactory;
     this.retryDelays = retryDelays;
     this.connectionGeneration = 0;
+    this.subscriptions = new SubscriptionLeases(id => this.releaseSubscription(id));
+    this.subscriptionTimer = setInterval(() => this.subscriptions.prune(), 15000);
+    this.subscriptionTimer.unref();
   }
   save() {
     const tmp = this.stateFile + ".tmp";
@@ -129,7 +133,7 @@ export class Bridge extends EventEmitter {
     for (const id of this.watching) {
       if (generation !== this.connectionGeneration || !this.connected) break;
       try {
-        await this.follow(id);
+        await this.follow(id, undefined, false);
       } catch (e) {
         this.emitEvent("unknown", { threadId: id, reason: e.message });
       }
@@ -137,6 +141,7 @@ export class Bridge extends EventEmitter {
     return desktop.identity;
   }
   disconnect() {
+    this.subscriptions.clear();
     this.connectionGeneration++;
     this.reconnector?.stop();
     this.connecting = null;
@@ -311,14 +316,32 @@ export class Bridge extends EventEmitter {
       }
     }
   }
-  async follow(id) {
+  releaseSubscription(id) {
+    const owner = this.owners?.get(id);
+    if (owner && this.connected) {
+      try { this.desktop.ipc.broadcast('thread-stream-following-changed', { hostId: 'local', conversationId: id, following: false }, 1, [owner]); } catch {}
+    }
+    this.watching.delete(id);
+    this.live.delete(id);
+    this.owners?.delete(id);
+    this.queue.live.delete(id);
+    for (const [key, snapshot] of this.pages.snapshots) if (snapshot.threadId === id) this.pages.snapshots.delete(key);
+  }
+  unfollow(id, viewerId) {
+    if (typeof viewerId !== 'string' || !/^[\w-]{8,160}$/.test(viewerId)) throw Error('Invalid viewer ID');
+    this.subscriptions.remove(id, viewerId);
+    return { released: true };
+  }
+  async follow(id, viewerId, renew = true) {
     this.requireConnection();
+    if (renew) this.subscriptions.touch(id, viewerId);
     this.watching.add(id);
     const desktop = this.desktop;
     const o = await desktop.owner(id);
     this.requireConnection();
-    if (desktop !== this.desktop)
+    if (desktop !== this.desktop || !this.watching.has(id))
       throw Error("Viewer connection changed during follow");
+    this.owners ??= new Map();
     this.owners.set(id, o.handledByClientId);
     desktop.ipc.broadcast(
       "thread-stream-following-changed",
@@ -424,7 +447,7 @@ export class Bridge extends EventEmitter {
       ? { notModified: true, headHash, observedAt: result.observedAt }
       : { ...result, headHash };
   }
-  async once(key, operation, payload, fn) {
+  async once(key, operation, payload, fn, { deferredDispatch = false } = {}) {
     if (typeof key !== "string" || !/^[\w-]{8,100}$/.test(key))
       throw Error("requestId required (8-100 letters/digits/hyphens)");
     const hash = createHash("sha256")
@@ -434,17 +457,26 @@ export class Bridge extends EventEmitter {
     if (old) {
       if (old.hash !== hash)
         throw Error("requestId reused with different content");
-      return { deduplicated: true, ...old };
+      const pending = this.requestFlights?.get(key);
+      if (pending) return { deduplicated: true, ...await pending };
+      if (!deferredDispatch || !["preparing", "rejected"].includes(old.status))
+        return { deduplicated: true, ...old };
     }
     this.db.requests[key] = {
       hash,
       operation,
-      status: "outcome-unknown",
+      status: deferredDispatch ? "preparing" : "outcome-unknown",
       startedAt: new Date().toISOString(),
     };
     this.save();
-    try {
-      const result = await fn();
+    // A persisted preparing/rejected record proves no message was dispatched.
+    // Persist uncertainty synchronously immediately before crossing the owner pipe.
+    const dispatch = () => {
+      this.db.requests[key].status = "outcome-unknown";
+      this.save();
+    };
+    const pending = Promise.resolve().then(async () => { try {
+      const result = await fn(dispatch);
       this.db.requests[key] = {
         ...this.db.requests[key],
         status: "accepted",
@@ -453,10 +485,16 @@ export class Bridge extends EventEmitter {
       this.save();
       return this.db.requests[key];
     } catch (e) {
+      if (this.db.requests[key].status === "preparing")
+        this.db.requests[key].status = "rejected";
       this.db.requests[key].error = e.message;
       this.save();
       throw e;
-    }
+    }});
+    this.requestFlights ??= new Map();
+    this.requestFlights.set(key, pending);
+    try { return await pending; }
+    finally { if (this.requestFlights.get(key) === pending) this.requestFlights.delete(key); }
   }
   async answerQuestions(id, key, input) {
     await this.codexThread(id);
@@ -595,7 +633,7 @@ export class Bridge extends EventEmitter {
       ...modelOverrides(modelInput, parseModels(this.desktop.catalog)),
       ...permissionOverrides(permissionMode),
     };
-    return this.once(key, "create", { prompt, settings }, async () => {
+    return this.once(key, "create", { prompt, settings }, async dispatch => {
       const context =
         permissionMode && permissionMode !== "keep"
           ? await this.permissionContext(permissionMode)
@@ -605,6 +643,7 @@ export class Bridge extends EventEmitter {
         new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) +
         "-" +
         randomUUID().slice(0, 6);
+      dispatch();
       const r = await this.desktop.call(
         "create_thread",
         {
@@ -633,7 +672,7 @@ export class Bridge extends EventEmitter {
         result: r,
       });
       return r;
-    });
+    }, { deferredDispatch: true });
   }
   async permissionContext(mode) {
     this.permissionPreparations ??= new Map();
@@ -720,8 +759,9 @@ export class Bridge extends EventEmitter {
     this.requireConnection();
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000)
       throw Error("Invalid message");
-    return this.once(key, "send", { id, prompt }, async () => {
+    return this.once(key, "send", { id, prompt }, async dispatch => {
       const owner = await this.desktop.owner(id);
+      dispatch();
       const r = await this.desktop.call("send_message_to_thread", {
         threadId: id,
         prompt,
@@ -733,7 +773,7 @@ export class Bridge extends EventEmitter {
         result: r,
       });
       return r;
-    });
+    }, { deferredDispatch: true });
   }
   chatCapabilities() {
     const catalog = this.desktop?.catalog ?? [];
@@ -755,9 +795,7 @@ export class Bridge extends EventEmitter {
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000) throw Error("Invalid message");
     if (validateImageUrls(imageDataUrl).length || (settings && Object.keys(settings).length))
       throw Error("Chat 暂不支持图片或模型/权限参数；请在官方桌面操作");
-    // Journal before checking state: retries of an accepted or uncertain send
-    // must return its original outcome, never submit the prompt a second time.
-    return this.once(key, "chat-send", { id, prompt }, async () => {
+    return this.once(key, "chat-send", { id, prompt }, async dispatch => {
       const desktop = this.desktop;
       const r = await desktop.call("read_thread", { threadId: id, turnLimit: 1 });
       this.requireConnection();
@@ -766,11 +804,12 @@ export class Bridge extends EventEmitter {
       if (r.thread.status?.type !== "idle") throw Error("Chat 正在回复或状态未知，请在官方桌面核对后再发送");
       // No hostId, Codex settings or owner-discovery: the official tool's
       // existing Chat branch loads this exact ID and uses its Chat composer.
+      dispatch();
       const result = await desktop.call("send_message_to_thread", { threadId: id, prompt });
       if (result.threadId !== id) throw Error("Chat send outcome unknown: official task ID mismatch");
       this.emitEvent("chat-send-accepted", { threadId: id, route: "official-app-tools -> desktop Chat composer", officialPid: desktop.identity.officialPid });
       return { threadId: id, source: "official-desktop-chat-send", officialPid: desktop.identity.officialPid };
-    });
+    }, { deferredDispatch: true });
   }
   async open(id) {
     this.guard(id);
@@ -836,7 +875,7 @@ export class Bridge extends EventEmitter {
           ? createHash("sha256").update(images.length === 1 ? images[0] : JSON.stringify(images)).digest("hex")
           : null,
       },
-      async () => {
+      async dispatch => {
         let status = await this.codexThread(id);
         if (
           status.thread.status.type === "notLoaded" &&
@@ -859,6 +898,7 @@ export class Bridge extends EventEmitter {
             throw Error("此会话尚未加载，请先发送文字或在官方桌面打开后再发图");
           // The desktop tool resumes its own existing task. Choose this route
           // before dispatch; never retry a failed native write through it.
+          dispatch();
           const r = await this.desktop.call("send_message_to_thread", {
             threadId: id,
             prompt,
@@ -883,14 +923,16 @@ export class Bridge extends EventEmitter {
             ...(settings.model ? { model: settings.model } : {}),
             ...(settings.effort ? { effort: settings.effort } : {}),
           };
-          await this.updateSettings(
+          const updated = await this.updateSettings(
             id,
             "send-settings-" + createHash("sha256").update(key).digest("hex"),
             update,
           );
+          if (updated.status !== "accepted") throw Error("设置结果未知，消息尚未发送，请在官方桌面核对设置");
         }
         const input = [{ type: "text", text: prompt, text_elements: [] }];
         for (const url of images) input.push({ type: "image", url });
+        dispatch();
         const r = await this.desktop.ipc.request(
           "thread-follower-start-turn",
           {
@@ -920,6 +962,7 @@ export class Bridge extends EventEmitter {
         });
         return r;
       },
+      { deferredDispatch: true },
     );
   }
   async wait(id, timeoutMs = 0) {
@@ -951,6 +994,7 @@ export class Bridge extends EventEmitter {
       protectedThreadIds: [],
       existingCodexWritable: true,
       multiImageInput: true,
+      viewerLeases: true,
       imageLimits: IMAGE_LIMITS,
       chat: this.chatCapabilities(),
       testThreads: this.db.tests,

@@ -6,12 +6,19 @@ const node = (tag, cls, text) => {
   return e;
 };
 export class QuestionsUI {
-  constructor(submit) {
+  constructor(submit, onChange = () => {}) {
     this.submit = submit;
+    this.onChange = onChange;
     this.drafts = new Map();
     this.sending = new Set();
     this.done = new Set();
   }
+  snapshot() { return { drafts: [...this.drafts], done: [...this.done] }; }
+  restore(saved) {
+    this.drafts = new Map(saved?.drafts ?? []);
+    this.done = new Set(saved?.done ?? []);
+  }
+  hasDrafts() { return [...this.drafts].some(([key, answers]) => !this.done.has(key) && Object.values(answers).some(Boolean)); }
   index(turns) {
     this.answers = new Map();
     this.known = new Set(
@@ -45,6 +52,9 @@ export class QuestionsUI {
     const completed =
       questions.every((q) => Object.hasOwn(answers, q.id)) ||
       this.done.has(key);
+    if (completed && !this.done.has(key)) { this.done.add(key); this.onChange(); }
+    card.questionKey = key;
+    card.questionSignature = JSON.stringify({ questions, answers, completed, connected: context.connected, sending: this.sending.has(key) });
     let draft = this.drafts.get(key);
     if (!draft)
       this.drafts.set(
@@ -76,6 +86,7 @@ export class QuestionsUI {
             input.value = label;
             for (const b of options.children)
               b.classList.toggle("selected", b === button);
+            this.onChange();
           };
           button.classList.toggle("selected", draft[q.id] === label);
           options.append(button);
@@ -85,6 +96,9 @@ export class QuestionsUI {
       input.disabled = !context.connected || this.sending.has(key);
       input.oninput = () => {
         draft[q.id] = input.value;
+        for (const button of (input.previousElementSibling?.classList.contains('question-options') ? input.previousElementSibling.children : []))
+          button.classList.toggle('selected', button.textContent === input.value);
+        this.onChange();
       };
       card.append(input);
     }
@@ -120,6 +134,7 @@ export class QuestionsUI {
                 },
           );
           this.done.add(key);
+          this.onChange();
           status.textContent = "已提交到官方会话";
         } catch (e) {
           status.textContent = e.message;

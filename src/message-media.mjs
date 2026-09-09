@@ -24,6 +24,7 @@ export class MessageMedia {
     this.inline = new Map();
     this.inlineBytes = 0;
     this.attachments = new Map();
+    this.recentThreads = new Map();
   }
   addFile(threadId, source, name) {
     // Only exact local paths actually present in a read message become download IDs.
@@ -106,6 +107,18 @@ export class MessageMedia {
     return { id, name: name ?? path.basename(file) };
   }
   decorate(threadId, data, { externalImages = false } = {}) {
+    this.recentThreads.delete(threadId);
+    this.recentThreads.set(threadId, true);
+    while (this.recentThreads.size > 64) {
+      const old = this.recentThreads.keys().next().value;
+      this.recentThreads.delete(old);
+      this.threads.delete(old);
+      this.attachments.delete(old);
+      for (const [key, entry] of this.inline) if (key.startsWith(old + ':')) {
+        this.inlineBytes -= entry.source.length;
+        this.inline.delete(key);
+      }
+    }
     return {
       ...data,
       turns: (data.turns ?? []).map((turn) => ({

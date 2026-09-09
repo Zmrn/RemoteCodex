@@ -45,7 +45,7 @@ public final class MainActivity extends Activity {
   public void message(String text){runOnUiThread(()->Toast.makeText(this,text,Toast.LENGTH_LONG).show());}
   public void installUpdate(){io.execute(()->{try{app.updates.validateReady();runOnUiThread(()->{if(!getPackageManager().canRequestPackageInstalls()){pendingInstall=true;startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:"+getPackageName())));return;}Uri uri=Uri.parse("content://"+getPackageName()+".updates/RemoteCodex.apk");Intent intent=new Intent(Intent.ACTION_VIEW).setDataAndType(uri,"application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);try{startActivity(intent);}catch(Exception e){message("无法打开系统安装器");}});}catch(Exception e){message(e.getMessage());}});}
   public synchronized void download(JSONObject request)throws Exception{if(pendingFile!=null)throw new Exception("请先完成当前文件保存");pendingFile=new File(getCacheDir(),"download-"+java.util.UUID.randomUUID()+".tmp");File target=pendingFile;String name=request.optString("name","attachment").replaceAll("[\\/\\\\\\r\\n]","_");String route=request.optString("route","");String data=request.optString("dataUrl","");if(!route.isEmpty()&&!route.matches("/api/agents/[a-f0-9-]{36}/bridge/threads/[a-f0-9-]{36}/(file|media)\\?.+")){pendingFile=null;throw new Exception("下载路径必须是当前设备的附件接口");}if(route.isEmpty()&&!data.matches("data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=\\r\\n]+")){pendingFile=null;throw new Exception("图片格式不受支持");}
-    io.execute(()->{try{try(OutputStream out=new FileOutputStream(target)){if(!data.isEmpty()){byte[] b=android.util.Base64.decode(data.substring(data.indexOf(',')+1),0);if(b.length>6*1024*1024)throw new Exception("图片过大");out.write(b);}else{URI u=new URI(route);String[] p=u.getPath().split("/",6);String remote="/api/"+p[5]+"?"+u.getRawQuery();HttpURLConnection c=server.remote(p[3],remote,"GET",new byte[0],null);try{if(c.getResponseCode()!=200)throw new Exception("原文件不可用");try(InputStream in=c.getInputStream()){byte[] b=new byte[65536];long total=0;int n;while((n=in.read(b))!=-1){total+=n;if(total>256L*1024*1024)throw new Exception("附件超过 256 MB");out.write(b,0,n);}}}finally{c.disconnect();}}}
+    io.execute(()->{try{try(OutputStream out=new FileOutputStream(target)){if(!data.isEmpty()){byte[] b=android.util.Base64.decode(data.substring(data.indexOf(',')+1),0);if(b.length>25*1024*1024)throw new Exception("图片超过 25 MiB 下载上限");out.write(b);}else{URI u=new URI(route);String[] p=u.getPath().split("/",6);String remote="/api/"+p[5]+"?"+u.getRawQuery();HttpURLConnection c=server.remote(p[3],remote,"GET",new byte[0],null);try{if(c.getResponseCode()!=200)throw new Exception("原文件不可用");try(InputStream in=c.getInputStream()){byte[] b=new byte[65536];long total=0;int n;while((n=in.read(b))!=-1){total+=n;if(total>256L*1024*1024)throw new Exception("附件超过 256 MB");out.write(b,0,n);}}}finally{c.disconnect();}}}
       runOnUiThread(()->startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE,name),31));
     }catch(Exception e){target.delete();pendingFile=null;message(e.getMessage());}});
   }
@@ -56,6 +56,20 @@ public final class MainActivity extends Activity {
     if(clip!=null)for(int i=0;i<clip.getItemCount();i++){Uri uri=clip.getItemAt(i).getUri();if(uri!=null)uris.add(uri);}
     if(uris.isEmpty()&&data.getData()!=null)uris.add(data.getData());
     return uris.isEmpty()?null:uris.toArray(new Uri[0]);
+  }
+  public synchronized void downloadImage(byte[] bytes,String filename)throws Exception{
+    if(bytes.length>25*1024*1024)throw new Exception("图片超过 25 MiB 下载上限");
+    boolean png=bytes.length>=8&&(bytes[0]&255)==137&&bytes[1]==80&&bytes[2]==78&&bytes[3]==71&&bytes[4]==13&&bytes[5]==10&&bytes[6]==26&&bytes[7]==10;
+    boolean jpeg=bytes.length>=3&&(bytes[0]&255)==255&&(bytes[1]&255)==216&&(bytes[2]&255)==255;
+    boolean webp=bytes.length>=12&&new String(bytes,0,4,java.nio.charset.StandardCharsets.US_ASCII).equals("RIFF")&&new String(bytes,8,4,java.nio.charset.StandardCharsets.US_ASCII).equals("WEBP");
+    if(!png&&!jpeg&&!webp)throw new Exception("原文件不是 PNG/JPEG/WebP 图片");
+    if(pendingFile!=null)throw new Exception("请先完成当前文件保存");
+    File target=new File(getCacheDir(),"download-"+java.util.UUID.randomUUID()+".tmp");pendingFile=target;
+    String name=filename.replaceAll("[\\/\\\\\\r\\n]","_");
+    io.execute(()->{try{
+      try(OutputStream out=new FileOutputStream(target)){out.write(bytes);}
+      runOnUiThread(()->startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(png?"image/png":jpeg?"image/jpeg":"image/webp").putExtra(Intent.EXTRA_TITLE,name),31));
+    }catch(Exception e){target.delete();pendingFile=null;message(e.getMessage());}});
   }
   @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==30&&chooser!=null){chooser.onReceiveValue(selectedImages(result,data));chooser=null;}if(request==31&&pendingFile!=null){File source=pendingFile;pendingFile=null;if(result==RESULT_OK&&data!=null&&data.getData()!=null){Uri uri=data.getData();io.execute(()->{try(InputStream in=new FileInputStream(source);OutputStream out=getContentResolver().openOutputStream(uri)){byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1)out.write(b,0,n);message("已保存原文件");}catch(Exception e){message("保存失败，请重试");}finally{source.delete();}});}else source.delete();}}
 }

@@ -14,7 +14,6 @@ import {
   windowId,
   saveRecovery,
   readRecovery,
-  clearRecovery,
 } from "./update-recovery.mjs";
 const $ = (id) => document.getElementById(id),
   csrf = document.querySelector("meta[name=bridge-csrf]").content;
@@ -30,11 +29,17 @@ if (android) {
     event.preventDefault();
     event.stopImmediatePropagation();
     try {
+      if (link.dataset.downloadRoute) {
+        await api('/api/downloads/start', { route: link.dataset.downloadRoute, name: link.download || 'image.png' });
+        toast('正在读取原图，随后选择保存位置');
+        return;
+      }
       if (!/^(blob:|data:image\/)/.test(link.href)) throw Error('此下载格式暂不支持');
       const blob = await (await fetch(link.href)).blob();
-      if (blob.size > 6 * 1024 * 1024) throw Error('图片超过 6 MB，请从附件下载原文件');
-      const dataUrl = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(blob); });
-      await api('/api/downloads/start', { dataUrl, name: link.download || 'image.png' });
+      if (blob.size > 25 * 1024 * 1024) throw Error('图片超过 25 MiB 下载上限');
+      const response = await fetch('/api/downloads/image?name=' + encodeURIComponent(link.download || 'image.png'), { method: 'POST', headers: { 'X-Bridge-CSRF': csrf, 'Content-Type': 'application/octet-stream' }, body: blob, signal: AbortSignal.timeout(75000) });
+      if (!response.ok) throw Error((await response.json()).error || '图片保存失败');
+      toast('请选择原图保存位置');
     } catch (e) { error(e); }
   }, true);
 }
@@ -61,6 +66,9 @@ let agents = [],
   viewerRecovery = null,
   streamLastSeen = 0,
   readTimer = null,
+  readRetryTimer = null,
+  readFailures = 0,
+  viewingSubscription = null,
   busy = new Set(),
   draft = new Map(),
   connectionStates = new Map(),
@@ -110,7 +118,13 @@ async function backupDrafts() {
     settings: [...pendingSettings],
     prompt: $("prompt").value,
     files: [...composerImages],
+    questions: questionUI.snapshot(),
   });
+}
+let draftBackupTimer;
+function scheduleDraftBackup() {
+  clearTimeout(draftBackupTimer);
+  draftBackupTimer = setTimeout(() => backupDrafts().catch(error), 200);
 }
 window.remoteCodexSaveDrafts = backupDrafts;
 let queueWritable = false;
@@ -308,6 +322,10 @@ async function api(route, body, options = {}) {
   }
 }
 function agentApi(id, route, body, options = {}) {
+  if (route.endsWith('/follow') && body && body.following !== false && id === agentId && route === '/threads/' + selected + '/follow') {
+    body = { ...body, viewerId: windowId + '-' + viewEpoch };
+    viewingSubscription = { agent: id, thread: selected, viewerId: body.viewerId, leased: status.viewerLeases === true };
+  }
   // Cancel viewing requests only. Never cancel or replay a dispatched task write.
   const signals = options.signal ? [options.signal] : [];
   if (body === undefined && id === agentId) {
@@ -321,9 +339,13 @@ function agentApi(id, route, body, options = {}) {
   });
 }
 function resetTaskReads() {
+  releaseViewing();
   readSequence++;
   clearTimeout(readTimer);
   readTimer = null;
+  clearTimeout(readRetryTimer);
+  readRetryTimer = null;
+  readFailures = 0;
   taskReads.abort();
   taskReads = new AbortController();
   readInFlight = null;
@@ -333,7 +355,7 @@ function resetTaskReads() {
 }
 function scheduleRead(older = false) {
   // Throttle instead of debounce: continuous events must still make progress.
-  if (readTimer !== null) return;
+  if (readTimer !== null || readRetryTimer !== null) return;
   readTimer = setTimeout(() => {
     readTimer = null;
     read(older);
@@ -356,7 +378,7 @@ const questionUI = new QuestionsUI(async (context, payload) => {
   j.clear();
   if (context.agent === agentId && context.id === selected)
     setTimeout(() => read(), 250);
-});
+}, scheduleDraftBackup);
 const messageImageCache = new Map();
 const messageImageObserver = new IntersectionObserver(
   (entries) => {
@@ -379,6 +401,7 @@ function messageImage(ref) {
   box.append(img, link);
   const imageAgent = agentId,
     imageThread = selected;
+  if (ref.id) img.dataset.downloadRoute = link.dataset.downloadRoute = base(imageAgent) + '/threads/' + imageThread + '/media?id=' + encodeURIComponent(ref.id);
   let started = false;
   img.style.minHeight = "100px";
   box.loadImage = () => {
@@ -1289,7 +1312,7 @@ function renderItem(item) {
 function displayTurns() {
   messageImageObserver.disconnect();
   questionUI.index(turns);
-  $("messages").replaceChildren();
+  const incoming = document.createElement('div');
   for (const t of [...turns].sort(
     (a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0),
   )) {
@@ -1396,7 +1419,35 @@ function displayTurns() {
       );
       if (card) wrapper.append(card);
     }
-    $("messages").append(wrapper);
+    incoming.append(wrapper);
+  }
+  reconcileMessages($("messages"), [...incoming.children]);
+}
+function releaseViewing() {
+  const previous = viewingSubscription;
+  viewingSubscription = null;
+  if (previous?.leased) api(base(previous.agent) + '/threads/' + previous.thread + '/follow', { viewerId: previous.viewerId, following: false }, { keepalive: true }).catch(() => {});
+}
+function reconcileMessages(parent, incoming) {
+  const key = node => node.dataset.turnId ? 'turn:' + node.dataset.turnId : node.questionKey ? 'question:' + node.questionKey : node.dataset.itemId ? 'item:' + node.dataset.itemId : null;
+  const old = new Map([...parent.children].filter(node => key(node)).map(node => [key(node), node]));
+  const desired = incoming.map(node => {
+    const previous = old.get(key(node));
+    if (previous?.dataset.turnId) {
+      reconcileMessages(previous, [...node.children]);
+      node = previous;
+    } else if (previous?.questionKey && previous.questionKey === node.questionKey && previous.questionSignature === node.questionSignature) {
+      // Keep the actual textarea attached: refocusing a new textarea breaks IME composition.
+      node = previous;
+    }
+    return node;
+  });
+  const keep = new Set(desired);
+  for (const node of [...parent.children]) if (!keep.has(node)) node.remove();
+  let position = parent.firstChild;
+  for (const node of desired) {
+    if (node !== position) parent.insertBefore(node, position);
+    position = node.nextSibling;
   }
 }
 function captureMessageAnchor() {
@@ -1437,6 +1488,8 @@ function read(older = false) {
     if (older === true && !readInFlight.history) readInFlight.older = true;
     return readInFlight.promise;
   }
+  clearTimeout(readRetryTimer);
+  readRetryTimer = null;
   const job = {
     a: agentId,
     id: selected,
@@ -1453,7 +1506,13 @@ function read(older = false) {
     readInFlight = null;
     $("older").disabled = !status.connected;
     $("older").textContent = "加载更早的消息";
-    if (gapCursor && !job.failed) scheduleRead("gap");
+    if (job.failed && job.retryable) {
+      const delay = [1000, 2000, 4000, 8000, 15000, 30000][Math.min(readFailures++, 5)];
+      readRetryTimer = setTimeout(() => {
+        readRetryTimer = null;
+        if (job.seq === readSequence && job.g === generation && job.id === selected) read(older);
+      }, delay);
+    } else if (gapCursor && !job.failed) scheduleRead("gap");
     else if (job.older) scheduleRead(true);
     else if (job.pending) scheduleRead();
   });
@@ -1486,12 +1545,14 @@ async function readTask(job, older) {
     )
       return;
     if (r.notModified && !older && taskData) {
+      readFailures = 0;
       clearError();
       return;
     }
     if (r.data?.thread?.id !== id || !Array.isArray(r.data?.turns))
       throw Error("设备返回的会话内容格式不受支持，请更新目标设备后重试");
     if (!matchesMode(r.data.thread, mode)) throw Error("会话类型与当前模式不同，请切换模式后重新选择");
+    readFailures = 0;
     const firstLoad = !turns.length;
     const resetPaging = !pageProtocol;
     const intersects = overlaps(turns, r.data.turns);
@@ -1594,13 +1655,14 @@ async function readTask(job, older) {
       e.name !== "AbortError"
     ) {
       job.failed = true;
+      job.retryable = ![400, 401, 403, 404].includes(e.status);
       error(e);
       if (older) return;
       taskData = null;
       rememberSidebarStatus(id, { type: "unknown", confirmed: false });
       updateThreadIndicators();
       $("messages").querySelector(".read-notice")?.remove();
-      $("task-state").textContent = "内容读取失败 · 状态未知";
+      $("task-state").textContent = "内容读取失败 · 状态未知" + (job.retryable ? " · 自动重试中" : "");
       $("task-state").className = "badge offline";
       $("task-state").hidden = false;
       $("activity").hidden = true;
@@ -1965,6 +2027,7 @@ $("form").onsubmit = async (e) => {
       if (enqueue) toast("已加入官方队列");
     } else
       toast("已发送到 " + (agents.find((x) => x.id === a)?.name ?? "原设备"));
+    await backupDrafts();
   } catch (e) {
     if (g === generation && v === viewEpoch) {
       error(e);
@@ -1995,6 +2058,7 @@ function setPromptValue(value) {
 }
 $("prompt").oninput = () => {
   saveDraft();
+  scheduleDraftBackup();
   permissions();
   resizePrompt();
 };
@@ -2094,13 +2158,17 @@ setInterval(() => {
   if (!document.hidden) refreshUsage();
 }, 60000);
 setInterval(pollSidebar, 15000);
+setInterval(() => {
+  if (mode === 'codex' && selected && status.connected && !document.hidden)
+    agentApi(agentId, '/threads/' + selected + '/follow', {}, { signal: taskReads.signal }).catch(() => {});
+}, 30000);
 // Chat has no Codex owner event stream. Poll only the visible task; existing
 // read coalescing and generation checks discard old device/mode responses.
 setInterval(() => {
   if (mode === "chat" && selected && status.connected && !document.hidden && !readInFlight) read();
 }, 4000);
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) return;
+  if (document.hidden) { backupDrafts().catch(error); return; }
   wakeViewer();
   pollSidebar();
   if (Date.now() - usageFetchedAt > 90000) resetUsage("loading");
@@ -2111,15 +2179,24 @@ function wakeViewer() {
   if (streamAbort && Date.now() - streamLastSeen > 45000)
     streamAbort.abort(Error("唤醒后恢复查看连接"));
   if (!status.connected || !streamAbort) viewerRecovery?.request(true);
-  else { pollSidebar(); if (mode === "chat" && selected) read(); }
+  else {
+    pollSidebar();
+    if (selected) {
+      if (mode === 'codex') agentApi(agentId, '/threads/' + selected + '/follow', {}, { signal: taskReads.signal }).catch(() => {});
+      read();
+    }
+  }
 }
 window.addEventListener("online", wakeViewer);
 window.addEventListener("focus", wakeViewer);
 window.addEventListener("pagehide", () => {
+  releaseViewing();
+  backupDrafts().catch(() => {});
   viewerRecovery?.stop();
   streamAbort?.abort();
   agentReads.abort();
   taskReads.abort();
+  clearTimeout(readRetryTimer);
 });
 $("reconnect").onclick = () => {
   streamAbort?.abort();
@@ -2797,6 +2874,7 @@ api("/api/agents")
   .then(async (d) => {
     agents = d.agents;
     const saved = await readRecovery().catch(() => null);
+    questionUI.restore(saved?.questions);
     mode = normalizeMode(saved?.mode ?? mode);
     for (const [key, id] of saved?.modeSelections ?? []) modeSelections.set(key, id);
     modeUI();
@@ -2817,7 +2895,7 @@ api("/api/agents")
       setPromptValue(saved.prompt || "");
       setImages(saved.files ?? (saved.file ? [saved.file] : []));
       renderAttachment();
-      await clearRecovery();
+      await backupDrafts();
     }
   })
   .catch(error)
@@ -2846,6 +2924,7 @@ setInterval(async () => {
         !!$("prompt").value ||
         !!composerImages[0] ||
         busy.size > 0 ||
+        questionUI.hasDrafts() ||
         [...draft.values()].some(Boolean),
     });
   } catch {

@@ -53,6 +53,28 @@ public final class Probe extends Instrumentation {
       require(read.getJSONObject("data").has("thread") && read.getJSONObject("data").getJSONArray("turns").length()>0,"real task read through APK proxy");result.putString("taskId",thread);result.putString("source",read.getString("source"));
       js("document.getElementById('prompt').value='ANDROID_UPGRADE_DRAFT';window.remoteCodexSaveDrafts()");SystemClock.sleep(700);
       require(true,"draft saved without sending a task message");
+    }else if(stage.equals("review-fixes")){
+      byte[] imageBytes=new byte[7*1024*1024];
+      byte[] png=android.util.Base64.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",0);
+      System.arraycopy(png,0,imageBytes,0,png.length);
+      File savedImage=new File(getTargetContext().getCacheDir(),"review-large-image.png");savedImage.delete();
+      Intent savedResult=new Intent().setData(android.net.Uri.fromFile(savedImage));
+      IntentFilter pickerFilter=new IntentFilter(Intent.ACTION_CREATE_DOCUMENT);pickerFilter.addCategory(Intent.CATEGORY_OPENABLE);pickerFilter.addDataType("image/*");
+      ActivityMonitor picker=addMonitor(pickerFilter,new ActivityResult(Activity.RESULT_OK,savedResult),true);
+      try{
+        HttpURLConnection upload=request("/api/downloads/image?name=review-large-image.png",true,true);
+        upload.setRequestMethod("POST");upload.setDoOutput(true);upload.setRequestProperty("Content-Type","application/octet-stream");upload.setFixedLengthStreamingMode(imageBytes.length);
+        try(OutputStream out=upload.getOutputStream()){out.write(imageBytes);}
+        require(new JSONObject(body(upload)).optBoolean("accepted"),"APK accepts original seven MiB image through authenticated binary download route");
+        long deadline=SystemClock.elapsedRealtime()+15000;
+        while((!savedImage.isFile()||savedImage.length()!=imageBytes.length)&&SystemClock.elapsedRealtime()<deadline)SystemClock.sleep(100);
+        require(picker.getHits()==1&&savedImage.length()==imageBytes.length,"native save picker completes and preserves full image length: hits="+picker.getHits()+", bytes="+savedImage.length());
+        byte[] actual;try(InputStream in=new FileInputStream(savedImage)){ByteArrayOutputStream bytes=new ByteArrayOutputStream();byte[] block=new byte[65536];int n;while((n=in.read(block))!=-1)bytes.write(block,0,n);actual=bytes.toByteArray();}
+        require(java.util.Arrays.equals(java.security.MessageDigest.getInstance("SHA-256").digest(imageBytes),java.security.MessageDigest.getInstance("SHA-256").digest(actual)),"saved original SHA-256 equals uploaded image, without screenshot or recompression");
+      }finally{removeMonitor(picker);savedImage.delete();}
+      require(request("/api/downloads/image",true,false).getResponseCode()==403,"binary image endpoint keeps CSRF protection");
+      boolean rejected=false;try{activity.downloadImage(new byte[]{1,2,3},"invalid.png");}catch(Exception expected){rejected=true;}
+      require(rejected,"invalid binary image is rejected before reserving save state");
     }else if(stage.equals("markdown")){
       String markdown="# Markdown probe\n\n| Priority | Description |\n| :--- | ---: |\n";
       for(int i=1;i<=7;i++)markdown+="| P"+i+" | **Row "+i+"** and `x\\|y` |\n";

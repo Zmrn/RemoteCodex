@@ -40,6 +40,12 @@ python scripts/build-release.py --publish
 
 ## 复测
 
+0.10.6 同步修复问答输入和持久化、内容读取重试及订阅释放。结果图片下载优先携带来源设备/任务的鉴权媒体地址，原生层直接读取原文件；仅有 blob/data 图片时通过本机二进制下载入口传递原始字节，不转成膨胀的 base64 JSON。沿用媒体接口的 25 MiB 图片上限和普通附件的 256 MiB 上限。7 MiB PNG 已在隔离模拟器验证保存长度和 SHA-256 一致；测试用 instrumentation 拦截系统保存选择器返回目标 URI，再执行真实保存回调。用户物理手机未测试，完整结果见 [REVIEW-FIXES.md](REVIEW-FIXES.md)。
+
+```powershell
+adb -s emulator-5580 shell am instrument -w -e stage review-fixes com.anso.remotecodex.tests/.Probe
+```
+
 0.10.5 将会话 Markdown 改为随包内置的 GFM 解析器和安全 DOM 渲染。表格、嵌套列表、标题、引用、任务列表及代码使用 Windows/Android 共用样式；普通表格自动换行，宽表格只在容器内左右滑动。Android 15 隔离模拟器通过 `stage=markdown` 的表格结构、排版、安全链接、引用和横竖屏检查，未将模拟器结果视为物理手机验证。详见 [MARKDOWN.md](MARKDOWN.md)。
 
 ```powershell

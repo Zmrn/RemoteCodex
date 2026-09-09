@@ -372,7 +372,7 @@ export async function startServer({
             await bridge.queue.mutate(id, body.requestId, body),
           );
         if (match[2] === "follow")
-          return json(res, 200, await bridge.follow(id));
+          return json(res, 200, body.following === false ? bridge.unfollow(id, body.viewerId) : await bridge.follow(id, body.viewerId));
         if (match[2] === "open") return json(res, 200, await bridge.open(id));
         if (match[2] === "settings")
           return json(

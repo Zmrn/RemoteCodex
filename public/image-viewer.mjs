@@ -51,7 +51,7 @@ function createViewer() {
     sequence++;
     clear();
   });
-  return async (src, name) => {
+  return async (src, name, downloadRoute) => {
     const request = ++sequence;
     clear();
     resize(false);
@@ -61,6 +61,8 @@ function createViewer() {
     image.src = src;
     image.referrerPolicy = "no-referrer";
     download.href = src;
+    if (downloadRoute) download.dataset.downloadRoute = downloadRoute;
+    else delete download.dataset.downloadRoute;
     const remote = /^https:\/\//.test(src);
     download.textContent = remote ? "打开原图" : "下载原图";
     if (remote) {
@@ -97,7 +99,7 @@ export function zoomableImage(image, name = image.alt || "image.png") {
   image.onclick = () => {
     const src = image.currentSrc || image.getAttribute("src");
     if (!src || image.hidden) return;
-    (viewer ??= createViewer())(src, name);
+    (viewer ??= createViewer())(src, name, image.dataset.downloadRoute);
   };
   image.onkeydown = (event) => {
     if (event.key === "Enter" || event.key === " ") {

@@ -1,0 +1,36 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { Bridge } from '../src/bridge.mjs';
+import { SubscriptionLeases } from '../src/subscriptions.mjs';
+test('each viewer releases only its lease; dead viewers expire and legacy viewing is bounded', () => {
+  let now = 0; const released = [];
+  const leases = new SubscriptionLeases(id => released.push(id), { now: () => now, ttlMs: 100, maxTemporary: 3 });
+  leases.touch('shared', 'viewer-one'); leases.touch('shared', 'viewer-two');
+  leases.remove('shared', 'viewer-one'); assert.deepEqual(released, []);
+  now = 80; leases.touch('shared', 'viewer-two');
+  now = 101; leases.prune(); assert.equal(leases.has('shared'), true);
+  for (let i = 0; i < 60; i++) leases.touch('legacy-' + i);
+  assert.equal(leases.leases.size, 4); assert.equal(leases.has('shared'), true);
+  now = 202; leases.prune(); assert.equal(leases.leases.size, 0); assert.ok(released.includes('shared'));
+});
+test('unfollow frees live/queue/page snapshots and a late discovery or frame cannot resurrect them', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-leases-'));
+  const b = new Bridge(dir), broadcasts = []; let ownerDone;
+  t.after(() => { b.connected = false; b.disconnect(); fs.rmSync(dir, { recursive: true }); });
+  b.connected = true;
+  b.desktop = { close() {}, owner: async () => ({ handledByClientId: 'owner' }), ipc: { broadcast: (...args) => broadcasts.push(args) } };
+  await b.follow('task', 'viewer-one'); await b.follow('task', 'viewer-two');
+  b.live.set('task', { state: {} }); b.queue.live.set('task', {}); b.pages.snapshots.set('snapshot', { threadId: 'task' });
+  b.unfollow('task', 'viewer-one'); assert.equal(b.live.size, 1);
+  b.unfollow('task', 'viewer-two'); assert.equal(b.watching.size, 0); assert.equal(b.live.size + b.queue.live.size + b.pages.snapshots.size, 0);
+  assert.equal(broadcasts.filter(([, params]) => params.following === false).length, 1);
+  b.desktop.owner = () => new Promise(resolve => ownerDone = resolve);
+  const pending = b.follow('task', 'viewer-three');
+  b.unfollow('task', 'viewer-three'); ownerDone({ handledByClientId: 'owner' });
+  await assert.rejects(pending, /changed during follow/);
+  b.frame({ type: 'broadcast', method: 'thread-stream-state-changed', sourceClientId: 'owner', params: { conversationId: 'task', hostId: 'local', change: { type: 'snapshot', revision: 1, conversationState: {} } } });
+  assert.equal(b.live.size, 0);
+});
