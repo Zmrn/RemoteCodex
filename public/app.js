@@ -845,11 +845,35 @@ function closeAgentMenu(restoreFocus = false) {
   $("footer-agent").setAttribute("aria-expanded", "false");
   if (wasOpen && restoreFocus) $("footer-agent").focus();
 }
-function openAgentMenu() {
+let agentRefresh = 0;
+let reportedStorageRecovery = false;
+function storageNotice(data) {
+  if (data.storage?.recovered && !reportedStorageRecovery) {
+    reportedStorageRecovery = true;
+    toast(data.storage.warning);
+  }
+}
+async function openAgentMenu() {
   $("agent-menu").hidden = false;
   $("footer-agent").setAttribute("aria-expanded", "true");
   $("agents").querySelector('[aria-current="true"]')?.focus();
   refreshUsage();
+  const request = ++agentRefresh;
+  try {
+    const data = await api("/api/agents");
+    if (request !== agentRefresh) return;
+    agents = data.agents;
+    storageNotice(data);
+    const focusedId = document.activeElement?.dataset.agentId;
+    renderAgents();
+    if (!$("agent-menu").hidden && focusedId)
+      [...$("agents").children].find(item => item.dataset.agentId === focusedId)?.focus();
+    if (!currentAgent()) await switchAgent(data.selectedId || agents[0]?.id || "");
+    else {
+      $("agent-title").textContent = currentAgent().name;
+      $("agent-endpoint").textContent = endpoint(currentAgent());
+    }
+  } catch (e) { error(e); }
 }
 function renderAgents() {
   $("agent-count").textContent = agents.length;
@@ -2089,6 +2113,7 @@ $("nav-forward").onclick = () => navigateBy(1).catch(error);
 
 $("agent-form").onsubmit = async (e) => {
   e.preventDefault();
+  agentRefresh++;
   $("save-agent").disabled = true;
   try {
     await deviceSettings.saveLocal();
@@ -2099,6 +2124,7 @@ $("agent-form").onsubmit = async (e) => {
       port: $("agent-port").value,
       key: $("agent-key").value.trim(),
     });
+    agentRefresh++;
     agents = d.agents;
     $("agent-dialog").close();
     $("agent-key").value = "";
@@ -2113,9 +2139,11 @@ $("agent-form").onsubmit = async (e) => {
   }
 };
 $("remove-agent").onclick = async () => {
+  agentRefresh++;
   try {
     const removed = editing,
       d = await api("/api/agents/remove", { id: removed });
+    agentRefresh++;
     agents = d.agents;
     $("agent-dialog").close();
     if (agentId === removed) await switchAgent(d.selectedId || agents[0]?.id || "");
@@ -2872,6 +2900,7 @@ $("setup-dialog").addEventListener("close", () => {
 modeUI();
 api("/api/agents")
   .then(async (d) => {
+    storageNotice(d);
     agents = d.agents;
     const saved = await readRecovery().catch(() => null);
     questionUI.restore(saved?.questions);

@@ -35,7 +35,30 @@ public final class Probe extends Instrumentation {
     require(!get("/api/agents").contains("sealedKey"),"registry strips encrypted secrets");
     String stage=args.getString("stage","smoke");
     if(stage.equals("inspect")){js("import('/app.js').catch(e=>window.__probeError=String(e))");SystemClock.sleep(1000);result.putString("scriptError",js("window.__probeError"));result.putString("ui",js("JSON.stringify({title:document.getElementById('agent-title').textContent,empty:document.getElementById('empty-title').textContent,error:document.getElementById('error')?.textContent,platform:document.querySelector('[name=bridge-platform]')?.content,modules:[...document.scripts].map(s=>s.src),updates:document.getElementById('help-update-status').textContent})"));}
-    else if(stage.equals("smoke")){
+    else if(stage.equals("device-storage")){
+      JSONObject before=app.devices.list();int count=before.getJSONArray("agents").length();String selected=before.getString("selectedId");
+      java.util.ArrayList<String> added=new java.util.ArrayList<>();
+      try{
+        until("document.querySelectorAll('#agents button').length==="+count,15);
+        for(int i=0;i<2;i++){
+          JSONObject out=app.devices.save(new JSONObject().put("name","Storage fixture "+i).put("host","100.70.99."+(20+i)).put("port",43128));
+          JSONArray rows=out.getJSONArray("agents");added.add(rows.getJSONObject(rows.length()-1).getString("id"));
+        }
+        js("document.getElementById('mobile-menu').click();document.getElementById('footer-agent').click()");
+        until("document.querySelectorAll('#agents button').length==="+(count+2),15);
+        require("true".equals(js("!document.getElementById('agent-menu').hidden")),"device menu stays open after refresh");
+        require(new Devices(getTargetContext()).list().getJSONArray("agents").length()==count+2,"native saved devices survive a new storage instance");
+        js("document.getElementById('footer-agent').click()");
+        app.devices.remove(added.remove(1));
+        js("document.getElementById('footer-agent').click()");
+        until("document.querySelectorAll('#agents button').length==="+(count+1),10);
+        require(true,"Android menu refreshes additions and deletions after page startup");
+      }finally{
+        for(String id:added)app.devices.remove(id);
+        if(!selected.isEmpty())app.devices.select(selected);
+      }
+      require(app.devices.list().getJSONArray("agents").length()==count,"existing emulator devices preserved");
+    }else if(stage.equals("smoke")){
       until("document.getElementById('agent-title').textContent==='添加电脑'",15);
       require("true".equals(js("document.getElementById('prompt').disabled")),"no device disables composer");
       require("true".equals(js("innerWidth<760 && !document.body.classList.contains('drawer-open')")),"portrait drawer starts closed");

@@ -40,6 +40,9 @@ python scripts/build-release.py --publish
 
 ## 复测
 
+0.10.7 同步更新设备菜单：每次展开重新读取设备列表，保存或恢复的设备无需重启页面即可出现。Windows 端修复配置缓存覆盖并加入可校验的双副本与系统文件锁，见 [DEVICE-STORAGE.md](DEVICE-STORAGE.md)。Android 保留原 Keystore / SharedPreferences 存储格式；`stage=device-storage` 验证页面启动后新增/删除设备的刷新、新存储实例读取以及已有配置保留。
+
+
 0.10.6 同步修复问答输入和持久化、内容读取重试及订阅释放。结果图片下载优先携带来源设备/任务的鉴权媒体地址，原生层直接读取原文件；仅有 blob/data 图片时通过本机二进制下载入口传递原始字节，不转成膨胀的 base64 JSON。沿用媒体接口的 25 MiB 图片上限和普通附件的 256 MiB 上限。7 MiB PNG 已在隔离模拟器验证保存长度和 SHA-256 一致；测试用 instrumentation 拦截系统保存选择器返回目标 URI，再执行真实保存回调。用户物理手机未测试，完整结果见 [REVIEW-FIXES.md](REVIEW-FIXES.md)。
 
 ```powershell

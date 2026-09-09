@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { PYTHON } from "./runtime.mjs";
 import { validateAccessKey } from "./access-key.mjs";
+import { readAgents, writeAgents, lockAgents } from "./agent-storage.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 export function protect(value, operation = "protect") {
   return new Promise((resolve, reject) => {
@@ -75,28 +76,30 @@ export class Agents {
   constructor(dir) {
     this.file = path.join(dir, "agents.json");
     fs.mkdirSync(dir, { recursive: true });
-    this.db = fs.existsSync(this.file)
-      ? JSON.parse(fs.readFileSync(this.file))
-      : {
-          selectedId: "local",
-          items: [
-            {
-              id: "local",
-              name: "这台电脑",
-              kind: "local",
-              host: os.hostname(),
-              port: 43127,
-            },
-          ],
-        };
+    this.persisted = false;
+    this.db = {
+      selectedId: "local",
+      items: [{ id: "local", name: "这台电脑", kind: "local", host: os.hostname(), port: 43127 }],
+    };
+    this.refresh();
     this.queue = Promise.resolve();
   }
+  refresh() {
+    const saved = readAgents(this.file, !this.persisted);
+    if (saved) {
+      this.db = saved.db;
+      this.storage = saved.storage;
+      this.persisted = true;
+    }
+  }
   write() {
-    fs.writeFileSync(this.file + ".tmp", JSON.stringify(this.db, null, 2));
-    fs.renameSync(this.file + ".tmp", this.file);
+    this.db = writeAgents(this.file, this.db);
+    this.persisted = true;
   }
   list() {
+    this.refresh();
     return {
+      storage: this.storage ?? { source: "new", recovered: false },
       selectedId: this.db.selectedId,
       agents: this.db.items.map(({ sealedKey, ...a }) => ({
         ...a,
@@ -105,6 +108,7 @@ export class Agents {
     };
   }
   get(id) {
+    this.refresh();
     const a = this.db.items.find((a) => a.id === id);
     if (!a) throw Error("设备不存在");
     return a;
@@ -115,12 +119,24 @@ export class Agents {
     return protect(a.sealedKey, "unprotect");
   }
   mutate(fn) {
-    const next = this.queue.then(fn);
+    const next = this.queue.then(async () => {
+      const locked = await lockAgents(this.file);
+      return locked(() => {
+        this.refresh();
+        try { return fn(); }
+        catch (error) { this.refresh(); throw error; }
+      });
+    });
     this.queue = next.catch(() => {});
     return next;
   }
-  save(body) {
-    return this.mutate(async () => {
+  async save(body) {
+    let protectedKey;
+    if (body.id !== "local" && body.key) {
+      validateAccessKey(body.key);
+      protectedKey = await protect(body.key);
+    }
+    return this.mutate(() => {
       const name = String(body.name ?? "").trim();
       if (!name || name.length > 60) throw Error("Agent 名称需要 1–60 个字符");
       const old = body.id ? this.get(body.id) : null;
@@ -140,10 +156,7 @@ export class Agents {
         const changed =
           old && (old.host !== endpoint.host || old.port !== endpoint.port);
         let sealedKey = changed ? undefined : old?.sealedKey;
-        if (body.key) {
-          validateAccessKey(body.key);
-          sealedKey = await protect(body.key);
-        }
+        if (protectedKey) sealedKey = protectedKey;
         const item = {
           id: old?.id ?? randomUUID(),
           name,
