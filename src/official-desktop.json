@@ -5,7 +5,7 @@
       "version": "26.901.6511.0",
       "date": "2026-09-09",
       "scope": "Codex existing desktop owner; read, create, send, queue, settings and image paths. See evidence for limits; Chat text and Work are not claimed validated.",
-      "evidence": ["QUEUE-PREVIEW.md", "PROJECT-CREATION.md", "USAGE.md", "CHAT-MODE.md"]
+      "evidence": ["QUEUE-PREVIEW.md", "PROJECT-CREATION.md", "USAGE.md", "CHAT-MODE.md", "INTERRUPT.md"]
     }
   ],
   "support": {
@@ -263,11 +263,13 @@
         "expectedTurnId"
       ],
       "response": [
-        "handledByClientId"
+        "handledByClientId",
+        "result.ok",
+        "result.interruptedTurnId"
       ],
-      "purpose": "仅专用测试任务中断",
+      "purpose": "用户停止当前 Codex 轮次；核对实时轮次和同一官方所有者；自动测试仍仅专用任务",
       "consumer": "src/bridge.mjs:interrupt",
-      "test": "test/core.test.mjs"
+      "test": "test/interrupt.test.mjs"
     },
     "start": {
       "method": "thread-follower-start-turn",

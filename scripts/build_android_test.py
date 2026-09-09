@@ -20,6 +20,7 @@ run([jdk/'bin/java.exe','-cp',tools/'lib/d8.jar','com.android.tools.r8.D8','--li
 with zipfile.ZipFile(unsigned,'a') as z:
     z.write(dex/'classes.dex','classes.dex')
     z.write(ROOT/'scripts/fixtures/queue-preview.js','assets/queue-preview.js')
+    z.write(ROOT/'scripts/fixtures/interrupt.js','assets/interrupt.js')
     if (ROOT/'dist/android-latest.json').exists():
         z.write(ROOT/'dist/android-latest.json','assets/compatibility-manifest.json')
 aligned=work/'aligned.apk';run([tools/'zipalign.exe','-f','4',unsigned,aligned]);key,env=password(jdk)

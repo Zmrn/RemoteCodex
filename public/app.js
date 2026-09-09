@@ -546,18 +546,21 @@ function permissions() {
     $("permission-display").disabled =
     $("settings-nav").disabled =
       !settingsAvailable || inFlight;
+  const stopSupported = status.interrupt?.supported === true ||
+    (status.interrupt === undefined && probe && !(status.testExcludedThreadIds ?? []).includes(selected));
+  const stopRunning = taskData?.live?.status?.confirmed
+    ? ["running", "waiting-approval", "waiting-user-input"].includes(taskData.live.status.type)
+    : taskData?.thread?.status?.type === "active";
   $("interrupt").hidden = !(
-    status.connected &&
-    probe &&
+    !chat && status.connected && writable && stopSupported &&
     !readOnlyTask &&
-    !(status.testExcludedThreadIds ?? []).includes(selected) &&
     !fresh &&
-    taskData?.thread?.status?.type === "active"
+    stopRunning
   );
   $("send").hidden = !$("interrupt").hidden && !$("prompt").value.trim();
-  if (!$("send").hidden) $("interrupt").hidden = true;
-  $("interrupt").disabled =
-    !turns.some((t) => t.status === "inProgress") || inFlight;
+  $("interrupt").disabled = booting || !interruptTurnId() || inFlight;
+  $("interrupt").title = inFlight ? "正在提交…" : !interruptTurnId()
+    ? "正在确认当前运行轮次…" : "停止当前回复";
   $("older").disabled = !status.connected || !!readInFlight;
   $("refresh").disabled = !status.connected;
   $("writable").textContent = !status.connected
@@ -567,7 +570,9 @@ function permissions() {
         ? "此设备将该会话设为只读"
         : !fresh && !taskData
           ? "会话内容尚未读入，请等待或刷新重试"
-          : "当前仅支持 Codex 对话写入"
+          : status.desktopCompatibility?.writeSupported === false
+            ? "目标官方桌面版本尚未验证，请在官方桌面操作"
+            : "当前仅支持 Codex 对话写入"
       : inFlight
         ? "正在提交…"
         : !fresh && !idle
@@ -1537,7 +1542,7 @@ async function readTask(job, older) {
     } else if (pageProtocol === "items-v1" && !intersects) gapCursor ??= next;
     if (!older) {
       headHash = r.headHash ?? null;
-      taskData = r.data;
+      taskData = { ...r.data, live: r.live };
       modelSettings(r.live?.state);
     }
     clearError();
@@ -2227,25 +2232,37 @@ $("message-scroll").addEventListener(
   },
   { passive: true },
 );
+function interruptTurnId() {
+  if (status.interrupt?.supported === true) return taskData?.live?.activeTurnId ?? null;
+  if (taskData?.live && Object.hasOwn(taskData.live, "activeTurnId"))
+    return taskData.live.activeTurnId;
+  // Older agents retain their Probe-only stop capability.
+  return turns.find(t => t.status === "inProgress")?.id ?? null;
+}
 $("interrupt").onclick = async () => {
   const a = agentId,
     t = selected,
     g = generation,
     k = taskKey(),
-    turn = turns.find((t) => t.status === "inProgress");
-  if (!turn || busy.has(k)) return;
+    turnId = interruptTurnId();
+  if (!turnId || $("interrupt").disabled || $("interrupt").hidden || busy.has(k)) return;
   busy.add(k);
   permissions();
   try {
-    const j = await journal(a, t, "interrupt", { turn: turn.id }),
+    const j = await journal(a, t, "interrupt", { turn: turnId }),
       r = await agentApi(a, "/threads/" + t + "/interrupt", {
-        expectedTurnId: turn.id,
+        expectedTurnId: turnId,
         requestId: j.id,
       });
-    if (r.status === "accepted") j.clear();
-    if (g === generation) await read();
+    if (r.status !== "accepted")
+      throw Error("停止请求的结果尚未确认，请刷新或在官方桌面核对；不会自动重复发送");
+    j.clear();
+    if (g === generation && a === agentId && t === selected) {
+      toast("已请求停止，正在等待官方状态更新");
+      await read();
+    }
   } catch (e) {
-    if (g === generation) error(e);
+    if (g === generation && a === agentId && t === selected) error(e);
   } finally {
     busy.delete(k);
     permissions();

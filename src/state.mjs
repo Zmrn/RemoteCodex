@@ -8,6 +8,7 @@ export function conversationView(result) {
     ...result,
     live: {
       ...result.live,
+      activeTurnId: activeTurnId(state),
       state: Object.fromEntries(
         [
           "latestThreadSettings",
@@ -116,6 +117,14 @@ export function liveTurns(state) {
       .sort((a, b) => (a.turnStartedAtMs ?? 0) - (b.turnStartedAtMs ?? 0));
   }
   return state?.turns ?? [];
+}
+// Only the owner's current runtime and latest turn identify what a stop may target.
+// Historical inProgress records alone must never stop a newer turn.
+export function activeTurnId(state) {
+  if (state?.threadRuntimeStatus?.type !== "active") return null;
+  const turn = liveTurns(state).at(-1);
+  return turn?.status === "inProgress" && typeof turn.turnId === "string"
+    ? turn.turnId : null;
 }
 export function runtimeStatus(state, connected = true) {
   if (!connected) return { type: "connection-interrupted", confirmed: false };

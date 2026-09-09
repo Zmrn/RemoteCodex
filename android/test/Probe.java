@@ -181,6 +181,20 @@ public final class Probe extends Instrumentation {
       js("window.__compatibility=null;import(location.origin+'/official-events.mjs').then(m=>window.__compatibility=m.USER_INPUT_REQUEST).catch(e=>window.__compatibility=String(e))");
       until("window.__compatibility!=null",10);
       require("\"item/tool/requestUserInput\"".equals(js("window.__compatibility")),"WebView loads generated shared event constant");
+    }else if(stage.equals("interrupt")){
+      String fixture=asset(getContext(),"interrupt.js");
+      String html=get("/").replace("<head>","<head><script>"+fixture+"</script>");
+      String origin=app.server().origin+"/";
+      for(int orientation:new int[]{android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE}){
+        runOnMainSync(()->{activity.setRequestedOrientation(orientation);activity.web.loadDataWithBaseURL(origin,html,"text/html","UTF-8",null);});
+        until("typeof window.interruptFixture?.run==='function' && document.readyState==='complete'",20);
+        until(orientation==android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT?"innerHeight>innerWidth":"innerWidth>innerHeight",15);
+        js("window.__interruptResult=null;window.interruptFixture.run().then(r=>window.__interruptResult=r).catch(e=>window.__interruptResult={error:String(e)})");
+        until("window.__interruptResult!=null",45);
+        require("true".equals(js("window.__interruptResult.passed===true")),"Android production stop controls "+orientation+": "+js("JSON.stringify(window.__interruptResult)"));
+        safeBounds("interrupt "+orientation);
+      }
+      runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
     }else if(stage.equals("queue-preview")){
       String fixture;
       try(InputStream in=getContext().getAssets().open("queue-preview.js")){

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID, createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { Desktop, localContext } from "./desktop.mjs";
-import { applyPatches, runtimeStatus, mergeLiveTurnItems } from "./state.mjs";
+import { applyPatches, runtimeStatus, mergeLiveTurnItems, activeTurnId } from "./state.mjs";
 import { accountUsage } from "./usage.mjs";
 import { OfficialQueue, composeQueuedMessage } from "./queue.mjs";
 import { assertProbeTarget, testExcludedThreadIds } from "./probe-safety.mjs";
@@ -818,20 +818,37 @@ export class Bridge extends EventEmitter {
     return this.desktop.call(TOOLS.navigate, { threadId: id });
   }
   async interrupt(id, key, expectedTurnId) {
-    this.guardProbe(id);
+    this.guard(id);
     this.requireConnection();
     if (typeof expectedTurnId !== "string" || !expectedTurnId)
       throw Error("expectedTurnId required");
-    return this.once(key, "interrupt", { id, expectedTurnId }, async () => {
+    return this.once(key, "interrupt", { id, expectedTurnId }, async dispatch => {
+      await this.codexThread(id);
+      const desktop = this.desktop, previous = this.live.get(id);
       const owner = await this.follow(id);
-      const r = await protocolRequest(this.desktop.ipc, "interrupt",
+      for (let i = 0; i < 40 && this.live.get(id) === previous; i++)
+        await new Promise(r => setTimeout(r, 100));
+      this.requireConnection();
+      const live = this.live.get(id);
+      if (desktop !== this.desktop || !live || live === previous ||
+          live.owner !== owner.handledByClientId)
+        throw Error("官方实时运行状态尚未确认，停止请求没有发送，请刷新后重试");
+      if (activeTurnId(live.state) !== expectedTurnId)
+        throw Error("该轮任务已结束或运行轮次已变化，停止请求没有发送");
+      dispatch();
+      const r = await protocolRequest(desktop.ipc, "interrupt",
         { conversationId: id, mode: "user-stop", expectedTurnId },
         {
           targetClientId: owner.handledByClientId,
           timeoutMs: 30000,
         },
       );
-      this.emitEvent("interrupted", {
+      if (r.handledByClientId !== owner.handledByClientId)
+        throw Error("停止请求的官方所有者回执不匹配，结果未知，请在官方桌面核对");
+      if (r.result?.ok !== true || r.result.interruptedTurnId !== expectedTurnId)
+        throw Error("官方尚未确认停止所选轮次，请刷新或在官方桌面核对");
+      // An acknowledgement is not a completed interrupt; observe the owner stream.
+      this.emitEvent("interrupt-requested", {
         threadId: id,
         expectedTurnId,
         requestId: r.requestId,
@@ -839,7 +856,7 @@ export class Bridge extends EventEmitter {
         result: r.result,
       });
       return r;
-    });
+    }, { deferredDispatch: true });
   }
   async nativeSend(id, key, prompt, imageDataUrl, options = {}) {
     this.guard(id);
@@ -992,6 +1009,7 @@ export class Bridge extends EventEmitter {
       protectedThreadIds: [],
       desktopCompatibility: compatibility,
       existingCodexWritable: compatibility.writeSupported,
+      interrupt: { supported: compatibility.writeSupported, source: "official-desktop-owner-IPC" },
       projectCreation: {
         local: supportedBuild(this.desktop?.identity?.appToolsPipe?.image) &&
           [TOOLS.listProjects, TOOLS.createThread].every(name => this.desktop?.catalog?.some(t => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === name)),
