@@ -2534,6 +2534,10 @@ a {
 .usage-note {
   margin: 3px 0;
 }
+.usage-countdown {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
 .usage-unknown {
   color: var(--muted);
   font-size: 12px;

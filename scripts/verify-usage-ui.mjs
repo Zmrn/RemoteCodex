@@ -13,7 +13,8 @@ const browser = await chromium.launch({ executablePath: "C:/Program Files (x86)/
 const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
 const errors = [], events = [];
 let used = 68, fail = false, legacy = false, delay = false, release, completedDelay;
-const win = (usedPercent, windowDurationMins) => ({ usedPercent, windowDurationMins, resetsAt: 1789435536 });
+let resetsAt = Math.floor(Date.now() / 1000) + 3 * 86400 + 5 * 3600 + 120;
+const win = (usedPercent, windowDurationMins) => ({ usedPercent, windowDurationMins, resetsAt });
 page.on("pageerror", e => errors.push(e.message));
 await page.route(address + "/api/**", async route => {
   const req = route.request(), p = new URL(req.url()).pathname, laptop = p.includes("/laptop/");
@@ -55,6 +56,11 @@ try {
   assert.equal(await first.locator("progress").getAttribute("value"), "32");
   assert.match(await page.locator('#usage-details [data-limit-id="codex"][data-duration="10080"]').innerText(), /79%/);
   assert.ok(await first.locator(".usage-reset").count());
+  const countdown = first.locator(".usage-countdown");
+  const initialCountdown = await countdown.innerText();
+  assert.match(initialCountdown, /^剩余 3天5小时\d+分\d+秒$/);
+  await page.waitForFunction(previous => document.querySelector(".usage-countdown").textContent !== previous, initialCountdown);
+  assert.match(await first.locator(".usage-reset").innerText(), /重置 · 剩余/);
   await page.screenshot({ path: path.join(dir, "plus-desktop.png") });
   used = 100; await page.locator("#refresh-usage").click(); await footer("5h 额度剩余 0%");
   used = null; await page.locator("#refresh-usage").click(); await footer("5h 额度 · 未知");
@@ -79,7 +85,12 @@ try {
   const box = await page.locator("#agent-menu").boundingBox();
   assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= 390 && box.y + box.height <= 844);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  assert.match(await countdown.innerText(), /^剩余 \d+天\d+小时\d+分\d+秒$/);
   await page.screenshot({ path: path.join(dir, "plus-mobile.png") });
+  resetsAt = Math.floor(Date.now() / 1000) - 1;
+  await page.locator("#refresh-usage").click();
+  await page.waitForFunction(() => document.querySelector(".usage-countdown").textContent === "已到重置时间，等待刷新");
+  assert.ok(!(await first.innerText()).includes("-1"));
   assert.deepEqual(errors, []);
   fs.writeFileSync(path.join(dir, "result.json"), JSON.stringify({ passed: true, checks: ["Plus Codex five-hour priority", "weekly detail", "Pro Codex weekly", "Spark only in details", "zero quota", "unknown five-hour quota", "old agent compatibility", "failed read clears values", "late previous-device read discarded", "mobile panel bounds"], errors }, null, 2));
   console.log("PASS quota UI", dir);

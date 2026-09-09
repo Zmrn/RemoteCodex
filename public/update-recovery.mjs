@@ -24,9 +24,17 @@ async function transaction(mode, operation) {
     db.close();
   }
 }
-export const saveRecovery = (data) =>
-  transaction("readwrite", (store) => store.put(data, windowId));
-export const readRecovery = () =>
-  transaction("readonly", (store) => store.get(windowId));
-export const clearRecovery = () =>
-  transaction("readwrite", (store) => store.delete(windowId));
+// Serialize snapshots in invocation order; a slow older IDB open must not
+// overwrite a later clear. Clone now, before mutable composer objects change.
+let writes = Promise.resolve();
+const write = operation => {
+  const result = writes.catch(() => {}).then(() => transaction("readwrite", operation));
+  writes = result;
+  return result;
+};
+export const saveRecovery = data => {
+  const snapshot = structuredClone(data);
+  return write(store => store.put(snapshot, windowId));
+};
+export const readRecovery = () => writes.catch(() => {}).then(() => transaction("readonly", store => store.get(windowId)));
+export const clearRecovery = () => write(store => store.delete(windowId));

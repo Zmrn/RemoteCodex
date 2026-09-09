@@ -3,6 +3,7 @@ import { validateImageBatch, imagePayload, imageUrls } from "./image-input.mjs";
 import { normalizeMode, matchesMode, modeTaskKey, modeCatalog, chatComposer, chatNotice, chatEmpty } from "./modes.mjs";
 import { icon, markdown, copyMarkdown } from "./ui.mjs";
 import { QueueUI } from "./queue-ui.mjs";
+import { DraftDiscards } from "./draft-discards.mjs";
 import { DeviceSettings, accessSummary } from "./device-settings.mjs";
 import { QuestionsUI } from "./questions-ui.mjs";
 import { questionReply, userContent } from "./message-content.mjs";
@@ -13,7 +14,7 @@ import { HelpUpdates } from "./help-updates.mjs";
 import { DeviceConnections } from "./device-connections.mjs";
 import { zoomableImage } from "./image-viewer.mjs";
 import { ProjectPicker } from "./project-picker.mjs";
-import { renderQuota } from "./usage-view.mjs";
+import { renderQuota, updateQuotaCountdowns } from "./usage-view.mjs";
 import {
   windowId,
   saveRecovery,
@@ -106,6 +107,12 @@ const base = (id) => "/api/agents/" + encodeURIComponent(id) + "/bridge";
 const taskKey = (a = agentId, t = selected, m = mode) => modeTaskKey(a, t, m);
 const modeSelections = new Map();
 const takenDrafts = new Map();
+const draftDiscards = new DraftDiscards({
+  api: agentApi,
+  persist: backupDrafts,
+  onChange: () => queueUI.render(),
+  onError: () => toast("草稿清理尚未完成，将自动重试"),
+});
 const deviceSettings = new DeviceSettings({
   $,
   api,
@@ -127,6 +134,7 @@ async function backupDrafts() {
     thread: selected,
     drafts: [...draft],
     taken: [...takenDrafts],
+    discardedRecoveries: draftDiscards.snapshot(),
     settings: [...pendingSettings],
     creationProjects: projectPicker.snapshot(),
     prompt: $("prompt").value,
@@ -166,6 +174,7 @@ const queueUI = new QueueUI({
   onError: error,
   onToast: toast,
   restoreDraft: async (message, recoveryId, context) => {
+    if (draftDiscards.has(context, recoveryId)) return;
     if (context.key !== taskKey()) {
       toast("消息已取回并保存，切回原会话可继续编辑");
       return;
@@ -181,9 +190,32 @@ const queueUI = new QueueUI({
     renderAttachment();
     permissions();
     queueUI.render();
-    $("prompt").focus();
+    await backupDrafts();
+    if (context.key === taskKey()) $("prompt").focus();
   },
+  isDiscarded: (c, recoveryId) => draftDiscards.has(c, recoveryId),
+  discardRecovery: discardTakenRecovery,
+  onRefresh: c => { if (!booting) draftDiscards.flush(c); },
 });
+async function discardTakenRecovery(recoveryId, context) {
+  // Detach only this backup; newer text/images remain an ordinary local draft.
+  const saved = takenDrafts.get(context.key);
+  if (saved?.recoveryId === recoveryId) {
+    delete saved.recoveryId; delete saved.message;
+    if (!(saved.files?.length || saved.file)) takenDrafts.delete(context.key);
+  }
+  draftDiscards.add(context, recoveryId);
+  await backupDrafts();
+  await draftDiscards.flush(context);
+}
+function discardEmptyTakenDraft() {
+  // Only user edits reach this function. Navigation, loading and startup also
+  // clear the composer transiently and must never discard a recoverable draft.
+  if ($("prompt").value.trim() || composerImages.length) return;
+  const recoveryId = takenDrafts.get(taskKey())?.recoveryId;
+  if (!recoveryId) return;
+  discardTakenRecovery(recoveryId, { agent: agentId, id: selected, key: taskKey(), connected: !!status.connected }).catch(error);
+}
 function setImages(files) {
   composerImages = [...files];
   const transfer = new DataTransfer();
@@ -1866,7 +1898,7 @@ function renderAttachment() {
     b.onclick = () => {
       if ($("image").disabled) return;
       setImages(composerImages.filter((_, i) => i !== index));
-      saveDraft(); renderAttachment(); permissions();
+      saveDraft(); discardEmptyTakenDraft(); renderAttachment(); permissions(); scheduleDraftBackup();
     };
     chip.append(im, label, b);
     $("attachment").append(chip);
@@ -2101,6 +2133,7 @@ function setPromptValue(value) {
 }
 $("prompt").oninput = () => {
   saveDraft();
+  discardEmptyTakenDraft();
   scheduleDraftBackup();
   permissions();
   resizePrompt();
@@ -2208,6 +2241,13 @@ setInterval(() => {
 }, 60000);
 setInterval(pollSidebar, 15000);
 setInterval(() => {
+  if (!booting && !document.hidden && mode === "codex" && selected)
+    draftDiscards.flush({ agent: agentId, id: selected, connected: !!status.connected });
+}, 5000);
+setInterval(() => {
+  if (!document.hidden) updateQuotaCountdowns($("usage-details"));
+}, 1000);
+setInterval(() => {
   if (mode === 'codex' && selected && status.connected && !document.hidden)
     agentApi(agentId, '/threads/' + selected + '/follow', {}, { signal: taskReads.signal }).catch(() => {});
 }, 30000);
@@ -2218,6 +2258,7 @@ setInterval(() => {
 }, 4000);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) { backupDrafts().catch(error); return; }
+  updateQuotaCountdowns($("usage-details"));
   wakeViewer();
   pollSidebar();
   if (Date.now() - usageFetchedAt > 90000) resetUsage("loading");
@@ -2953,6 +2994,7 @@ api("/api/agents")
     storageNotice(d);
     agents = d.agents;
     const saved = await readRecovery().catch(() => null);
+    draftDiscards.restore(saved?.discardedRecoveries);
     projectPicker.restore(saved?.creationProjects);
     questionUI.restore(saved?.questions);
     mode = normalizeMode(saved?.mode ?? mode);

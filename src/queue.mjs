@@ -227,18 +227,24 @@ export class OfficialQueue {
   }
   async mutate(id, key, body) {
     const b = this.bridge;
+    if (body.action === "ack-recovery") {
+      if (typeof id !== "string" || !/^[a-f0-9-]{36}$/.test(id) ||
+          typeof body.recoveryId !== "string" || !/^[\w-]{1,160}$/.test(body.recoveryId)) throw Error("Invalid draft identity");
+      // Local backup only: no official connection/owner/write is needed.
+      // Serialize with take/steer; unresolved dispatch evidence is not a draft.
+      return this.locked(id, () => {
+        const r = b.db.queueRecoveries?.[body.recoveryId];
+        if (r && (r.threadId !== id || r.state !== "draft")) throw Error("草稿状态已变化，请刷新核对");
+        if (r) {
+          delete b.db.queueRecoveries[body.recoveryId];
+          try { b.save(); }
+          catch (e) { b.db.queueRecoveries[body.recoveryId] = r; throw e; }
+        }
+        return { status: "accepted", result: { disposition: "recovery-cleared" } };
+      });
+    }
     b.guard(id);
     b.requireConnection();
-    if (body.action === "ack-recovery") {
-      if (b.db.queueRecoveries?.[body.recoveryId]?.threadId === id) {
-        delete b.db.queueRecoveries[body.recoveryId];
-        b.save();
-      }
-      return {
-        status: "accepted",
-        result: { disposition: "recovery-cleared" },
-      };
-    }
     if (!["enqueue", "take", "delete", "steer"].includes(body.action))
       throw Error("Invalid queue operation");
     const images = imagesFromBody(body);

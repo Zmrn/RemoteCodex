@@ -54,6 +54,7 @@ export async function startServer({
     ["/usage-view.mjs", "text/javascript; charset=utf-8"],
     ["/questions-ui.mjs", "text/javascript; charset=utf-8"],
     ["/queue-ui.mjs", "text/javascript; charset=utf-8"],
+    ["/draft-discards.mjs", "text/javascript; charset=utf-8"],
     ["/device-settings.mjs", "text/javascript; charset=utf-8"],
     ["/update-recovery.mjs", "text/javascript; charset=utf-8"],
     ["/style.css", "text/css; charset=utf-8"],

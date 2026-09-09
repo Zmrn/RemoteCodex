@@ -260,3 +260,21 @@ test("queue metadata omits all image bytes, preserves legacy clients and scoped 
   assert.throws(() => q.recovery(id, recovery.recoveryId));
   assert.equal(requests.length, 2, "preview and recovery reads never mutate the owner");
 });
+
+test("discard clears only the exact local draft, persists across restart, and sends zero official requests", async () => {
+  const {q,b,requests}=fixture();
+  const message=composeQueuedMessage('backup-message','do not send','C:/Probe',[png]);
+  b.db.queueRecoveries={one:{threadId:id,state:'draft',message},two:{threadId:id,state:'draft',message},
+    uncertain:{threadId:id,state:'steer-unknown',message},other:{threadId:'77777777-7777-4777-8777-777777777777',state:'draft',message}};
+  b.save();b.connected=false;b.desktop=null;
+  const clear=recoveryId=>q.mutate(id,null,{action:'ack-recovery',recoveryId});
+  await clear('one');await clear('one');
+  const restored=new Bridge(b.dataDir).db.queueRecoveries;
+  assert.ok(!restored.one);assert.ok(restored.two && restored.other && restored.uncertain);
+  await assert.rejects(clear('uncertain'),/状态已变化/);
+  await assert.rejects(clear('other'),/状态已变化/);
+  const save=b.save.bind(b);b.save=()=>{throw Error('disk unavailable');};
+  await assert.rejects(clear('two'),/disk unavailable/);
+  assert.ok(b.db.queueRecoveries.two);assert.ok(new Bridge(b.dataDir).db.queueRecoveries.two);
+  b.save=save;await clear('two');assert.equal(requests.length,0);
+});

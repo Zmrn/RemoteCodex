@@ -17,6 +17,9 @@ export class QueueUI {
     onError,
     onToast,
     restoreDraft,
+    isDiscarded = () => false,
+    discardRecovery,
+    onRefresh = () => {},
   }) {
     Object.assign(this, {
       getContext,
@@ -27,6 +30,9 @@ export class QueueUI {
       onError,
       onToast,
       restoreDraft,
+      isDiscarded,
+      discardRecovery,
+      onRefresh,
     });
     this.root = document.getElementById("message-queue");
     this.busy = false;
@@ -88,6 +94,7 @@ export class QueueUI {
         this.current = { messages: [], recoveries: [], unknown: true };
       }
       this.render();
+      this.onRefresh(c);
     })().finally(() => {
       if (this.refreshJob !== job) return;
       this.refreshJob = null;
@@ -189,6 +196,7 @@ export class QueueUI {
       q?.recoveries,
       q?.unknown,
       q?.confirmed,
+      (q?.recoveries ?? []).map(r => this.isDiscarded(c, r.recoveryId)),
     ]);
     if (signature === this.lastRender) return;
     this.lastRender = signature;
@@ -197,7 +205,7 @@ export class QueueUI {
     for (const entry of this.previews.values()) entry.targets.clear();
     const messages = q?.messages ?? [],
       recoveries = (q?.recoveries ?? []).filter(
-        (r) => r.recoveryId !== c.recoveryId,
+        (r) => r.recoveryId !== c.recoveryId && !this.isDiscarded(c, r.recoveryId),
       );
     this.root.hidden =
       !c.id || (!messages.length && !recoveries.length && !q?.unknown);
@@ -274,6 +282,7 @@ export class QueueUI {
     }
     for (const r of recoveries) {
       const row = el("div", "queue-recovery");
+      row.dataset.recoveryId = r.recoveryId;
       row.append(
         el(
           "span",
@@ -293,6 +302,16 @@ export class QueueUI {
       b.onclick = () =>
         this.restoreRecovery(r, c).catch(this.onError);
       row.append(b);
+      if (r.state === "draft" && this.discardRecovery) {
+        const remove = el("button", "icon-button queue-discard");
+        remove.type = "button";
+        remove.title = "删除已取回草稿";
+        remove.setAttribute("aria-label", remove.title);
+        remove.append(icon("trash"));
+        remove.disabled = this.busy;
+        remove.onclick = () => this.discardRecovery(r.recoveryId, c).catch(this.onError);
+        row.append(remove);
+      }
       this.root.append(row);
     }
     for (const [key, entry] of this.previews) {
