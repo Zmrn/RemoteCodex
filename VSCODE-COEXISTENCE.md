@@ -74,4 +74,6 @@ node --test test/desktop-discovery.test.mjs test/reconnect.test.mjs test/interru
 
 **没有上传或发布 0.10.15，没有替换本机或笔记本客户端。** 本机运行版仍是 0.10.14；修复通过源码实例及隔离 EXE 自检验证。`work/`、`dist/`、签名身份和发布配置都不提交 Git。
 
+交接提交时还合并保留了远端 `98e1b76` 的设备持久化/升级保护修复；合并后的 130 项 Node 回归及兼容清单检查全部通过。上述本地构建产物生成于合并之前，不能作为最终合并版本发布；最终版本由另一台设备重新构建。
+
 另一台设备拉取本提交后，先读 AGENTS.md，使用已经安全迁移的原签名文件与被忽略的 release.local.json，运行 `python -X utf8 scripts/build-release.py`；完成其本机行为/包校验后，按既有双端发布流程执行 `python -X utf8 scripts/publish-update.py`。不要另生成签名身份。安装后再核对实际 `/api/status` 的 connected、desktopCompatibility、desktopConnection 以及设备配置保留情况；不能把本报告的进程号当作新设备上的常量。
