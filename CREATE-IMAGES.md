@@ -44,6 +44,10 @@ POST /api/compatibility/probe 仅接受固定 create-vision-owner-v1 场景、re
 
 此前主机重启打断的 EXE 为无效全零文件，未发布；已重新构建并完成上述自检和哈希校验。
 
+安装后，本机与笔记本均已运行 0.10.14，官方连接正常，writeSupported、imageCreation.supported、interrupt.supported 均为 true，兼容清单哈希与源码一致。本机保存的两台设备仍在；桌面 RemoteCodex.exe 与正式产物哈希一致。本机实际提供的 app.js、APK 内嵌 app.js 均与修复源码逐字节一致。
+
+另经正式日常路径实测：已安装的本机控制端 → 设备转发 → 已认证的笔记本接入端 → 现有官方 owner，新建任务 01a0850e-93e9-7820-ad8e-a4462f239481，图片轮次 01a0850e-b643-7bc1-aafd-bf2062116b49。一次提交两图，模型正确识别两图颜色和形状，回读同一任务 ID，已通过。此请求走正常版本校验和 /api/threads，未使用兼容性 Probe 的候选放行。脱敏证据：work/installed-normal-image-create.json、work/compatibility-installed-local.json、work/compatibility-installed-laptop.json。
+
 ## 复测
 
 - node --test test/create-images.test.mjs
