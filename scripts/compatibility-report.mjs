@@ -79,6 +79,8 @@ export function releaseNotes(version) {
   const shared = OFFICIAL.discovery.sharedBroker.validation;
   return [
     "# Remote Codex " + version, "",
+    ...(fs.existsSync(path.join(root, "releases", version + ".md"))
+      ? [fs.readFileSync(path.join(root, "releases", version + ".md"), "utf8").trim().replaceAll("\r\n", "\n"), ""] : []),
     "支持的官方桌面版本：" + OFFICIAL.support.verifiedVersions.join("、") + "（Windows x64，OpenAI.Codex 包）。",
     "这里的版本指目标电脑上运行的官方应用；Android APK 是控制端，也依赖目标电脑的同一兼容范围。", "",
     "- Codex：" + OFFICIAL.support.codex + "。",

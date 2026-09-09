@@ -60,6 +60,13 @@ try {
   await page.locator("#footer-agent").click();
   fs.writeFileSync(external.file + ".bak", "invalid backup");
   await page.locator("#footer-agent").click();
+  await page.waitForFunction(() => document.body.textContent.includes("已从独立历史恢复读取"));
+  assert.equal(await page.locator("#agents button").count(), 3);
+  checks.push("independent history recovers devices when both rolling replicas are damaged");
+  await page.locator("#footer-agent").click();
+  const latest = fs.readdirSync(external.file + ".history").sort().at(-1);
+  fs.writeFileSync(path.join(external.file + ".history", latest), "invalid history");
+  await page.locator("#footer-agent").click();
   await page.waitForFunction(() => document.querySelector("#error").textContent.includes("未重置已有设备"));
   assert.equal(await page.locator("#agents button").count(), 3);
   assert.equal(fs.readFileSync(external.file, "utf8"), "truncated");

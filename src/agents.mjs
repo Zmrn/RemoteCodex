@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { PYTHON } from "./runtime.mjs";
 import { validateAccessKey } from "./access-key.mjs";
-import { readAgents, writeAgents, lockAgents } from "./agent-storage.mjs";
+import { readAgents, writeAgents, lockAgents, preserveAgents } from "./agent-storage.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 export function protect(value, operation = "protect") {
   return new Promise((resolve, reject) => {
@@ -92,8 +92,8 @@ export class Agents {
       this.persisted = true;
     }
   }
-  write() {
-    this.db = writeAgents(this.file, this.db);
+  write(operation) {
+    this.db = writeAgents(this.file, this.db, operation);
     this.persisted = true;
   }
   list() {
@@ -129,6 +129,9 @@ export class Agents {
     });
     this.queue = next.catch(() => {});
     return next;
+  }
+  preserve() {
+    return this.mutate(() => preserveAgents(this.file));
   }
   async save(body) {
     let protectedKey;
@@ -167,7 +170,7 @@ export class Agents {
         if (old) this.db.items[this.db.items.indexOf(old)] = item;
         else this.db.items.push(item);
       }
-      this.write();
+      this.write({ type: "save", id: old?.id ?? this.db.items.at(-1).id });
       return this.list();
     });
   }
@@ -177,15 +180,19 @@ export class Agents {
       this.get(id);
       this.db.items = this.db.items.filter((a) => a.id !== id);
       if (this.db.selectedId === id) this.db.selectedId = "local";
-      this.write();
+      this.write({ type: "remove", id });
       return this.list();
     });
   }
   select(id) {
     return this.mutate(() => {
       this.get(id);
+      if (this.db.selectedId === id && this.db.format === 1 && this.storage?.source === "primary") {
+        preserveAgents(this.file);
+        return this.list();
+      }
       this.db.selectedId = id;
-      this.write();
+      this.write({ type: "select", id });
       return this.list();
     });
   }
