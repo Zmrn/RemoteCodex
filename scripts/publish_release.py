@@ -1,6 +1,6 @@
 """Publish BOTH signed platforms to the configured latest-only resource directory."""
 from pathlib import Path
-import argparse, hashlib, json, subprocess
+import argparse, hashlib, json, subprocess, time
 from release_config import ROOT, config
 from desktop_compatibility import compatibility, release_notes, validate_artifact_compatibility
 
@@ -28,8 +28,18 @@ def main():
         staged += [(file, file.name), (manifest, name)]
     staged.append((notes, 'release-notes.md'))
     host, directory = settings['sshHost'], settings['remoteDirectory'].rstrip('/')
+    ssh_options = ['-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
+                   '-o', 'ConnectTimeout=30', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4']
     for file, name in staged + [(ROOT / 'src/update-public-key.pem', 'update-public-key.pem')]:
-        subprocess.run(['scp', str(file), host + ':' + directory + '/' + name + '.next'], check=True)
+        # Only retry staging transfers. Formal resources are untouched until all
+        # uploads pass the remote signature/hash checks below.
+        command = ['scp', *ssh_options, str(file), host + ':' + directory + '/' + name + '.next']
+        for attempt in range(3):
+            result = subprocess.run(command)
+            if result.returncode == 0: break
+            if attempt == 2: raise subprocess.CalledProcessError(result.returncode, command)
+            print('Retrying staged transfer:', name, flush=True)
+            time.sleep(2 * (attempt + 1))
     script = '''
 from pathlib import Path
 import json,base64,hashlib,os,subprocess,tempfile
@@ -58,6 +68,6 @@ try:
 finally: guard.unlink(missing_ok=True)
 print(json.dumps({'version':versions[0],'supportedOfficialVersions':SUPPORT['verifiedVersions'],'exeCopies':len(list(root.glob('*.exe'))),'apkCopies':len(list(root.glob('*.apk'))),'releaseNotes':'release-notes.md'}))
 '''.replace('DIRECTORY', repr(directory)).replace('VERSION', repr(version)).replace('SUPPORT', repr(support))
-    subprocess.run(['ssh', '-o', 'BatchMode=yes', host, 'python3 -'], input=script, text=True, encoding='utf-8', check=True)
+    subprocess.run(['ssh', *ssh_options, host, 'python3 -'], input=script, text=True, encoding='utf-8', check=True)
 
 if __name__ == '__main__': main()

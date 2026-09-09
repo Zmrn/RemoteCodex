@@ -30,6 +30,7 @@ if (process.argv[2] === "--worker") {
   const errors = [], checks = [];
   page.on("pageerror", e => errors.push(e.message));
   let worker, address, port = 0;
+  const currentSource = process.env.REMOTE_BRIDGE_CURRENT_ROOT || root;
   async function start(source) {
     worker = fork(fileURLToPath(import.meta.url), ["--worker", source, dir, String(port)], {
       windowsHide: true, stdio: ["ignore", "ignore", "pipe", "ipc"],
@@ -84,7 +85,7 @@ if (process.argv[2] === "--worker") {
     checks.push("UI saves a real DPAPI-encrypted synthetic remote device and selects it");
     for (let i = 0; i < 2; i++) {
       await stop();
-      await start(root);
+      await start(currentSource);
       await page.reload();
       await page.waitForFunction(() => document.querySelector("#agent-title").textContent === "公司测试电脑");
       await page.waitForFunction(() => document.querySelector("#connection").textContent === "已连接官方桌面");
@@ -98,7 +99,7 @@ if (process.argv[2] === "--worker") {
     await page.locator("#remove-agent").click();
     await page.waitForFunction(() => !document.querySelector("#agent-dialog").open);
     await stop();
-    await start(root);
+    await start(currentSource);
     await page.reload();
     await page.waitForFunction(() => document.querySelectorAll("#agents button").length === 1);
     assert.equal(registry().items.length, 1);
@@ -106,7 +107,7 @@ if (process.argv[2] === "--worker") {
     assert.deepEqual(errors, []);
     assert.deepEqual(productionFiles.map(digest), productionBefore);
     checks.push("installed device registries and local access configuration remain byte-for-byte unchanged");
-    const report = { result: "passed", source: "isolated Windows Node processes, real UI/HTTP/DPAPI, no official owner", previousSource: process.env.REMOTE_BRIDGE_PREVIOUS_ROOT ? "installed previous runtime" : "current source", checks, errors };
+    const report = { result: "passed", source: "isolated Windows Node processes, real UI/HTTP/DPAPI, no official owner", previousSource: process.env.REMOTE_BRIDGE_PREVIOUS_ROOT ? "installed previous runtime" : "current source", currentSource: process.env.REMOTE_BRIDGE_CURRENT_ROOT ? "packaged runtime" : "current source", checks, errors };
     fs.mkdirSync(path.join(root, "evidence"), { recursive: true });
     fs.writeFileSync(path.join(root, "evidence/agent-restart.json"), JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report));
