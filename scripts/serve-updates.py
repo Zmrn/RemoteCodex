@@ -12,13 +12,13 @@ args=parser.parse_args()
 class Handler(BaseHTTPRequestHandler):
     def send_file(self,head=False):
         if (args.root/'.publishing').exists(): self.send_error(503);return
-        name={"/latest.json":"latest.json","/RemoteCodex.exe":"RemoteCodex.exe","/android-latest.json":"android-latest.json","/RemoteCodex.apk":"RemoteCodex.apk"}.get(self.path)
+        name={"/latest.json":"latest.json","/RemoteCodex.exe":"RemoteCodex.exe","/android-latest.json":"android-latest.json","/RemoteCodex.apk":"RemoteCodex.apk","/release-notes.md":"release-notes.md"}.get(self.path)
         if not name: self.send_error(404);return
         try: stream=(args.root/name).open("rb")
         except FileNotFoundError: self.send_error(404);return
         with stream:
             self.send_response(200)
-            self.send_header("Content-Type","application/json" if name.endswith(".json") else "application/octet-stream")
+            self.send_header("Content-Type","text/markdown; charset=utf-8" if name.endswith(".md") else "application/json" if name.endswith(".json") else "application/octet-stream")
             self.send_header("Content-Length",str(__import__("os").fstat(stream.fileno()).st_size))
             self.send_header("Cache-Control","no-store")
             self.send_header("X-Content-Type-Options","nosniff")

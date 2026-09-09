@@ -6,6 +6,7 @@
 
 - 先确认实际操作系统、主机、工作目录、Git 远端/分支及工作区状态，不能把云端/沙箱测试说成本机验证。本机原工作区中的仓库位于 `outputs/remote-codex/`；直接克隆时以包含本文件与 package.json 的 Git 根目录为准。远端为 `https://gitee.com/Anso/remote-codex.git`，本次交接分支为 `main`，开工时重新核对。
 - 当前源码基线（2026-09-09）：Remote Codex **0.10.15**，新增 VS Code 持有共享 IPC 管道时的官方 ChatGPT 桥接，真实专用任务的 12 项检查通过，见 [VSCODE-COEXISTENCE.md](VSCODE-COEXISTENCE.md)。安装/发布结果以该报告为准。Windows x64 官方包 **26.901.6511.0、26.903.8094.0** 的 Codex 核心读写已验证。软件版本以 package.json 为准，官方支持范围以 src/official-desktop.json 的 validation 为准；交接快照不是实时状态，也不代表所有功能均已验证。
+- 2026-09-09 接手笔记本已重建并发布最终合并 0.10.15 EXE/APK，包含 VS Code 共存和设备保护；笔记本内置更新及配置保留验收通过。130 项 Node、13 项窗口、最终 EXE 自检和包内旧版→新版强制重启测试通过。最终哈希及两台机器各自的验证范围见 VSCODE-COEXISTENCE.md、DEVICE-STORAGE.md；本机没有做最终合并 APK 的模拟器/真机行为测试。
 - 最近修复及证据见 [CREATE-IMAGES.md](CREATE-IMAGES.md)：新建文字/多图、失败草稿保留、正式控制端跨设备发送；115 项 Node 回归、13 项窗口检查、Android API 35 横竖屏及真实官方 owner 测试已通过。新官方版本、Chat 写入、原生生图等不能由这些结果推定成功。
 - 交接时有三份原有未跟踪文件：`CHAT-FEASIBILITY.md`、`scripts/build-chat-ui.py`、`windows/ChatUi.cs`。保留并在相关任务中单独审阅，不自动删除、覆盖、纳入发布或用 `git add -A` 顺带提交；它们不是已完成 Chat 功能的证明。
 - `work/` 中的现场证据、临时设备更新脚本和 `release.local.json` 不在 Git 中。新克隆缺少它们时，从已提交文档与 scripts 中的复测入口接手；不要杜撰设备地址、访问密钥或重新生成签名身份。
@@ -74,6 +75,7 @@
 3. 固定文件名为 `RemoteCodex.exe`、`RemoteCodex.apk`，版本显示在程序左下角；不要在文件名中加版本。
 4. 实际远端 SSH 地址、目标目录和更新资源 URL 统一配置在 **被 Git 忽略的 `release.local.json`**。从 `release.example.json` 复制；禁止在发布脚本中硬编码真实地址。构建产物只注入公共资源 URL，不注入 SSH 设置或签名私钥。
 5. 发布到该配置的 `remoteDirectory`，同时覆盖两个程序及 `latest.json`、`android-latest.json`。远端只保留各平台一份正式资源。发布器必须验证双端版本、大小、哈希与签名；上传完成并校验后才替换正式资源。
+   发布器只在服务器已有 `.next` 的完整哈希匹配时复用；新上传使用带超时与完整性检查的 SSH 流，失败仅重试暂存步骤，不能盲目重试正式切换。修改上传或资源服务时运行 `python scripts/verify-publish-transport.py`；线上同时核验固定 `/release-notes.md` 可读且哈希与签名清单一致。
 6. 保留 `data/release-signing-key.json`、`data/android-signing.p12`、`data/android-signing-password.json`。不得重新生成已有身份。它们被忽略，密码绑定当前 Windows 用户；迁移构建机需安全迁移签名身份，不能提交 Git。
 7. Android 自动检查和下载更新，系统仍要求确认安装；不得宣称普通 APK 能静默安装。验证清单 RSA 签名、SHA-256、包名、版本和 APK 安装证书。
 8. 发布前运行 Node 回归与 Android 构建验证；Android 行为改动在隔离模拟器验证。记录具体通过项和未测试项，不把模拟器结果称作真机验证。

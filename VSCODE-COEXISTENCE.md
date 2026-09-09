@@ -15,9 +15,9 @@
 
 当前协议没有公开的“owner UUID 对应哪个 Windows PID”查询。`supportsUntrustedAppInput` 也被 VS Code 实现，不能用它证明官方进程身份。本次证明来自直连官方 app-tools 新建任务、相同任务与 owner 的定向控制/实时流，以及官方界面显示的组合证据；没有启动独立 app-server，也没有用共享历史代替实时状态。
 
-## 本机真实验证：已通过
+## 原开发设备真实验证：已通过
 
-2026-09-09，Windows 11 x64，本机保持原 ChatGPT 和 VS Code 进程运行：
+2026-09-09，原开发设备 Windows 11 x64，保持原 ChatGPT 和 VS Code 进程运行：
 
 | 项目 | 实际记录 |
 | --- | --- |
@@ -77,3 +77,22 @@ node --test test/desktop-discovery.test.mjs test/reconnect.test.mjs test/interru
 交接提交时还合并保留了远端 `98e1b76` 的设备持久化/升级保护修复；合并后的 130 项 Node 回归及兼容清单检查全部通过。上述本地构建产物生成于合并之前，不能作为最终合并版本发布；最终版本由另一台设备重新构建。
 
 另一台设备拉取本提交后，先读 AGENTS.md，使用已经安全迁移的原签名文件与被忽略的 release.local.json，运行 `python -X utf8 scripts/build-release.py`；完成其本机行为/包校验后，按既有双端发布流程执行 `python -X utf8 scripts/publish-update.py`。不要另生成签名身份。安装后再核对实际 `/api/status` 的 connected、desktopCompatibility、desktopConnection 以及设备配置保留情况；不能把本报告的进程号当作新设备上的常量。
+
+## 笔记本最终合并发布（2026-09-09，已完成）
+
+以上“没有发布”描述的是原开发设备交接时的历史状态。接手笔记本已从包含 `d19d0f1`（VS Code 共存）和 `98e1b76`（设备保护）的 `99d6847` 重新构建并正式发布双端 0.10.15；未发布的 Chat 开发改动保留在独立主工作区，没有进入安装包。
+
+| 最终资源 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44,060,160 | `51e10bfb736b6fd0d20c5b16fd114f4a501bf9ee363b0d39e06f6d189a489bbe` |
+| RemoteCodex.apk | 203,541 | `589955a86d4bf02014999b6c18f12209040dcc23dc0ec6d608c77ae238c720d7` |
+
+最终兼容清单 SHA-256 为 `a79a15704fc35c1243d38187c0317761a76cc85c30ea8d3a54cf0435acab12bb`。两端使用原签名身份，线上清单验签、文件大小/哈希及支持说明哈希一致，资源服务只保留各平台一个正式包。较早的本地 0.10.15 构建均未正式发布，不能混用其哈希。
+
+本轮通过 130 项 Node 回归、13 项窗口检查、兼容清单与真实只读预检、最终 EXE 自检、0.10.14→0.10.15 包内设备保存/强制重启/删除测试和包内敏感文件排除检查。笔记本已通过内置更新器安装同一正式 EXE，设备与接入/更新设置核对一致，`connected=true`、`writeSupported=true`，官方 PID 保持 108796，`desktopConnection` 为 `brokerKind=official-desktop`、`sharedBroker=false`。这证明本机官方独占路径正常；VS Code 共享转发的真实写入证据仍是本文原开发设备的专用任务记录。
+
+构建使用 JDK 17、API 35/build-tools 35.0.1 和 Python 3.12.14（zlib 1.3.2）；包内运行时仍为 Node 22.19.0/Python 3.13.2。默认 Python 3.14 的 zlib-ng 产生不同压缩字节，最终选择与旧包压缩结果一致的构建环境。慢链路下只传输约 400 KB 差异，由服务器核对旧包哈希后重建完整 EXE，再经标准双端发布器验签/验哈希切换资源，没有改变最终已测试包。
+
+同时修正发布服务漏掉 `/release-notes.md` 的路由，并补充带超时、固定长度和哈希检查的 SSH 暂存上传，只有完整文件才原子替换 `.next`；5 项隔离传输/资源服务测试通过，服务脚本实际上传和正式发布说明 HTTP 校验通过。复测：`python scripts/verify-publish-transport.py`。现有配置中的服务已更新，地址、端口和网络配置未变。
+
+本机未对最终合并 APK 做模拟器或真机行为验收。支持范围仍为 Windows x64 官方 26.901.6511.0、26.903.8094.0 的 Codex 核心读写；VS Code 共享管道只验证 26.903.8094.0 + VS Code 1.136.2 + 扩展 26.903.61454。Chat 列表/历史可读，文字续写待真实验证、新建/模型/图片未支持，Work 未独立验证。

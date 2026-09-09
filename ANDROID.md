@@ -1,6 +1,6 @@
 # Android 控制端
 
-0.10.15 发布时须与 Windows 同步；本次仅交接源码，尚未发布。被控 Windows 新增 VS Code 共享 IPC 支持，手机沿用同一个官方任务接口；实测范围见 [VSCODE-COEXISTENCE.md](VSCODE-COEXISTENCE.md)，并非在手机上启动 Codex 后端。
+0.10.15 已于 2026-09-09 由接手笔记本与 Windows 同步重建、验签并正式发布，包含 VS Code 共存及 Windows 设备保护修复。APK 使用原安装证书，最终包兼容清单与 Windows 一致；本机没有运行最终合并 APK 的模拟器或真机行为测试。原开发设备合并前的 Android 兼容性 PASS 单独保留为历史记录。被控 Windows 新增 VS Code 共享 IPC 支持，手机沿用同一个官方任务接口；精确版本、哈希和实测范围见 [VSCODE-COEXISTENCE.md](VSCODE-COEXISTENCE.md)。
 
 0.10.14 已支持 Codex 新建时一次提交文字和多张图片，或者只发图片；目标 Windows 接入端也需更新。官方创建接口只有文字参数，因此同一任务会先完成一轮自动准备，再接收完整原生图片输入。Android API 35 横竖屏、失败保留草稿和正式设备转发均已验证，见 [CREATE-IMAGES.md](CREATE-IMAGES.md)。接手开发先读 [AGENTS.md](AGENTS.md)，下面带旧版本号的段落保留历史验证范围。
 
@@ -30,7 +30,7 @@ Codex 的消息、项目、任务、队列、问答、模型和权限界面共�
 
 ## 本地构建与发布
 
-构建使用 Python 3.10+、Node.js 22+、Android SDK platform 35 / build-tools 35.0.1 和 JDK 21。通过 SDK 自带 aapt2、javac、D8、zipalign、apksigner 构建，无 Gradle 下载依赖。本机构建环境来自 Android Studio，没有修改 Unity SDK 或现有 Android 虚拟设备。
+构建使用 Python 3.10+、Node.js 22+、Android SDK platform 35 / build-tools 35.0.1 和 JDK 17+；原开发设备使用 JDK 21，接手笔记本最终合并包使用 JDK 17。通过 SDK 自带 aapt2、javac、D8、zipalign、apksigner 构建，无 Gradle 下载依赖。接手笔记本的工具链来自已校验的 Microsoft/Google 官方资源，没有修改 Unity SDK 或现有 Android 虚拟设备。
 
 ```powershell
 Copy-Item release.example.json release.local.json
