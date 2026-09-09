@@ -447,7 +447,16 @@
         "legacyMigration"
       ],
       "consumer": "src/official-read-state.mjs",
-      "rule": "Read-only snapshot from verified desktop process CODEX_HOME. Codex only; absence across all stored partitions excludes a report for this refresh only, never persists a receipt. Unknown versions/scope/file failures retain Remote Codex receipts. See OFFICIAL-READ-STATE.md."
+      "rule": "Only used to validate the official identity partition and confirm user-triggered notifications. Task statistics use fresh owner hasUnreadTurn and runtime flags; no Remote receipts, history inference or cross-account union. Unavailable state remains unknown. See OFFICIAL-READ-STATE.md."
+    },
+    "officialTaskState": {
+      "fields": [
+        "id",
+        "hasUnreadTurn",
+        "threadRuntimeStatus"
+      ],
+      "consumer": "src/official-task-state.mjs, src/task-reports.mjs",
+      "rule": "0.10.23: fresh dedicated read-only owner subscription, exact task/host/owner checked; supports official Windows x64 26.903.8094.0 local Codex. No receipt files or history cache are read/written; unsupported/unloaded/timeout yields unknown."
     }
   }
 }

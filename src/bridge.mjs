@@ -1066,7 +1066,7 @@ export class Bridge extends EventEmitter {
       protectedThreadIds: [],
       desktopCompatibility: compatibility,
       existingCodexWritable: compatibility.writeSupported,
-      taskSummary: { supported: true, readReceipts: true },
+      taskSummary: { supported: true, schemaVersion: 2, statePolicy: 'official-only', readReceipts: true },
       interrupt: { supported: compatibility.writeSupported, source: "official-desktop-owner-IPC" },
       projectCreation: {
         local: supportedBuild(this.desktop?.identity?.appToolsPipe?.image) &&

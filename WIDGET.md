@@ -1,5 +1,20 @@
 # Android 2×2 任务概览
 
+## 0.10.23：官方状态是唯一依据
+
+2026-09-10用户明确要求未读/运行状态完全以官方软件为准。此要求覆盖0.10.17～0.10.22中Remote自己定义已读、保存回执、用历史推断未读及安卓保留旧计数的约定。旧回执文件和旧安卓统计偏好不再读取或写入，也不用于迁移新的状态；设备、密钥、草稿及其他数据不受影响。
+
+统计协议改为schemaVersion=2、statePolicy=official-only。官方列表仅可确认运行中；本机Codex的未读与其余运行状态通过独立短时IPC订阅读取官方owner新快照中的hasUnreadTurn和threadRuntimeStatus，核对任务、host与owner。每次刷新重新读取，没有owner、缺字段、超时、未加载或不支持时标为未知，不按已完成历史或其他账号分区猜测。统计订阅不发已读通知，不改变当前查看订阅，结束释放连接；最近50项未固定任务加全部固定任务的限制保持。
+
+用户真实看到回报时，精确token仅作本次官方通知的请求校验，不落盘。只有官方确认synced/already-read才返回accepted，失败不本地清零、不重放不确定通知。同一报告后来被官方再次标为未读时可重新计入。Chat未接入官方已读，不生成Remote独立回执。通知仍受既有身份/owner/回报/新轮次校验和官方任务级非原子协议边界约束。
+
+安卓只保留当前进程中用于渲染的短时官方观察，不持久化任务统计或readTokens。旧协议明确提示目标需更新；刷新失败替换旧观察，状态未知不继承旧标记，超过60秒排除；没有可用结果显示“—”，部分已确认结果注明部分统计。重复任务选择最近收到的可用官方观察，不合并本地已读水位。官方通知成功后使正在读取的旧观察失效并重新获取，不能用晚到响应恢复旧标记。正常独立设备同步约15秒；系统停止进程时桌面组件的重绘仍由Android调度，不能承诺任何时候逐帧同步。
+
+本次真实只读验证范围为Windows x64官方26.903.8094.0本机Codex、官方独占broker：新订阅正确读取运行中、已读、未读，no-client-found/未加载显示未知；没有发送任务消息或已读通知。Codex核心仍支持26.901.6511.0和26.903.8094.0，前者未验证的未读字段显示未知。Chat列表/文字历史支持、续写实验性，新建/模型/生成图片未完成；Work未独立验证。VS Code共存仍沿用原组合核心证据，本轮未重新验证。按用户安排未执行APK，主机JVM及共享浏览器不能替代手机实测。
+
+复测：node --test test/official-task-state.test.mjs test/task-reports.test.mjs test/official-report-read.test.mjs；node scripts/verify-official-read-live.mjs（只读）；node scripts/verify-widget-ui.mjs；node scripts/verify-sidebar-navigation-ui.mjs；python scripts/verify-device-connections.py。旧版以下“持久化Remote回执/沿用缓存”的说明仅供历史追溯。
+
+
 ## 0.10.21 官方已读同步
 
 官方26.903.8094.0本机Codex任务支持双向已读；目标电脑与控制端均需升级。官方读过的回报按只读快照排除，Remote Codex实际读完当前回报后通过官方IPC清除标记。新回报、迟到回执、未知运行状态与离线缓存分别处理。普通Chat/Work未接入，26.901.6511.0沿用Remote回执。完整来源、身份保护、协议并发边界及真实验证见[OFFICIAL-READ-STATE.md](OFFICIAL-READ-STATE.md)。下面0.10.17“官方读过不会清除”的规则是历史说明，不适用于本次已验证范围。

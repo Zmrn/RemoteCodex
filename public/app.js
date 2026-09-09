@@ -345,8 +345,8 @@ const acknowledgedReports = new Map();
 function checkVisibleReport() {
   clearTimeout(receiptTimer);
   const report = visibleReport;
-  if (!report || !status.connected || document.hidden || !document.hasFocus() || document.querySelector(".conversation").inert || !status.taskSummary?.readReceipts) return;
-  const key = report.a + ":" + report.id;
+  if (mode !== "codex" || !report || !status.connected || document.hidden || !document.hasFocus() || document.querySelector(".conversation").inert || !status.taskSummary?.readReceipts) return;
+  const key = report.a + ":" + report.id + ":" + viewEpoch;
   if (acknowledgedReports.get(key) === report.token) return;
   receiptTimer = setTimeout(async () => {
     if (visibleReport !== report || report.g !== generation || report.id !== selected || !status.connected || document.hidden || !document.hasFocus() || document.querySelector(".conversation").inert) return;
@@ -354,12 +354,14 @@ function checkVisibleReport() {
     if (!item || scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 80) return;
     const rect = item.getBoundingClientRect(), viewport = scroll.getBoundingClientRect();
     if (rect.bottom < viewport.top || rect.top > viewport.bottom) return;
+    // Suppress duplicate attempts in this viewing episode, including lost
+    // acknowledgements. This does not decide or persist an unread state.
+    acknowledgedReports.set(key, report.token);
     try {
       const result = await agentApi(report.a, "/threads/" + report.id + "/read-receipt", { token: report.token });
-      if (result.accepted) acknowledgedReports.set(key, report.token);
-      if (result.accepted && ["unavailable", "unconfirmed"].includes(result.officialReadSync?.status) && visibleReport === report)
-        toast("已读已记录，官方标记暂未同步");
-    } catch { /* Viewing still succeeds when a receipt cannot be saved. */ }
+      if (!result.accepted && visibleReport === report)
+        toast("官方已读状态尚未确认，统计以官方为准");
+    } catch { /* Do not replay an uncertain notification or infer local read. */ }
   }, 800);
 }
 function toast(text) {

@@ -1,4 +1,4 @@
-// Shared browser UI and real isolated HTTP receipt storage. No official writes.
+// Shared browser UI and isolated HTTP and official read notification fixtures. No official writes.
 import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
@@ -21,11 +21,14 @@ bridge.desktop = { identity: { officialPid: 1 }, catalog: [], call: async (tool,
       items: [{ id: "report-" + revision, type: "agentMessage", text: "REPORT_" + revision + "\n" + "Readable fixture paragraph.\n\n".repeat(100) }] }], page: { nextCursor: null } };
 } };
 bridge.projects = async () => ({ data: { projects: [] } });
-bridge.threads = async () => ({ data: { threads: [id, other].map(threadId => ({ id: threadId, title: threadId === id ? "Report fixture" : "Other fixture", kind: "codex", status: "idle", updatedAt: revision })) } });
+bridge.threads = async () => ({ data: { threads: [id, other].map(threadId => ({ id: threadId, title: threadId === id ? "Report fixture" : "Other fixture", kind: "codex", hostId:"local", status: "idle", updatedAt: revision })) } });
 bridge.models = async () => ({ models: [] }); bridge.usage = async () => ({ status: "unavailable", weekly: [] });
 bridge.connect = async () => { bridge.connected = true; return bridge.desktop.identity; };
 bridge.follow = async () => ({}); bridge.queue.read = () => ({ confirmed: true, revision: "1", messages: [], recoveries: [] });
 bridge.disconnect = () => { bridge.connected = false; };
+const confirmed=[];
+bridge.markOfficialReportRead=async(thread,token)=>{confirmed.push({thread,token});return {status:"synced"};};
+bridge.taskReports.stateFactory=()=>({supported:()=>true,connect:async()=>{},close(){},read:async()=>({running:false,unread:true,runtimeKnown:true,readStateKnown:true,unknown:false,stateSource:"official-owner-snapshot"})});
 const originalAck = bridge.taskReports.acknowledge.bind(bridge.taskReports);
 bridge.taskReports.acknowledge = async (thread, token) => { acknowledgements.push({ thread, token }); return originalAck(thread, token); };
 const app = await startServer({ port: 0, bridge });
@@ -48,8 +51,8 @@ try {
   for (let i = 0; i < 30 && acknowledgements.length === before; i++) await page.waitForTimeout(100);
   assert.equal(acknowledgements.length, before + 1);
   const oldToken = acknowledgements.at(-1).token;
-  for (let i = 0; i < 30 && !bridge.taskReports.receipts().read[id]?.includes(oldToken); i++) await page.waitForTimeout(100);
-  assert.ok(bridge.taskReports.receipts().read[id].includes(oldToken));
+  for(let i=0;i<30&&!confirmed.some(r=>r.token===oldToken);i++)await page.waitForTimeout(100);
+  assert.ok(confirmed.some(r=>r.token===oldToken));assert.ok(!fs.existsSync(path.join(dir,'task-receipts.json')));
   assert.equal(await page.locator("#prompt").inputValue(), "DRAFT_RETAINED");
   revision++;
   const summary = await bridge.taskReports.summary(); assert.equal(summary.threads.find(t => t.id === id).unread, true);
@@ -61,7 +64,7 @@ try {
   await page.locator(`[data-thread-id="${other}"]`).evaluate(e => e.click());
   await page.waitForFunction(() => document.querySelector("#title").textContent === "Other fixture");
   await page.waitForTimeout(1000); assert.equal(acknowledgements.length, before + 1);
-  checks.push(`${width}px: hidden/older content does not acknowledge; visible final report persists; new report stays unread; errors and navigation invalidate old receipts; draft retained`);
+  checks.push(`${width}px: hidden/older content does not acknowledge; visible final report notifies official without persisting read state; new report stays unread; errors and navigation invalidate old receipts; draft retained`);
   await context.close();
  }
  // Android deep link plumbing in the shared JS (browser fixture, not an APK test).

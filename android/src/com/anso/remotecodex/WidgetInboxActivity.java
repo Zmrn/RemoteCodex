@@ -114,13 +114,12 @@ public final class WidgetInboxActivity extends Activity {
     if(!s.optBoolean("complete")){
       LinearLayout info=row();info.setMinimumHeight(dp(48));info.addView(icon("info",MUTED,18));space(info,8);info.addView(text("当前为部分统计",12,MUTED));space(info,12);info.addView(text("详情",13,BLUE));space(info,4);info.addView(icon("right",BLUE,16));action(info,Color.TRANSPARENT,0,8,()->showDetails(false));rows.addView(info);
     }
-  }catch(Exception e){updated.setText("统计暂不可用");rows.removeAllViews();TextView error=text("暂时无法读取统计，请点击右上角刷新。设备和已读记录仍保留。",14,MUTED);error.setPadding(0,dp(20),0,dp(20));rows.addView(error);}}
+  }catch(Exception e){updated.setText("统计暂不可用");rows.removeAllViews();TextView error=text("暂时无法读取官方状态，请点击右上角刷新。",14,MUTED);error.setPadding(0,dp(20),0,dp(20));rows.addView(error);}}
   private void taskCard(JSONObject task){
     LinearLayout card=column();card.setPadding(dp(16),dp(14),dp(14),dp(14));
     LinearLayout top=row();TextView title=text(task.optString("title","未命名任务"),16,INK);medium(title);title.setMaxLines(3);title.setEllipsize(TextUtils.TruncateAt.END);
     top.addView(title,new LinearLayout.LayoutParams(0,-2,1));space(top,10);top.addView(pill(filter.equals("running")?"运行中":"未读",filter.equals("running")?BLUE:AMBER,false));card.addView(top);gap(card,9);
     LinearLayout meta=row();meta.addView(icon("device",MUTED,18));space(meta,8);TextView detail=text(task.optString("deviceName")+" · "+(task.optString("kind").equals("chatgpt")?"Chat / Work":"Codex"),12,MUTED);detail.setMaxLines(2);detail.setEllipsize(TextUtils.TruncateAt.END);meta.addView(detail,new LinearLayout.LayoutParams(0,-2,1));space(meta,8);meta.addView(icon("right",MUTED,18));card.addView(meta);
-    if(task.optBoolean("stale")){gap(card,8);LinearLayout cache=row();cache.setPadding(dp(7),dp(3),dp(7),dp(3));cache.addView(icon("cache",MUTED,13));space(cache,5);cache.addView(text(task.optBoolean("unknown")||task.optBoolean("cached")?"状态缓存":"离线缓存",11,MUTED));surface(cache,Color.TRANSPARENT,BORDER,20);card.addView(cache,new LinearLayout.LayoutParams(-2,-2));}
     action(card,SURFACE,BORDER,14,()->openTask(task));rows.addView(card,new LinearLayout.LayoutParams(-1,-2));
   }
   private void openTask(JSONObject task){try{
@@ -137,7 +136,7 @@ public final class WidgetInboxActivity extends Activity {
       message.append(d.getString("name")).append("\n").append(d.getString("status"));if(!d.optString("lastUpdated").isEmpty())message.append(" · 更新于 ").append(d.getString("lastUpdated"));message.append("\n\n");}
     if(!current.optString("cacheError").isEmpty())message.append(current.getString("cacheError")).append("\n\n");
     message.append(DeviceSyncService.running?"全部设备正在独立同步，断线后自动重试。":"持续同步当前未运行，可在应用的帮助与更新页检查“保持所有设备连接”。");
-    message.append("\n\n离线或状态不可读时保留最近结果；缓存不代表实时状态。官方列表最多包含最近 50 个未固定任务及全部固定任务，达到上限或部分历史不可读时统计可能不完整。\n\n只有打开任务并实际看到最新回报，才会清除对应未读数量。");
+    message.append("\n\n未读与运行中数量只采用官方确认的状态。离线、过期或无法读取时显示未知，不沿用旧结果，不维护单独的已读记录。目标电脑需同步更新。\n\n官方列表最多包含最近 50 个未固定任务及全部固定任务；无法取得状态的任务不计入，结果会注明部分统计。在 Remote 中实际读到回报后会请求官方清除标记，是否已读仍以官方确认为准。");
     dialog=new AlertDialog.Builder(this).setTitle(offlineOnly?"设备连接状态":"统计详情").setMessage(message.toString()).setPositiveButton("知道了",null).setNeutralButton("刷新",(d,which)->refreshNow()).create();dialog.show();
   }catch(Exception e){Toast.makeText(this,"统计详情暂不可用",Toast.LENGTH_SHORT).show();}}
 }

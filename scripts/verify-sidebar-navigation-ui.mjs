@@ -70,8 +70,11 @@ try{
   assert.equal(await page.locator('#prompt').inputValue(),'Chat draft');assert.equal(receipts.length,before,'obscured restored reply must not be acknowledged');
   checks.push('restoring a task during mode switch retains drawer and its draft without acknowledging obscured content');
   await page.locator('#drawer-close').click();await drawer(false);
-  const receiptDeadline=Date.now()+5000;while(receipts.length===before&&Date.now()<receiptDeadline)await new Promise(r=>setTimeout(r,50));assert.equal(receipts.length,before+1);
+  await page.waitForTimeout(1000);assert.equal(receipts.length,before,"Chat has no official unread notification support");
   await page.locator('#mobile-menu').click();await choose('codex');await taskLoaded(codex);await drawer(true);assert.equal(await page.locator('#prompt').inputValue(),'Codex draft');
+  await page.locator('#drawer-close').click();await drawer(false);
+  const receiptDeadline=Date.now()+5000;while(receipts.length===before&&Date.now()<receiptDeadline)await new Promise(r=>setTimeout(r,50));assert.equal(receipts.length,before+1);
+  await page.locator('#mobile-menu').click();
   await switchDevice(1);await loaded();await drawer(true);assert.equal(await page.locator('#agent-menu').isVisible(),false);
   checks.push('device switching keeps sidebar available and closes only the device menu');
   await page.locator(`[data-thread-id="${codex}"]`).click();await taskLoaded(codex);await drawer(false);assert.equal(await page.locator('#prompt').inputValue(),'');
