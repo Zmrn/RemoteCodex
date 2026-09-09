@@ -1,0 +1,68 @@
+# 部分历史优先显示 · 0.10.16
+
+2026-09-09，用户报告一个大型 Codex 任务在 Remote Codex 中整页内容无法读取。旧版在本地分页前向官方一次读取两轮；官方发送端的 8 MiB 帧限制导致整次调用失败。只读复现中，最近一轮可读，紧邻的较早一轮仍失败。官方日志明确记录帧超限，不能通过扩大我们自己的接收上限解决。
+
+## 行为
+
+- `src/history-read.mjs` 在官方批量调用返回已识别的读取失败时，用相同任务、相同官方游标尝试一轮；连接失效、超时、权限和游标错误不按大小问题重试。成功后为当前官方连接记住这个任务的逐轮读取方式，最多记住 128 个任务。
+- 返回可读部分和提示后，沿用现有媒体处理、官方状态来源与本地消息分页。没有新增磁盘历史解析，不写官方数据，不把已结束的历史轮次当成实时状态。
+- 若单轮仍失败，返回明确错误。前端保留已经显示的消息、草稿和失败位置，提供手动重试；较早消息和中间回填缺失段均适用。不能跳过未知历史或返回空成功页。
+- 刷新失败保留消息，并注明状态未知。任务、设备或模式切换清除旧读取提示；失败段不自动循环读取。正常最新消息刷新继续工作。
+- Windows 与 Android 复用同一份界面。自动降级需要目标 Windows 接入端也更新至 0.10.16；新客户端无法修复旧接入端已返回的整页错误。
+
+## 本轮验证
+
+| 验证 | 结果与范围 |
+|---|---|
+| 135 项 Node、13 项窗口检查、中央兼容清单 | 通过 |
+| 新增 5 项读取测试 | 同任务/原游标降级、单轮错误不为空页、非大小错误不重试、连接替换隔离、失败游标可重试 |
+| Edge 1300px / 390px | 通过：真实 Bridge/HTTP 隔离故障、消息与草稿保留、重试去重、刷新失败、任务切换；另外覆盖旧游标为空的中间缺失段 |
+| 原有分页、设备切换回归 | 通过：滚动定位、回填去重、服务重启、迟到响应、只读重连 |
+| 用户问题任务的真实官方只读调用 | 官方 Windows x64 26.903.8094.0；可显示最近 1 轮、3 项可见消息；较早超限段明确失败，刷新仍可读；任务写入 0 次 |
+| 最终 Windows EXE | 隔离包内自检通过；内置运行时、DPAPI、资源及真实官方只读连接通过；包内修改文件与源码一致，不含用户配置 |
+| 旧包→新包设备保存与强制重启 | 通过：设备 ID、地址、名称、加密密钥、选择保留，显式删除不复活；安装版配置字节未变 |
+| Android API 35 x86_64 隔离模拟器 | `stage=history-read` 横竖屏 PASS：失败回填保留两端内容、提示、原游标重试、消息去重、草稿、切任务隔离和系统安全区域；未安装用户物理手机 |
+| Android 兼容元数据 | `stage=compatibility` PASS：安装包版本、清单签名、发布说明哈希及中央接口常量一致 |
+| 双端正式发布 | 同为 0.10.16；线上签名、完整哈希、发布说明、兼容清单一致；服务器各保留一份正式资源 |
+| 笔记本内置更新 | 0.10.15→0.10.16，通过线上验证后的本地产物缓存交给内置更新器；2 项现有设备、选择、加密密钥、接入/更新设置保留；官方 PID 未变、连接正常 |
+| 安装版真实页面 | 先显示问题任务的 3 项消息，较早段失败和刷新均保留相同正文，重试入口可见；任务写入与持久化选择改动均为 0 |
+
+正式产物使用原 Windows 更新签名身份和 Android 安装证书。现场证据留在忽略目录，不提交私人正文、密钥或任务历史。
+
+## 复测
+
+```powershell
+node --test test/history-read.test.mjs test/conversation-pages.test.mjs
+node scripts/verify-history-read-ui.mjs
+node scripts/verify-pagination-ui.mjs
+node scripts/verify-device-switch-ui.mjs
+# 仅对已明确指定、可复现“最近可读/较早超限”的真实任务做只读验证
+node scripts/verify-history-read-live.mjs TASK_ID
+python scripts/build-release.py
+python scripts/build_android_test.py
+adb -s emulator-5580 install -r dist/RemoteCodex.apk
+adb -s emulator-5580 install -r work/RemoteCodex-tests.apk
+# 仅在隔离模拟器预授通知权限，避免系统权限弹窗阻塞 instrumentation 启动
+adb -s emulator-5580 shell pm grant com.anso.remotecodex android.permission.POST_NOTIFICATIONS
+adb -s emulator-5580 shell am instrument -w -e stage history-read com.anso.remotecodex.tests/.Probe
+adb -s emulator-5580 shell am instrument -w -e stage compatibility com.anso.remotecodex.tests/.Probe
+# 安装版真实页面验证，仍不发送任务消息或改变持久化设备选择
+node scripts/verify-history-read-installed.mjs TASK_ID
+```
+
+浏览器测试可用 `REMOTE_BRIDGE_PLAYWRIGHT` 指定本机 Playwright 模块。Android 只用 `work/android-avd/RemoteCodexTest` 隔离设备，不能安装到未指定的物理手机。只读脚本对明确的复现任务断言最近成功、较早失败，不要拿普通任务的断言失败判定软件退化。
+
+## 支持范围
+
+支持官方 Windows x64 **26.901.6511.0、26.903.8094.0** 的已验证 Codex 核心读写范围；本轮真实超限复现仅在后者。Chat 列表与历史可读，文字续写仍待专用真实验证，新建、模型和图片未支持；Work 没有独立验证。VS Code 共存的精确版本组合与原设备证据继续见 `VSCODE-COEXISTENCE.md`，本机是官方独占 broker。
+
+单轮官方响应仍可能超过其通道上限，因此此更新不能承诺恢复完整历史，也不能解决官方任务本身无法继续执行的问题。
+
+## 0.10.16 正式产物
+
+| 文件 | 大小（字节） | SHA-256 |
+|---|---:|---|
+| RemoteCodex.exe | 44,061,184 | `ca88141b576009b6668ee40827109352a555e6c9fc77b7e01c4e7d1694c4fcb5` |
+| RemoteCodex.apk | 203,541 | `55bab4268e532fb236400dec5d4c9c8c3580e6cfe9cf8125051235940cb01e0b` |
+
+兼容清单 SHA-256：`a79a15704fc35c1243d38187c0317761a76cc85c30ea8d3a54cf0435acab12bb`。Android 安装证书 SHA-256：`3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`。

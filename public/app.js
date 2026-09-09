@@ -64,6 +64,8 @@ let agents = [],
   pageProtocol = null,
   gapCursor = null,
   headHash = null,
+  historyReadNotice = null,
+  historyFailure = null,
   editing = null,
   streamAbort = null,
   viewerRecovery = null,
@@ -298,6 +300,12 @@ function error(e) {
 function clearError() {
   $("error").hidden = true;
 }
+function updateHistoryNotice() {
+  $("history-notice").textContent = historyFailure
+    ? "这段历史暂时无法读取，已保留当前内容。可点击下方按钮重试。"
+    : historyReadNotice ?? "";
+  $("history-notice").hidden = !$("history-notice").textContent;
+}
 function toast(text) {
   $("toast").textContent = text;
   $("toast").hidden = false;
@@ -368,6 +376,8 @@ function resetTaskReads() {
   pageProtocol = null;
   gapCursor = null;
   headHash = null;
+  historyReadNotice = historyFailure = null;
+  updateHistoryNotice();
 }
 function scheduleRead(older = false) {
   // Throttle instead of debounce: continuous events must still make progress.
@@ -1483,15 +1493,15 @@ function read(older = false) {
     if (readInFlight !== job) return;
     readInFlight = null;
     $("older").disabled = !status.connected;
-    $("older").textContent = "加载更早的消息";
+    $("older").textContent = historyFailure ? "重试更早的消息" : "加载更早的消息";
     if (job.failed && job.retryable) {
       const delay = [1000, 2000, 4000, 8000, 15000, 30000][Math.min(readFailures++, 5)];
       readRetryTimer = setTimeout(() => {
         readRetryTimer = null;
         if (job.seq === readSequence && job.g === generation && job.id === selected) read(older);
       }, delay);
-    } else if (gapCursor && !job.failed) scheduleRead("gap");
-    else if (job.older) scheduleRead(true);
+    } else if (gapCursor && !job.failed && !historyFailure) scheduleRead("gap");
+    else if (job.older && !historyFailure) scheduleRead(true);
     else if (job.pending) scheduleRead();
   });
   return job.promise;
@@ -1549,6 +1559,9 @@ async function readTask(job, older) {
       modelSettings(r.live?.state);
     }
     clearError();
+    if (!older) historyReadNotice = r.readNotice ?? null;
+    if (older && historyFailure?.cursor === requestedCursor) historyFailure = null;
+    updateHistoryNotice();
     const scroll = $("message-scroll");
     const atBottom =
       firstLoad ||
@@ -1556,7 +1569,7 @@ async function readTask(job, older) {
     const anchor = captureMessageAnchor();
     turns = mergeTurns(turns, r.data.turns, !!older);
     if (older) {
-      $("older").hidden = !cursor;
+      $("older").hidden = !cursor && !historyFailure;
       displayTurns();
       restoreMessageAnchor(anchor);
       return;
@@ -1610,7 +1623,7 @@ async function readTask(job, older) {
             ? "online"
             : "neutral");
     $("activity").hidden = taskData.thread.status.type !== "active";
-    $("older").hidden = !cursor;
+    $("older").hidden = !cursor && !historyFailure;
     $("metadata").textContent =
       "Agent: " +
       a +
@@ -1636,12 +1649,18 @@ async function readTask(job, older) {
       job.failed = true;
       job.retryable = ![400, 401, 403, 404].includes(e.status);
       error(e);
-      if (older) return;
+      if (older) {
+        job.retryable = false;
+        historyFailure = { cursor: requestedCursor, kind: older };
+        $("older").hidden = false;
+        updateHistoryNotice();
+        return;
+      }
       taskData = null;
       rememberSidebarStatus(id, { type: "unknown", confirmed: false });
       updateThreadIndicators();
       $("messages").querySelector(".read-notice")?.remove();
-      $("task-state").textContent = "内容读取失败 · 状态未知" + (job.retryable ? " · 自动重试中" : "");
+      $("task-state").textContent = (turns.length ? "刷新失败，已保留当前内容 · 状态未知" : "内容读取失败 · 状态未知") + (job.retryable ? " · 自动重试中" : "");
       $("task-state").className = "badge offline";
       $("task-state").hidden = false;
       $("activity").hidden = true;
@@ -2228,13 +2247,14 @@ $("open").onclick = async () => {
     if (a === agentId && id === selected) error(e);
   }
 };
-$("older").onclick = () => read(true);
+$("older").onclick = () => read(historyFailure?.kind === "gap" ? "gap" : true);
 $("message-scroll").addEventListener(
   "scroll",
   () => {
     if (
       $("message-scroll").scrollTop < 160 &&
       cursor &&
+      !historyFailure &&
       !readInFlight &&
       turns.length
     )

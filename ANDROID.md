@@ -1,5 +1,7 @@
 # Android 控制端
 
+0.10.16 支持先显示官方可读的历史；较早或中间缺失段加载失败时，保留当前内容与草稿并提供手动重试。目标 Windows 接入端也需更新至 0.10.16。单轮本身超过官方通道上限时仍可能不可读，不跳过未知内容；复测入口为 `stage=history-read`，范围与本轮结果见 [HISTORY-READ.md](HISTORY-READ.md)。
+
 0.10.15 已于 2026-09-09 由接手笔记本与 Windows 同步重建、验签并正式发布，包含 VS Code 共存及 Windows 设备保护修复。APK 使用原安装证书，最终包兼容清单与 Windows 一致；本机没有运行最终合并 APK 的模拟器或真机行为测试。原开发设备合并前的 Android 兼容性 PASS 单独保留为历史记录。被控 Windows 新增 VS Code 共享 IPC 支持，手机沿用同一个官方任务接口；精确版本、哈希和实测范围见 [VSCODE-COEXISTENCE.md](VSCODE-COEXISTENCE.md)。
 
 0.10.14 已支持 Codex 新建时一次提交文字和多张图片，或者只发图片；目标 Windows 接入端也需更新。官方创建接口只有文字参数，因此同一任务会先完成一轮自动准备，再接收完整原生图片输入。Android API 35 横竖屏、失败保留草稿和正式设备转发均已验证，见 [CREATE-IMAGES.md](CREATE-IMAGES.md)。接手开发先读 [AGENTS.md](AGENTS.md)，下面带旧版本号的段落保留历史验证范围。

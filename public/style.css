@@ -751,6 +751,13 @@ body[data-mode="chat"] .composer-footnote { line-height: 1.5; }
   border: 1px solid var(--line);
   border-radius: 20px;
 }
+.history-notice {
+  color: var(--warning);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 16px;
+  overflow-wrap: anywhere;
+}
 .empty-state {
   position: absolute;
   inset: 0;

@@ -12,6 +12,7 @@ import { OfficialQueue, composeQueuedMessage } from "./queue.mjs";
 import { assertProbeTarget, testExcludedThreadIds } from "./probe-safety.mjs";
 import { DATA_DIR } from "./runtime.mjs";
 import { MessageMedia } from "./message-media.mjs";
+import { readOfficialHistory } from "./history-read.mjs";
 import { SubscriptionLeases } from "./subscriptions.mjs";
 import { Reconnector } from "../public/reconnect.mjs";
 import {
@@ -371,12 +372,9 @@ export class Bridge extends EventEmitter {
   async read(id, cursor, { compact = false } = {}) {
     this.requireConnection();
     const desktop = this.desktop;
-    const data = await this.desktop.call(TOOLS.readThread, {
-      threadId: id,
-      turnLimit: compact ? 2 : 10,
-      includeOutputs: true,
-      maxOutputCharsPerItem: 12000,
-      ...(cursor ? { cursor } : {}),
+    const { data, readNotice } = await readOfficialHistory(desktop, id, cursor, compact ? 2 : 10, () => {
+      this.requireConnection();
+      if (desktop !== this.desktop) throw Error("Viewer connection changed during read");
     });
     this.requireConnection();
     if (desktop !== this.desktop) throw Error("Viewer connection changed during read");
@@ -385,6 +383,7 @@ export class Bridge extends EventEmitter {
       // while streaming. Only its separate renderer status query is usable.
       return {
         source: "official-desktop-chat-history + renderer-status-poll (may be cached)",
+        readNotice,
         observedAt: new Date().toISOString(),
         data: {
           ...data,
@@ -410,6 +409,7 @@ export class Bridge extends EventEmitter {
     );
     return {
       source: this.live.has(id) ? "official-desktop-tool-read + verified-owner-live-items" : "official-desktop-tool-read",
+      readNotice,
       observedAt: new Date().toISOString(),
       data: compact ? compactConversation(decorated) : decorated,
       live: this.live.has(id)
@@ -434,6 +434,7 @@ export class Bridge extends EventEmitter {
           turns: result.data.turns,
           settings: result.live?.state,
           status: result.live?.status,
+          readNotice: result.readNotice,
         }),
       )
       .digest("hex");

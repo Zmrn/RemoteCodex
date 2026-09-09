@@ -11,6 +11,8 @@ const dir = fs.mkdtempSync(path.join(ROOT, "test/scratch/pagination-ui-"));
 fs.writeFileSync(path.join(dir, "update-settings.json"), '{"automatic":false}');
 const bridge = new Bridge(dir);
 bridge.connected = true;
+const originalStatus = bridge.status.bind(bridge);
+bridge.status = () => ({ ...originalStatus(), existingCodexWritable: true });
 bridge.owners = new Map();
 let phase = "active",
   callCount = 0,

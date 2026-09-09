@@ -181,6 +181,21 @@ public final class Probe extends Instrumentation {
       js("window.__compatibility=null;import(location.origin+'/official-events.mjs').then(m=>window.__compatibility=m.USER_INPUT_REQUEST).catch(e=>window.__compatibility=String(e))");
       until("window.__compatibility!=null",10);
       require("\"item/tool/requestUserInput\"".equals(js("window.__compatibility")),"WebView loads generated shared event constant");
+    }else if(stage.equals("history-read")){
+      String fixture=asset(getContext(),"history-read.js");
+      String html=get("/").replace("<head>","<head><script>"+fixture+"</script>"), origin=app.server().origin+"/";
+      for(int orientation:new int[]{android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE}){
+        String marker="history-read-"+orientation+"-"+System.nanoTime();
+        String page=html.replace("<head>","<head><script>window.__fixturePage='"+marker+"'</script>");
+        runOnMainSync(()->{activity.setRequestedOrientation(orientation);activity.web.loadDataWithBaseURL(origin,page,"text/html","UTF-8",null);});
+        until("window.__fixturePage==='"+marker+"' && typeof window.historyReadFixture?.run==='function' && document.readyState==='complete' && !!document.getElementById('prompt')",20);
+        until(orientation==android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT?"innerHeight>innerWidth":"innerWidth>innerHeight",15);
+        js("window.__historyResult=null;window.historyReadFixture.run().then(r=>window.__historyResult=r).catch(e=>window.__historyResult={error:String(e)})");
+        until("window.__historyResult!=null",45);
+        require("true".equals(js("window.__historyResult.passed===true")),"Android partial history "+orientation+": "+js("JSON.stringify(window.__historyResult)"));
+        safeBounds("partial history "+orientation);
+      }
+      runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
     }else if(stage.equals("create-images")){
       String fixture=asset(getContext(),"create-images.js");
       String html=get("/").replace("<head>","<head><script>"+fixture+"</script>"), origin=app.server().origin+"/";

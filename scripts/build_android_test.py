@@ -22,6 +22,7 @@ with zipfile.ZipFile(unsigned,'a') as z:
     z.write(ROOT/'scripts/fixtures/queue-preview.js','assets/queue-preview.js')
     z.write(ROOT/'scripts/fixtures/interrupt.js','assets/interrupt.js')
     z.write(ROOT/'scripts/fixtures/create-images.js','assets/create-images.js')
+    z.write(ROOT/'scripts/fixtures/history-read.js','assets/history-read.js')
     if (ROOT/'dist/android-latest.json').exists():
         z.write(ROOT/'dist/android-latest.json','assets/compatibility-manifest.json')
 aligned=work/'aligned.apk';run([tools/'zipalign.exe','-f','4',unsigned,aligned]);key,env=password(jdk)
