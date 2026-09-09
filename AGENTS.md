@@ -2,6 +2,38 @@
 
 本项目通过 Windows 上已运行的官方 ChatGPT/Codex 会话所有者转发操作。Android 是控制端，共用 `public/` 界面；不得启动独立 Codex 后端并将其称为桌面桥接。Chat 模式已实现列表与历史读取；文字续写通过官方 app-tools 的 Chat 分支，尚待专用真实会话验证，见 `CHAT-MODE.md`。
 
+## 新会话接手
+
+- 先确认实际操作系统、主机、工作目录、Git 远端/分支及工作区状态，不能把云端/沙箱测试说成本机验证。本机原工作区中的仓库位于 `outputs/remote-codex/`；直接克隆时以包含本文件与 package.json 的 Git 根目录为准。远端为 `https://gitee.com/Anso/remote-codex.git`，本次交接分支为 `main`，开工时重新核对。
+- 当前交接基线（2026-09-09）：Remote Codex **0.10.14**，本机与笔记本均已安装验证；Windows x64 官方包 **26.901.6511.0、26.903.8094.0** 的 Codex 核心读写已验证。软件版本以 package.json 为准，官方支持范围以 src/official-desktop.json 的 validation 为准；交接快照不是实时状态，也不代表所有功能均已验证。
+- 最近修复及证据见 [CREATE-IMAGES.md](CREATE-IMAGES.md)：新建文字/多图、失败草稿保留、正式控制端跨设备发送；115 项 Node 回归、13 项窗口检查、Android API 35 横竖屏及真实官方 owner 测试已通过。新官方版本、Chat 写入、原生生图等不能由这些结果推定成功。
+- 交接时有三份原有未跟踪文件：`CHAT-FEASIBILITY.md`、`scripts/build-chat-ui.py`、`windows/ChatUi.cs`。保留并在相关任务中单独审阅，不自动删除、覆盖、纳入发布或用 `git add -A` 顺带提交；它们不是已完成 Chat 功能的证明。
+- `work/` 中的现场证据、临时设备更新脚本和 `release.local.json` 不在 Git 中。新克隆缺少它们时，从已提交文档与 scripts 中的复测入口接手；不要杜撰设备地址、访问密钥或重新生成签名身份。
+- 接手和每次迭代后更新相关功能文档及本文件的必要约定。按日期识别历史验证记录；若与当前源码、中央清单冲突，先复核并纠正过时说明，不把老报告当当前限制。
+
+## 产品行为约定
+
+- Windows 使用深色主题，图标为 ChatGPT 图案右上角蓝色网络标记。左上角切换 Codex/Chat；新对话直接使用主输入框，项目、模型、推理、权限使用内嵌下拉，不另开创建或模型窗口。弹层内点击不应误关闭。
+- 设备切换、设备命名、Tailscale 地址/端口/密钥设置入口在侧栏左下角；版本号也在左下角。问号直接提供检查/安装更新和自动更新设置，下载时显示小进度，不藏在“设置本机接入”中。
+- 窗口可自由缩放，保存正常尺寸、位置和最大化状态；低分辨率和失去副屏时限制在可见工作区。窄屏/手机竖屏默认隐藏侧栏、可展开；手机横屏使用桌面布局。Android 系统栏、刘海、键盘必须排除在 WebView 内容区域外。
+- Windows 保持单实例。**关闭窗口隐藏到托盘，托盘右键退出才真正结束桥接程序及其子进程**；这是当前约定，覆盖早期“关闭窗口即退出”的需求。停止桥接器不能终止官方任务。单 EXE 内嵌 UI 与受它管理的运行组件，不要求用户另开浏览器或手动运行后台服务。
+- 切设备/模式/任务时隔离草稿、异步读取和队列，取消旧请求，避免迟到响应污染新页面；保留已保存设备。查看断线自动重连，恢复实时订阅和遗漏消息，不能重发未知结果的写指令。
+- 长输入自动增高，确认发送后缩回；失败保留文字和全部图片。多次粘贴/选图追加而非覆盖，保持原图及顺序，单张可移除；当前上限由 public/image-input.mjs 管理（20 张、每张 5 MiB、合计 10 MiB）。图片可放大、附件可下载原文件；截图或代码生成 PNG 不等于官方原生生图成功。
+- 运行中发送进入官方队列，可立即调整方向、取回编辑、删除。队列先显示文字及图片占位，再加载预览。首屏按需加载最新历史，向上翻页；支持基本 Markdown、表格和网页引用，不能把引用控制标记显示为乱码。
+- 模型/权限/推理/加速来自目标官方能力，运行时设置面向下一轮；新建草稿允许预选支持的设置，不无故要求先建任务。当前官方创建接口没有首轮 serviceTier；不要把未接入参数显示为已生效。问题回答保留稳定 requestId、用户选项与自由输入，不能把 accepted 回执当用户已作答。
+
+## 文件位置与验证入口
+
+- 主链路：`src/server.mjs` / `remote.mjs`（本机及设备转发）、`bridge.mjs` / `desktop.mjs` / `transport.mjs`（官方所有者）、`state.mjs` / `conversation-pages.mjs`（实时状态和历史）、`queue.mjs`（官方队列）。共享界面在 `public/`；Windows 壳在 `windows/PortableLauncher.cs`、`DesktopWindow.cs`；Android 在 `android/`。
+- 已安装 Windows 数据在 `%LOCALAPPDATA%/RemoteCodex/data`，源码调试有独立数据目录；不要混用。通过实际 `server.json` 读取运行地址，桌面回环端口可能随机，不硬编码 43127。设备从现有设备存储读取，密钥仅内存解密使用，不输出。桌面入口是用户桌面的 `RemoteCodex.exe`；替换运行中 EXE 优先走内置更新器，不能把复制失败当更新成功。
+- 自动写入前确认新会话的 `CODEX_THREAD_ID`，非 Codex 终端按需设置 `REMOTE_BRIDGE_DEVELOPMENT_THREAD_ID`；遵守 `src/probe-safety.mjs`，只操作本次明确创建的专用测试任务。不要依赖上一会话的任务 ID 或去操作旧私人任务。
+- 常规回归：`npm test`、`npm run compatibility`。UI 改动按相关 `scripts/verify-*-ui.mjs` 验证；隔离假 API 的测试不等于真实官方操作通过。若缺 Playwright，优先检查本机已有/捆绑运行环境；脚本可通过 `REMOTE_BRIDGE_PLAYWRIGHT` 指定模块。
+- 新建多图真实复测：`node scripts/verify-create-compatibility.mjs --create-probe --version=<实际官方版本>`；只读升级预检：`node scripts/verify-compatibility-live.mjs`。前者会创建专用任务并消耗少量额度，不能用于任意旧任务。
+- Android 行为测试先构建正式 APK 与 `python scripts/build_android_test.py`，仅在项目 `work/android-avd/RemoteCodexTest` 的隔离 `emulator-5580` 安装/运行对应 instrumentation stage；例如 `create-images`、`compatibility`，具体命令见 [ANDROID.md](ANDROID.md)。每次显式指定序列号，不操作其他已连接设备；以结果 `PASS` 为准，不能只看 adb 退出码。结束后停止自己启动的模拟器。
+- 单 EXE 自检使用 `RemoteCodex.exe --headless --home <隔离目录> --self-test`；不要把旧 `scripts/verify_portable.py` 的历史后台启动流程当作现行单实例 UI 验收。包校验用 `python scripts/verify-compatibility-release.py`（需要同版本的签名清单）；安装后读取实际版本、官方连接、兼容清单与能力，不能只看构建成功。
+
+按改动阅读对应说明：新建图片 [CREATE-IMAGES.md](CREATE-IMAGES.md)、升级接口 [COMPATIBILITY.md](COMPATIBILITY.md)、项目 [PROJECT-CREATION.md](PROJECT-CREATION.md)、队列 [QUEUE-PREVIEW.md](QUEUE-PREVIEW.md)、停止 [INTERRUPT.md](INTERRUPT.md)、额度 [USAGE.md](USAGE.md)、设备存储 [DEVICE-STORAGE.md](DEVICE-STORAGE.md)、重连 [RECONNECT-VALIDATION.md](RECONNECT-VALIDATION.md)、运行设置 [RUNNING-SETTINGS-VALIDATION.md](RUNNING-SETTINGS-VALIDATION.md)、窗口/托盘 [WINDOW-PLACEMENT.md](WINDOW-PLACEMENT.md) / [DESKTOP-UX-VALIDATION.md](DESKTOP-UX-VALIDATION.md)、Markdown/引用 [MARKDOWN.md](MARKDOWN.md) / [CITATIONS.md](CITATIONS.md)、图片预览 [IMAGE-PREVIEW-VALIDATION.md](IMAGE-PREVIEW-VALIDATION.md)、其他交互回归 [REVIEW-FIXES.md](REVIEW-FIXES.md)。
+
 ## Chat 与 Codex 的区别
 
 - `kind=chatgpt` 列表包含普通 Chat 与 Work，现有接口没有分类字段，界面必须说明，不能将 Work 新建当作 Chat 新建。
@@ -44,3 +76,7 @@
 7. Android 自动检查和下载更新，系统仍要求确认安装；不得宣称普通 APK 能静默安装。验证清单 RSA 签名、SHA-256、包名、版本和 APK 安装证书。
 8. 发布前运行 Node 回归与 Android 构建验证；Android 行为改动在隔离模拟器验证。记录具体通过项和未测试项，不把模拟器结果称作真机验证。
 9. 更新 `ANDROID.md` 或相关复测说明。交付 APK/EXE 链接并提交推送源码、文档（包括本文件）。不提交 `dist/`、`work/`、`data/`、本机配置或原始私人证据。
+
+行为验证未完成时先运行 `python scripts/build-release.py`，完成相应 UI/Android 验证后再用 `python scripts/publish-update.py` 同步发布；`--publish` 不是跳过行为验收的捷径。正常迭代沿用本会话已授权的固定资源目标，不修改网络或另建服务器；目标配置缺失/变化、官方应用需重启/升级等超出授权范围时再说明具体影响。
+
+纯文档交接不改变软件行为或兼容性清单时，只校对引用、事实和 Git diff 后提交推送，不为此递增软件版本、重装客户端或发布双端产物。
