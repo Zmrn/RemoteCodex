@@ -1,5 +1,7 @@
 # Android 控制端
 
+0.10.8 在 Codex 新对话的输入框上方增加项目下拉，可搜索当前电脑的官方项目，选择后在其当前目录/分支本地执行；按设备保留选择。被控电脑也需更新到 0.10.8。Android WebView 的设备隔离、下拉交互与横竖屏边界已在隔离模拟器验证，见 `PROJECT-CREATION.md`；此更新不包含仍暂停的 Chat 新建/模型联动。
+
 安装 `dist/RemoteCodex.apk`（固定文件名）。支持 Android 8.0 / API 26 及以上，使用系统 Android System WebView；较旧系统请保持 WebView 更新。APK 无原生 CPU 库，可在 ARM64、ARM 和 x86 系列设备上安装；本轮实际运行验证使用 Android 15 / API 35 x86_64 隔离模拟器，未安装到用户物理手机。
 
 手机打开 Tailscale 并接入同一网络。Windows 电脑运行 Remote Codex，官方 ChatGPT 保持登录；在电脑编辑本机设备，开启已有 Tailscale 地址上的接入，取得 IP、端口和访问密钥。手机从设备菜单添加电脑并命名，之后可切换设备。

@@ -10,6 +10,7 @@ import { Reconnector } from "./reconnect.mjs";
 import { clipboardImages } from "./clipboard-images.mjs";
 import { HelpUpdates } from "./help-updates.mjs";
 import { zoomableImage } from "./image-viewer.mjs";
+import { ProjectPicker } from "./project-picker.mjs";
 import {
   windowId,
   saveRecovery,
@@ -106,6 +107,10 @@ const deviceSettings = new DeviceSettings({
   backupDrafts,
 });
 const helpUpdates = new HelpUpdates({ $, api, backupDrafts });
+const projectPicker = new ProjectPicker({ $, changed: () => {
+  permissions();
+  backupDrafts().catch(error);
+} });
 async function backupDrafts() {
   saveDraft();
   await saveRecovery({
@@ -116,6 +121,7 @@ async function backupDrafts() {
     drafts: [...draft],
     taken: [...takenDrafts],
     settings: [...pendingSettings],
+    creationProjects: projectPicker.snapshot(),
     prompt: $("prompt").value,
     files: [...composerImages],
     questions: questionUI.snapshot(),
@@ -481,6 +487,7 @@ function permissions() {
       (probe ||
         (status.existingCodexWritable && taskData?.thread?.kind === "codex")));
   const inFlight = busy.has(fresh ? agentId + ":create" : taskKey());
+  projectPicker.update({ agentId, mode, fresh, projects, status, busy: inFlight, booting });
   const settingsAvailable =
     !chat && status.connected &&
     writable &&
@@ -509,6 +516,7 @@ function permissions() {
     !status.connected ||
     !writable ||
     inFlight ||
+    !!projectPicker.reason() ||
     (chat ? !chatAccess.canSend : (!idle && taskData?.thread?.status?.type !== "active")) ||
     queueUI.busy ||
     !$("prompt").value.trim();
@@ -558,6 +566,7 @@ function permissions() {
             ? "发送文字时由官方桌面继续此会话"
             : "";
   if (chat && !readOnlyTask) $("writable").textContent = inFlight ? "正在转交官方 Chat…" : chatAccess.reason;
+  if (!chat && projectPicker.reason()) $("writable").textContent = projectPicker.reason();
   $("destination").textContent = currentAgent()?.name ?? "";
   queueUI.render();
 }
@@ -1009,7 +1018,7 @@ async function refresh(g = generation, options = {}) {
   if (g !== generation) return;
   status = s;
   threads = modeCatalog(t.data, mode, status.testThreads);
-  projects = (p.data.projects ?? []).filter(p => mode === "chat" ? p.kind === "chatgpt" || threads.some(t => t.projectId === p.projectId) : p.kind !== "chatgpt");
+  projects = (p.data.projects ?? []).filter(p => mode === "chat" ? (p.projectKind ?? p.kind) === "chatgpt" || threads.some(t => t.projectId === p.projectId) : (p.projectKind ?? p.kind) !== "chatgpt");
   for (const thread of threads)
     rememberSidebarStatus(
       thread.id,
@@ -1942,6 +1951,10 @@ async function navigateBy(delta) {
 function newConversation(record = true) {
   if (!currentAgent()) { editAgent(null); return; }
   closeSettingsMenu(false);
+  projectPicker.close();
+  if (mode === "codex" && record) projectPicker.prefer(
+    threads.find(t => t.id === selected)?.projectId ?? $("project-filter").value,
+  );
   saveDraft();
   viewEpoch++;
   resetTaskReads();
@@ -1989,6 +2002,7 @@ $("form").onsubmit = async (e) => {
     multiImageSupported = status.multiImageInput === true;
   if (!prompt.trim()) return;
   const sendSettings = pendingSettings.get(taskKey(a, t));
+  const creationProject = fresh && m === "codex" ? projectPicker.selection() : null;
   busy.add(k);
   permissions();
   clearError();
@@ -2008,6 +2022,7 @@ $("form").onsubmit = async (e) => {
       payload = {
         mode: m,
         prompt,
+        ...(creationProject ? { project: creationProject } : {}),
         ...(takenDrafts.get(taskKey(a, t))
           ? { recoveryId: takenDrafts.get(taskKey(a, t)).recoveryId }
           : {}),
@@ -2903,6 +2918,7 @@ api("/api/agents")
     storageNotice(d);
     agents = d.agents;
     const saved = await readRecovery().catch(() => null);
+    projectPicker.restore(saved?.creationProjects);
     questionUI.restore(saved?.questions);
     mode = normalizeMode(saved?.mode ?? mode);
     for (const [key, id] of saved?.modeSelections ?? []) modeSelections.set(key, id);

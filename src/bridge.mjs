@@ -18,6 +18,7 @@ import {
   compactConversation,
 } from "./conversation-pages.mjs";
 import { withServiceTiers, tierOverride } from "./service-tiers.mjs";
+import { projectSelection, savedProjectTarget } from "./project-target.mjs";
 import {
   asyncQuestions,
   questionReply,
@@ -621,6 +622,7 @@ export class Bridge extends EventEmitter {
     key,
     prompt = "只回复：REMOTE_BRIDGE_FIRST_OK。不要使用工具，不要创建或修改任何文件。",
     options = {},
+    projectInput,
   ) {
     this.requireConnection();
     this.requireSupportedBuild();
@@ -633,7 +635,11 @@ export class Bridge extends EventEmitter {
       ...modelOverrides(modelInput, parseModels(this.desktop.catalog)),
       ...permissionOverrides(permissionMode),
     };
-    return this.once(key, "create", { prompt, settings }, async dispatch => {
+    const project = projectSelection(projectInput);
+    return this.once(key, "create", { prompt, settings, ...(project ? { project } : {}) }, async dispatch => {
+      // Resolve on the destination desktop again at send time, never trust a
+      // path or stale project metadata supplied by a remote controller.
+      const desktop = this.desktop;
       const context =
         permissionMode && permissionMode !== "keep"
           ? await this.permissionContext(permissionMode)
@@ -643,6 +649,11 @@ export class Bridge extends EventEmitter {
         new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) +
         "-" +
         randomUUID().slice(0, 6);
+      const projectTarget = project
+        ? savedProjectTarget(project, await desktop.call("list_projects"))
+        : null;
+      this.requireConnection();
+      if (desktop !== this.desktop) throw Error("创建期间目标桌面连接已更换，未发送");
       dispatch();
       const r = await this.desktop.call(
         "create_thread",
@@ -651,7 +662,7 @@ export class Bridge extends EventEmitter {
           prompt,
           ...(settings.model ? { model: settings.model } : {}),
           ...(settings.effort ? { thinking: settings.effort } : {}),
-          target: { type: "projectless", directoryName: name },
+          target: projectTarget ?? { type: "projectless", directoryName: name },
         },
         context,
       );
@@ -662,6 +673,7 @@ export class Bridge extends EventEmitter {
         createdAt: new Date().toISOString(),
         cwd: r.cwd ?? null,
         outputDirectory: r.projectlessOutputDirectory ?? null,
+        ...(project ? { projectId: project.projectId, environment: "local" } : {}),
       };
       this.save();
       this.desktop.context = r.threadId;
@@ -993,6 +1005,12 @@ export class Bridge extends EventEmitter {
       protectedThreadId: null,
       protectedThreadIds: [],
       existingCodexWritable: true,
+      projectCreation: {
+        local: this.desktop?.identity?.appToolsPipe?.image?.includes("OpenAI.Codex_26.901.6511.0_x64__") === true &&
+          ["list_projects", "create_thread"].every(name => this.desktop?.catalog?.some(t => t.namespace === "codex_app" && t.name === name)),
+        worktree: false,
+        source: "official-desktop-list-projects-and-create-thread",
+      },
       multiImageInput: true,
       viewerLeases: true,
       imageLimits: IMAGE_LIMITS,

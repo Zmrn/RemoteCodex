@@ -161,6 +161,28 @@ public final class Probe extends Instrumentation {
       runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
       until("document.body.classList.contains('mobile-layout') && !document.body.classList.contains('drawer-open')",15);
       require(true,"portrait drawer remains closed; no real task writes");
+    }else if(stage.equals("projects")){
+      // Exercise the shipped picker on the real WebView with isolated DOM/data.
+      // The existing controller and its real devices/tasks are never changed.
+      js("window.__projectProbe=null;import(location.origin+'/project-picker.mjs').then(({ProjectPicker})=>{const root=document.createElement('div');root.id='project-probe';root.style.cssText='position:fixed;inset:0;z-index:900;background:#161e2a;display:flex;align-items:flex-end;padding:24px';root.innerHTML='<div data-id=creation-context class=creation-context><button data-id=project-display><span data-id=project-name></span></button><span data-id=project-location>本地</span><span data-id=project-hint hidden></span></div><div data-id=project-menu class=\"settings-menu project-menu\" popover=auto><input data-id=project-search placeholder=搜索项目><div data-id=project-options></div><p data-id=project-menu-note></p></div>';document.body.append(root);const $=id=>root.querySelector('[data-id='+id+']');const context={agentId:'fixture-a',mode:'codex',fresh:true,projects:[{projectId:'fixture-project',projectKind:'local',hostId:'local',label:'测试项目',path:'C:/Fixture'}],status:{connected:true,projectCreation:{local:true}},busy:false};const picker=new ProjectPicker({$,changed:()=>picker.update(context)});picker.update(context);window.__projectProbe={picker,context,$};}).catch(e=>window.__projectProbe={error:String(e)})");
+      until("window.__projectProbe!=null",15);
+      require("true".equals(js("!window.__projectProbe.error")),"APK loads bundled project picker module: "+js("window.__projectProbe.error||'ready'"));
+      js("window.__projectProbe.$('project-display').click();window.__projectProbe.$('project-search').value='测试';window.__projectProbe.$('project-search').dispatchEvent(new Event('input'))");
+      require("true".equals(js("window.__projectProbe.$('project-menu').matches(':popover-open') && window.__projectProbe.$('project-options').querySelectorAll('button').length===2")),"Android dropdown search keeps menu open");
+      js("window.__projectProbe.$('project-options').querySelector('[data-project=fixture-project]').click()");
+      require("true".equals(js("window.__projectProbe.picker.selection().projectId==='fixture-project' && window.__projectProbe.$('project-name').textContent==='测试项目'")),"Android selection retains stable project ID");
+      js("window.__projectProbe.context.agentId='fixture-b';window.__projectProbe.picker.update(window.__projectProbe.context)");
+      require("true".equals(js("window.__projectProbe.picker.selection()===null")),"Android project selection isolates target devices");
+      js("window.__projectProbe.context.agentId='fixture-a';window.__projectProbe.picker.update(window.__projectProbe.context)");
+      require("true".equals(js("window.__projectProbe.picker.selection().projectId==='fixture-project'")),"Android switch back restores project selection");
+      for(int orientation:new int[]{android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE}){
+        runOnMainSync(()->activity.setRequestedOrientation(orientation));
+        until(orientation==android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT?"innerWidth<innerHeight":"innerWidth>innerHeight",15);
+        js("window.__projectProbe.picker.close();window.__projectProbe.$('project-display').click();window.__projectProbe.picker.position()");
+        require("true".equals(js("(()=>{const r=window.__projectProbe.$('project-menu').getBoundingClientRect();return r.x>=0&&r.y>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1})()")),"Android project dropdown stays inside viewport orientation="+orientation);
+      }
+      js("window.__projectProbe.picker.close();document.getElementById('project-probe').remove()");
+      runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
     }else if(stage.equals("safe-area")){
       runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
       until("innerWidth<innerHeight && document.body.classList.contains('mobile-layout')",15);SystemClock.sleep(700);safeBounds("portrait");

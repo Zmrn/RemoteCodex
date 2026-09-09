@@ -13,6 +13,7 @@ export function modeCatalog(data, mode, testThreads = {}) {
     if (!result.some(row => row.id === id)) result.unshift({
       id, title: t.title, kind: "codex", status: "unknown",
       updatedAt: Date.parse(t.createdAt) / 1000,
+      ...(t.projectId ? { projectId: t.projectId } : {}),
     });
   }
   return result;

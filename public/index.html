@@ -298,6 +298,13 @@
             aria-label="排队消息"
             hidden
           ></div>
+          <div id="creation-context" class="creation-context" hidden>
+            <button id="project-display" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="project-menu" aria-describedby="project-hint" disabled>
+              <span data-icon="folder"></span><span id="project-name">无项目</span><span data-icon="chevron"></span>
+            </button>
+            <span id="project-location" class="project-location" hidden><span data-icon="device"></span>本地</span>
+            <span id="project-hint" class="sr-only"></span>
+          </div>
           <form id="form" class="composer">
             <div id="attachment" hidden></div>
             <textarea
@@ -389,6 +396,11 @@
       role="menu"
       aria-label="模型设置"
     ></div>
+    <div id="project-menu" class="settings-menu project-menu" popover="auto" aria-label="选择项目">
+      <input id="project-search" type="search" placeholder="搜索项目" aria-label="搜索项目" autocomplete="off">
+      <div id="project-options" role="menu" aria-label="当前设备的项目"></div>
+      <p id="project-menu-note" class="field-help"></p>
+    </div>
     <dialog id="agent-dialog">
       <form id="agent-form">
         <div class="dialog-heading">

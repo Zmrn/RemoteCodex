@@ -45,6 +45,7 @@ export async function startServer({
     ["/clipboard-images.mjs", "text/javascript; charset=utf-8"],
     ["/help-updates.mjs", "text/javascript; charset=utf-8"],
     ["/image-viewer.mjs", "text/javascript; charset=utf-8"],
+    ["/project-picker.mjs", "text/javascript; charset=utf-8"],
     ["/questions-ui.mjs", "text/javascript; charset=utf-8"],
     ["/queue-ui.mjs", "text/javascript; charset=utf-8"],
     ["/device-settings.mjs", "text/javascript; charset=utf-8"],
@@ -355,7 +356,7 @@ export async function startServer({
         return json(
           res,
           200,
-          await bridge.create(body.requestId, body.prompt, body.settings),
+          await bridge.create(body.requestId, body.prompt, body.settings, body.project),
         );
       if (match) {
         const id = match[1];
