@@ -3,7 +3,7 @@
 由 src/official-desktop.json 生成；修改源清单后运行 node scripts/compatibility-report.mjs --write。
 此清单描述桥接器实际使用的桌面内部接口，不代表 OpenAI 对第三方的稳定性承诺。字段为已使用字段摘要，不是完整官方 schema。
 
-已验证官方版本：26.901.6511.0（windows-x64）。
+已验证官方版本：26.901.6511.0、26.903.8094.0（windows-x64）。
 Chat：列表/历史读取；文字续写待专用真实会话验证；新建/模型/图片未支持。Work：没有独立验证；列表可能与 Chat 混合。
 
 ## 连接和数据来源

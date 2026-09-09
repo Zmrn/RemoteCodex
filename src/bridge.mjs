@@ -612,9 +612,12 @@ export class Bridge extends EventEmitter {
     prompt = "只回复：REMOTE_BRIDGE_FIRST_OK。不要使用工具，不要创建或修改任何文件。",
     options = {},
     projectInput,
+    imageDataUrls,
   ) {
     this.requireConnection();
     this.requireSupportedBuild();
+    const images = validateImageUrls(imageDataUrls);
+    if (images.length) return this.createWithImages(key, prompt, options, projectInput, images);
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000)
       throw Error("Invalid message");
     if (options.serviceTier !== undefined)
@@ -674,6 +677,51 @@ export class Bridge extends EventEmitter {
       });
       return r;
     }, { deferredDispatch: true });
+  }
+  async createWithImages(key, prompt, options, projectInput, images) {
+    if (typeof key !== "string" || !/^[\w-]{8,100}$/.test(key)) throw Error("requestId required");
+    if (typeof prompt !== "string" || prompt.length > 20000) throw Error("Invalid message");
+    if (options.serviceTier !== undefined) throw Error("官方新建接口未提供首轮加速参数；请创建后切换加速");
+    const { permissionMode, ...modelInput } = options;
+    modelOverrides(modelInput, parseModels(this.desktop.catalog)); permissionOverrides(permissionMode);
+    const project = projectSelection(projectInput);
+    const hash = createHash("sha256").update(JSON.stringify({ prompt, options, project, images })).digest("hex");
+    this.db.imageCreates ??= {};
+    let record = this.db.imageCreates[key];
+    if (record && record.hash !== hash) throw Error("requestId reused with different content");
+    if (record?.result) return { ...record.result, deduplicated: true };
+    this.imageCreateFlights ??= new Map();
+    if (this.imageCreateFlights.has(key)) return this.imageCreateFlights.get(key);
+    if (!record) {
+      record = this.db.imageCreates[key] = { hash, createdAt: new Date().toISOString() };
+      this.save();
+    }
+    const suffix = createHash("sha256").update(key).digest("hex");
+    const pending = (async () => {
+      // Official create_thread is text-only. Do not send the user's real request
+      // without its images: prepare one official task, then send the full input.
+      const created = await this.create("image-create-" + suffix,
+        "Remote Codex 正在为用户准备带图会话，实际文字和图片将在下一条消息一起发送。只回复 READY，不要使用工具，不要读取或修改文件。",
+        options, projectInput);
+      if (created.status !== "accepted" || !created.result?.threadId)
+        return { status: "outcome-unknown", phase: "creating", error: "创建回执未知；不会重新创建，请核对官方桌面" };
+      const id = created.result.threadId;
+      record.threadId = id; this.save();
+      let idle = false;
+      for (let i = 0; i < 90; i++) {
+        if ((await this.codexThread(id)).thread.status?.type === "idle") { idle = true; break; }
+        await new Promise(r => setTimeout(r, 500));
+      }
+      if (!idle) throw Error("带图会话已创建，正在等待官方就绪；文字和图片已保留，重试会继续同一会话");
+      const sent = await this.nativeSend(id, "image-message-" + suffix,
+        prompt.trim() ? prompt : "请查看这些图片。", images);
+      if (sent.status !== "accepted") return { status: "outcome-unknown", phase: "sending", threadId: id };
+      record.result = { status: "accepted", result: { ...created.result, imageTurnId: sent.result?.result?.result?.turn?.id }, preparation: "official-text-setup-then-image-turn" };
+      this.save();
+      return record.result;
+    })();
+    this.imageCreateFlights.set(key, pending);
+    try { return await pending; } finally { this.imageCreateFlights.delete(key); }
   }
   async permissionContext(mode) {
     this.permissionPreparations ??= new Map();
@@ -1017,6 +1065,7 @@ export class Bridge extends EventEmitter {
         source: "official-desktop-list-projects-and-create-thread",
       },
       multiImageInput: true,
+      imageCreation: { supported: compatibility.writeSupported, mode: "official-text-setup-then-image-turn" },
       viewerLeases: true,
       imageLimits: IMAGE_LIMITS,
       chat: this.chatCapabilities(),

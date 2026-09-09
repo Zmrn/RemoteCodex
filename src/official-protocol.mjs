@@ -19,7 +19,9 @@ export function supportedBuild(image) {
   return typeof image === "string" && verifiedVersions.some(version => image.includes(packagePrefix + version + packageSuffix));
 }
 export function assertSupportedBuild(image) {
-  if (!supportedBuild(image)) throw Error("Unsupported desktop build: read-only until protocol is revalidated");
+  if (!supportedBuild(image)) throw Error("目标官方桌面版本 " + (desktopCompatibility(image).detectedVersion ?? "未知") +
+    " 尚未完成兼容验证，请更新目标电脑的 Remote Codex；当前已支持 " + OFFICIAL.support.verifiedVersions.join("、") +
+    "。请求未发送，草稿和图片已保留。(Unsupported desktop build)");
 }
 export function supportManifest() {
   const { officialProduct, platform, verifiedVersions, unknownVersionPolicy, codex, chat, work } = OFFICIAL.support;

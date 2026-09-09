@@ -14,6 +14,7 @@ import { Updater } from "./updater.mjs";
 import { DATA_DIR, INSTANCE } from "./runtime.mjs";
 import { createGzip } from "node:zlib";
 import { conversationView } from "./state.mjs";
+import { CompatibilityProbes, inspectDesktop } from "./compatibility-probe.mjs";
 export async function startServer({
   port = 43127,
   bridge = new Bridge(),
@@ -24,6 +25,7 @@ export async function startServer({
 } = {}) {
   agents ??= new Agents(bridge.dataDir ?? DATA_DIR);
   access ??= new LocalAccess(bridge.dataDir ?? DATA_DIR);
+  const compatibilityProbes = new CompatibilityProbes(bridge.dataDir ?? DATA_DIR);
   const updater = new Updater(bridge.dataDir ?? DATA_DIR, (e) =>
     bridge.emitEvent?.(e.kind, e),
   );
@@ -181,6 +183,12 @@ export async function startServer({
         return json(res, 200, updater.status());
       if (req.method === "GET" && url.pathname === "/api/status")
         return json(res, 200, bridge.status());
+      if (req.method === "GET" && url.pathname === "/api/compatibility") {
+        bridge.requireConnection();
+        return json(res, 200, await inspectDesktop(bridge.desktop));
+      }
+      if (req.method === "GET" && url.pathname === "/api/compatibility/probe")
+        return json(res, 200, compatibilityProbes.read(url.searchParams.get("requestId")));
       if (req.method === "GET" && url.pathname === "/api/instance")
         return json(res, 200, INSTANCE);
       if (req.method === "GET" && url.pathname === "/api/events") {
@@ -305,6 +313,8 @@ export async function startServer({
         chunks.push(chunk);
       }
       const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+      if (url.pathname === "/api/compatibility/probe")
+        return json(res, 202, compatibilityProbes.start(body));
       if (url.pathname === "/api/agents")
         return json(res, 200, await agents.save(body));
       if (url.pathname === "/api/agents/select")
@@ -361,7 +371,7 @@ export async function startServer({
         return json(
           res,
           200,
-          await bridge.create(body.requestId, body.prompt, body.settings, body.project),
+          await bridge.create(body.requestId, body.prompt, body.settings, body.project, imagesFromBody(body)),
         );
       if (match) {
         const id = match[1];

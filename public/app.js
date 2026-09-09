@@ -484,6 +484,7 @@ function messageImage(ref) {
 }
 function permissions() {
   const fresh = selected === null;
+  const canDraft = fresh && mode === "codex" && !!currentAgent();
   const readOnlyTask = (
     status.readOnlyThreadIds ??
     status.protectedThreadIds ?? [status.protectedThreadId]
@@ -492,7 +493,7 @@ function permissions() {
   const chat = mode === "chat";
   const chatAccess = chatComposer(status, taskData?.thread);
   const writable = chat ? !readOnlyTask && chatAccess.writable :
-    (fresh && !!currentAgent()) ||
+    (fresh && !!currentAgent() && status.existingCodexWritable === true) ||
     (!readOnlyTask &&
       (probe ||
         (status.existingCodexWritable && taskData?.thread?.kind === "codex")));
@@ -511,15 +512,14 @@ function permissions() {
   $("create").disabled = $("mobile-new").disabled = busy.has(
     agentId + ":create",
   );
-  $("prompt").disabled = booting || !writable || submitting;
+  $("prompt").disabled = booting || !(writable || canDraft) || submitting;
   $("image").disabled =
-    chat || !status.connected ||
-    !writable ||
-    fresh ||
+    chat || (!fresh && !status.connected) ||
+    !(writable || canDraft) ||
     inFlight ||
     taskData?.thread?.status?.type === "notLoaded";
-  $("attach-label").title = fresh
-    ? "先发送第一条文字消息，创建对话后可添加图片"
+  $("attach-label").title = fresh && status.imageCreation?.supported !== true
+    ? "可先添加图片；更新目标电脑的 Remote Codex 后发送"
     : "添加图片（最多 20 张，每张 5 MB，合计 10 MB；PNG / JPEG / WebP）";
   $("send").disabled =
     booting ||
@@ -529,7 +529,8 @@ function permissions() {
     !!projectPicker.reason() ||
     (chat ? !chatAccess.canSend : (!idle && taskData?.thread?.status?.type !== "active")) ||
     queueUI.busy ||
-    !$("prompt").value.trim();
+    (fresh && composerImages.length > 0 && status.imageCreation?.supported !== true) ||
+    (!$("prompt").value.trim() && !composerImages.length);
   $("send").title = submitting
     ? "提交中…"
     : !idle && !chat
@@ -557,7 +558,7 @@ function permissions() {
     !fresh &&
     stopRunning
   );
-  $("send").hidden = !$("interrupt").hidden && !$("prompt").value.trim();
+  $("send").hidden = !$("interrupt").hidden && !$("prompt").value.trim() && !composerImages.length;
   $("interrupt").disabled = booting || !interruptTurnId() || inFlight;
   $("interrupt").title = inFlight ? "正在提交…" : !interruptTurnId()
     ? "正在确认当前运行轮次…" : "停止当前回复";
@@ -580,6 +581,8 @@ function permissions() {
           : taskData?.thread?.status?.type === "notLoaded"
             ? "发送文字时由官方桌面继续此会话"
             : "";
+  if (writable && fresh && composerImages.length && status.imageCreation?.supported !== true)
+    $("writable").textContent = "目标电脑尚不支持带图新建，请更新目标电脑；文字和图片已保留";
   if (chat && !readOnlyTask) $("writable").textContent = inFlight ? "正在转交官方 Chat…" : chatAccess.reason;
   if (!chat && projectPicker.reason()) $("writable").textContent = projectPicker.reason();
   $("destination").textContent = currentAgent()?.name ?? "";
@@ -1943,7 +1946,7 @@ $("form").onsubmit = async (e) => {
     prompt = $("prompt").value,
     files = [...composerImages],
     multiImageSupported = status.multiImageInput === true;
-  if (!prompt.trim()) return;
+  if (!prompt.trim() && !files.length) return;
   const sendSettings = pendingSettings.get(taskKey(a, t));
   const creationProject = fresh && m === "codex" ? projectPicker.selection() : null;
   busy.add(k);
@@ -1954,7 +1957,7 @@ $("form").onsubmit = async (e) => {
     document.querySelector(".conversation").classList.remove("is-new");
     const preview = renderItem({
       type: "userMessage",
-      content: [{ type: "text", text: prompt }],
+      content: [{ type: "text", text: prompt || "图片消息" }],
     });
     $("messages").replaceChildren(preview);
     $("activity").hidden = false;
@@ -1964,7 +1967,7 @@ $("form").onsubmit = async (e) => {
     const images = imagePayload(await Promise.all(files.map(fileData)), multiImageSupported),
       payload = {
         mode: m,
-        prompt,
+        prompt: prompt.trim() ? prompt : "请查看这些图片。",
         ...(creationProject ? { project: creationProject } : {}),
         ...(takenDrafts.get(taskKey(a, t))
           ? { recoveryId: takenDrafts.get(taskKey(a, t)).recoveryId }
@@ -2014,6 +2017,11 @@ $("form").onsubmit = async (e) => {
     if (g === generation && v === viewEpoch) {
       error(e);
       $("activity").hidden = true;
+      if (fresh) {
+        $("messages").replaceChildren();
+        $("empty").hidden = false;
+        document.querySelector(".conversation").classList.add("is-new");
+      }
     } else toast("原设备的提交结果未知，请切回核对。");
   } finally {
     busy.delete(k);
@@ -2060,7 +2068,9 @@ $("prompt").addEventListener("paste", event => {
   if (!files.length) return;
   event.preventDefault();
   if ($("image").disabled) {
-    toast(selected === null ? "请先发送文字创建会话，再粘贴图片" : "请等待会话连接并加载完成后再粘贴图片");
+    toast(!status.connected ? "请等待目标设备连接后再粘贴图片" : selected === null
+      ? "目标设备尚不支持带图新建，请更新目标电脑；原有草稿已保留"
+      : "请等待会话连接并加载完成后再粘贴图片");
     return;
   }
   try { appendImages(files); } catch (e) { error(e); }

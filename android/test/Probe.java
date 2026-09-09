@@ -181,6 +181,21 @@ public final class Probe extends Instrumentation {
       js("window.__compatibility=null;import(location.origin+'/official-events.mjs').then(m=>window.__compatibility=m.USER_INPUT_REQUEST).catch(e=>window.__compatibility=String(e))");
       until("window.__compatibility!=null",10);
       require("\"item/tool/requestUserInput\"".equals(js("window.__compatibility")),"WebView loads generated shared event constant");
+    }else if(stage.equals("create-images")){
+      String fixture=asset(getContext(),"create-images.js");
+      String html=get("/").replace("<head>","<head><script>"+fixture+"</script>"), origin=app.server().origin+"/";
+      for(int orientation:new int[]{android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE}){
+        String marker="create-images-"+orientation+"-"+System.nanoTime();
+        String page=html.replace("<head>","<head><script>window.__fixturePage='"+marker+"'</script>");
+        runOnMainSync(()->{activity.setRequestedOrientation(orientation);activity.web.loadDataWithBaseURL(origin,page,"text/html","UTF-8",null);});
+        until("window.__fixturePage==='"+marker+"' && typeof window.createImageFixture?.run==='function' && document.readyState==='complete' && !!document.getElementById('prompt')",20);
+        until(orientation==android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT?"innerHeight>innerWidth":"innerWidth>innerHeight",15);
+        js("window.__createResult=null;window.createImageFixture.run().then(r=>window.__createResult=r).catch(e=>window.__createResult={error:String(e)})");
+        until("window.__createResult!=null",45);
+        require("true".equals(js("window.__createResult.passed===true")),"Android production image creation "+orientation+": "+js("JSON.stringify(window.__createResult)"));
+        safeBounds("image creation "+orientation);
+      }
+      runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
     }else if(stage.equals("interrupt")){
       String fixture=asset(getContext(),"interrupt.js");
       String html=get("/").replace("<head>","<head><script>"+fixture+"</script>");

@@ -1,18 +1,35 @@
 {
   "schemaVersion": 1,
+  "probeCandidates": [],
   "validation": [
     {
       "version": "26.901.6511.0",
       "date": "2026-09-09",
       "scope": "Codex existing desktop owner; read, create, send, queue, settings and image paths. See evidence for limits; Chat text and Work are not claimed validated.",
-      "evidence": ["QUEUE-PREVIEW.md", "PROJECT-CREATION.md", "USAGE.md", "CHAT-MODE.md", "INTERRUPT.md"]
+      "evidence": [
+        "QUEUE-PREVIEW.md",
+        "PROJECT-CREATION.md",
+        "USAGE.md",
+        "CHAT-MODE.md",
+        "INTERRUPT.md",
+        "CREATE-IMAGES.md"
+      ]
+    },
+    {
+      "version": "26.903.8094.0",
+      "date": "2026-09-09",
+      "scope": "Live laptop Windows x64 official owner: text create/read, two-image native send in same created task, model/effort/read-only settings, queue add/remove, viewer reconnect without stopping active turn, interrupt and same-task continuation. Project selection, questions/approval submission, native image generation, Chat writes and Work are not revalidated on this build.",
+      "evidence": [
+        "CREATE-IMAGES.md"
+      ]
     }
   ],
   "support": {
     "officialProduct": "OpenAI.Codex (Windows ChatGPT.exe)",
     "platform": "windows-x64",
     "verifiedVersions": [
-      "26.901.6511.0"
+      "26.901.6511.0",
+      "26.903.8094.0"
     ],
     "packagePrefix": "OpenAI.Codex_",
     "packageSuffix": "_x64__",
