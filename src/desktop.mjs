@@ -133,7 +133,7 @@ export class Desktop {
       throw error;
     }
   }
-  async call(tool, args = {}, context = this.context) {
+  async call(tool, args = {}, context = this.context, { timeoutMs = 60000 } = {}) {
     if (
       !this.catalog.some((t) => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === tool)
     )
@@ -148,7 +148,7 @@ export class Desktop {
         tool,
         turnId: "remote-bridge-request-" + randomUUID(),
       },
-      { timeoutMs: 60000 },
+      { timeoutMs },
     );
     const r = f.result;
     if (!r?.success)

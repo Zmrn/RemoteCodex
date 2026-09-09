@@ -209,12 +209,14 @@ export async function startServer({
         return json(res, 200, await bridge.projects());
       if (req.method === "GET" && url.pathname === "/api/threads")
         return json(res, 200, await bridge.threads());
+      if (req.method === "GET" && url.pathname === "/api/task-summary")
+        return json(res, 200, await bridge.taskReports.summary());
       if (req.method === "GET" && url.pathname === "/api/models")
         return json(res, 200, await bridge.models(url.searchParams.get("mode") ?? "codex"));
       if (req.method === "GET" && url.pathname === "/api/usage")
         return json(res, 200, await bridge.usage());
       const match =
-        /^\/api\/threads\/([\w-]+)(?:\/(messages|follow|open|files|file|interrupt|settings|queue|questions|media))?$/.exec(
+        /^\/api\/threads\/([\w-]+)(?:\/(messages|follow|open|files|file|interrupt|settings|queue|questions|media|read-receipt))?$/.exec(
           url.pathname,
         );
       if (req.method === "GET" && match) {
@@ -391,6 +393,7 @@ export async function startServer({
         if (match[2] === "follow")
           return json(res, 200, body.following === false ? bridge.unfollow(id, body.viewerId) : await bridge.follow(id, body.viewerId));
         if (match[2] === "open") return json(res, 200, await bridge.open(id));
+        if (match[2] === "read-receipt") return json(res, 200, await bridge.taskReports.acknowledge(id, body.token));
         if (match[2] === "settings")
           return json(
             res,

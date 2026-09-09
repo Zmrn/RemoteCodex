@@ -98,7 +98,7 @@
       ],
       "response": "threads[], pinnedThreads[]",
       "purpose": "会话列表",
-      "consumer": "src/bridge.mjs:threads",
+      "consumer": "src/bridge.mjs:threads, src/task-reports.mjs:collect",
       "test": "test/chat.test.mjs"
     },
     "readThread": {
@@ -108,11 +108,12 @@
         "turnLimit",
         "includeOutputs",
         "maxOutputCharsPerItem",
-        "cursor"
+        "cursor",
+        "hostId"
       ],
       "response": "thread, turns, nextCursor",
       "purpose": "历史读取",
-      "consumer": "src/bridge.mjs:read",
+      "consumer": "src/bridge.mjs:read, src/task-reports.mjs:collect",
       "test": "test/conversation-pages.test.mjs"
     },
     "createThread": {

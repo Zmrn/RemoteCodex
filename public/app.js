@@ -66,6 +66,8 @@ let agents = [],
   headHash = null,
   historyReadNotice = null,
   historyFailure = null,
+  visibleReport = null,
+  receiptTimer = null,
   editing = null,
   streamAbort = null,
   viewerRecovery = null,
@@ -306,6 +308,25 @@ function updateHistoryNotice() {
     : historyReadNotice ?? "";
   $("history-notice").hidden = !$("history-notice").textContent;
 }
+const acknowledgedReports = new Map();
+function checkVisibleReport() {
+  clearTimeout(receiptTimer);
+  const report = visibleReport;
+  if (!report || !status.connected || document.hidden || !document.hasFocus() || !status.taskSummary?.readReceipts) return;
+  const key = report.a + ":" + report.id;
+  if (acknowledgedReports.get(key) === report.token) return;
+  receiptTimer = setTimeout(async () => {
+    if (visibleReport !== report || report.g !== generation || report.id !== selected || !status.connected || document.hidden || !document.hasFocus()) return;
+    const scroll = $("message-scroll"), item = $("messages").querySelector('[data-item-id="' + CSS.escape(report.itemId) + '"]');
+    if (!item || scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 80) return;
+    const rect = item.getBoundingClientRect(), viewport = scroll.getBoundingClientRect();
+    if (rect.bottom < viewport.top || rect.top > viewport.bottom) return;
+    try {
+      const result = await agentApi(report.a, "/threads/" + report.id + "/read-receipt", { token: report.token });
+      if (result.accepted) acknowledgedReports.set(key, report.token);
+    } catch { /* Viewing still succeeds when a receipt cannot be saved. */ }
+  }, 800);
+}
 function toast(text) {
   $("toast").textContent = text;
   $("toast").hidden = false;
@@ -377,6 +398,8 @@ function resetTaskReads() {
   gapCursor = null;
   headHash = null;
   historyReadNotice = historyFailure = null;
+  visibleReport = null;
+  clearTimeout(receiptTimer);
   updateHistoryNotice();
 }
 function scheduleRead(older = false) {
@@ -1537,6 +1560,8 @@ async function readTask(job, older) {
     if (r.notModified && !older && taskData) {
       readFailures = 0;
       clearError();
+      if (r.reportReceipt !== undefined) visibleReport = r.reportReceipt ? { ...r.reportReceipt, a, id, g } : null;
+      checkVisibleReport();
       return;
     }
     if (r.data?.thread?.id !== id || !Array.isArray(r.data?.turns))
@@ -1555,6 +1580,7 @@ async function readTask(job, older) {
     } else if (pageProtocol === "items-v1" && !intersects) gapCursor ??= next;
     if (!older) {
       headHash = r.headHash ?? null;
+      visibleReport = r.reportReceipt ? { ...r.reportReceipt, a, id, g } : null;
       taskData = { ...r.data, live: r.live };
       modelSettings(r.live?.state);
     }
@@ -1639,6 +1665,7 @@ async function readTask(job, older) {
     permissions();
     if (atBottom) scroll.scrollTop = scroll.scrollHeight;
     else restoreMessageAnchor(anchor);
+    checkVisibleReport();
   } catch (e) {
     if (
       g === generation &&
@@ -1657,6 +1684,8 @@ async function readTask(job, older) {
         return;
       }
       taskData = null;
+      visibleReport = null;
+      clearTimeout(receiptTimer);
       rememberSidebarStatus(id, { type: "unknown", confirmed: false });
       updateThreadIndicators();
       $("messages").querySelector(".read-notice")?.remove();
@@ -2248,6 +2277,9 @@ $("open").onclick = async () => {
   }
 };
 $("older").onclick = () => read(historyFailure?.kind === "gap" ? "gap" : true);
+$("message-scroll").addEventListener("scroll", checkVisibleReport, { passive: true });
+document.addEventListener("visibilitychange", checkVisibleReport);
+window.addEventListener("focus", checkVisibleReport);
 $("message-scroll").addEventListener(
   "scroll",
   () => {
@@ -2898,6 +2930,17 @@ $("setup-dialog").addEventListener("close", () => {
   $("pairing-key").hidden = $("copy-key").hidden = true;
 });
 modeUI();
+let widgetDestination = null, widgetNavigation = 0;
+window.remoteCodexOpenTask = async (destination) => {
+  if (!android || !destination || !/^[a-f0-9-]{36}$/.test(destination.thread ?? "") || !/^[a-f0-9-]{36}$/.test(destination.agent ?? "")) return;
+  if (booting) { widgetDestination = destination; return; }
+  const navigation = ++widgetNavigation;
+  const data = await api("/api/agents");
+  if (navigation !== widgetNavigation) return;
+  if (!data.agents.some(a => a.id === destination.agent)) throw Error("小组件中的设备已移除，请刷新小组件");
+  agents = data.agents;
+  await switchAgent(destination.agent, true, destination.thread, normalizeMode(destination.mode));
+};
 api("/api/agents")
   .then(async (d) => {
     storageNotice(d);
@@ -2932,6 +2975,10 @@ api("/api/agents")
   .finally(() => {
     booting = false;
     permissions();
+    const params = new URL(location.href).searchParams;
+    const destination = widgetDestination ?? (params.get("widgetThread") ? { agent: params.get("widgetAgent"), thread: params.get("widgetThread"), mode: params.get("widgetMode") } : null);
+    widgetDestination = null;
+    if (destination) window.remoteCodexOpenTask(destination).catch(error);
   });
 let checkingInstance = false;
 setInterval(async () => {

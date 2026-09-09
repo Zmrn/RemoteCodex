@@ -1,6 +1,6 @@
 """Build/sign a dependency-free Android WebView controller with the installed SDK."""
 from pathlib import Path
-import argparse, hashlib, json, os, secrets, subprocess, sys, zipfile, tempfile
+import argparse, hashlib, json, os, secrets, subprocess, sys, zipfile, tempfile, shutil
 from release_config import ROOT, config, android_tools, version_code
 from desktop_compatibility import compatibility, release_notes
 
@@ -41,6 +41,7 @@ def main():
     work = Path(tempfile.mkdtemp(prefix='android-build-' + version + '-', dir=ROOT / 'work'))
     assets, resource, classes, dex = (work / p for p in ('assets', 'res/drawable', 'classes', 'dex'))
     for folder in (assets / 'web', resource, classes, dex): folder.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(ROOT / 'android/res', work / 'res', dirs_exist_ok=True)
     for file in (ROOT / 'public').iterdir():
         if file.is_file(): (assets / 'web' / file.name).write_bytes(file.read_bytes())
     (assets / 'release.json').write_text(json.dumps({'baseUrl': settings['baseUrl']}))
@@ -55,8 +56,9 @@ def main():
     compiled = work / 'resources.zip'
     run([tools / 'aapt2.exe', 'compile', '--dir', work / 'res', '-o', compiled])
     unsigned = work / 'unsigned.apk'
-    run([tools / 'aapt2.exe', 'link', '-I', android, '--manifest', manifest, '-A', assets, '-o', unsigned, compiled])
-    sources = list((ROOT / 'android/src').rglob('*.java')) + [build_info]
+    generated = work / 'generated'; generated.mkdir()
+    run([tools / 'aapt2.exe', 'link', '-I', android, '--manifest', manifest, '-A', assets, '--java', generated, '-o', unsigned, compiled])
+    sources = list((ROOT / 'android/src').rglob('*.java')) + list(generated.rglob('*.java')) + [build_info]
     run([jdk / 'bin/javac.exe', '-J-Duser.language=en', '-encoding', 'UTF-8', '--release', '8', '-classpath', android, '-d', classes, *sources])
     jar = work / 'classes.jar'
     with zipfile.ZipFile(jar, 'w') as z:

@@ -13,6 +13,7 @@ import { assertProbeTarget, testExcludedThreadIds } from "./probe-safety.mjs";
 import { DATA_DIR } from "./runtime.mjs";
 import { MessageMedia } from "./message-media.mjs";
 import { readOfficialHistory } from "./history-read.mjs";
+import { TaskReports } from "./task-reports.mjs";
 import { SubscriptionLeases } from "./subscriptions.mjs";
 import { Reconnector } from "../public/reconnect.mjs";
 import {
@@ -57,6 +58,7 @@ export class Bridge extends EventEmitter {
     this.queue = new OfficialQueue(this);
     this.media = new MessageMedia();
     this.pages = new ConversationPages();
+    this.taskReports = new TaskReports(this);
     this.desktopFactory = desktopFactory;
     this.retryDelays = retryDelays;
     this.connectionGeneration = 0;
@@ -359,14 +361,14 @@ export class Bridge extends EventEmitter {
       data: await this.desktop.call(TOOLS.listProjects),
     };
   }
-  async threads(limit = 50) {
+  async threads(limit = 50, options) {
     this.requireConnection();
     return {
       source: "official-desktop-tool-live",
       observedAt: new Date().toISOString(),
       data: await this.desktop.call(TOOLS.listThreads, {
         limit: Math.min(limit, 50),
-      }),
+      }, undefined, options),
     };
   }
   async read(id, cursor, { compact = false } = {}) {
@@ -378,12 +380,14 @@ export class Bridge extends EventEmitter {
     });
     this.requireConnection();
     if (desktop !== this.desktop) throw Error("Viewer connection changed during read");
+    const reportReceipt = cursor ? null : this.taskReports.observe(data);
     if (data.thread?.kind === "chatgpt") {
       // The official Chat adapter stamps historical turns 'completed' even
       // while streaming. Only its separate renderer status query is usable.
       return {
         source: "official-desktop-chat-history + renderer-status-poll (may be cached)",
         readNotice,
+        reportReceipt,
         observedAt: new Date().toISOString(),
         data: {
           ...data,
@@ -410,6 +414,7 @@ export class Bridge extends EventEmitter {
     return {
       source: this.live.has(id) ? "official-desktop-tool-read + verified-owner-live-items" : "official-desktop-tool-read",
       readNotice,
+      reportReceipt,
       observedAt: new Date().toISOString(),
       data: compact ? compactConversation(decorated) : decorated,
       live: this.live.has(id)
@@ -439,7 +444,7 @@ export class Bridge extends EventEmitter {
       )
       .digest("hex");
     return known === headHash
-      ? { notModified: true, headHash, observedAt: result.observedAt }
+      ? { notModified: true, headHash, observedAt: result.observedAt, reportReceipt: result.reportReceipt }
       : { ...result, headHash };
   }
   async once(key, operation, payload, fn, { deferredDispatch = false } = {}) {
@@ -1059,6 +1064,7 @@ export class Bridge extends EventEmitter {
       protectedThreadIds: [],
       desktopCompatibility: compatibility,
       existingCodexWritable: compatibility.writeSupported,
+      taskSummary: { supported: true, readReceipts: true },
       interrupt: { supported: compatibility.writeSupported, source: "official-desktop-owner-IPC" },
       projectCreation: {
         local: supportedBuild(this.desktop?.identity?.appToolsPipe?.image) &&

@@ -10,7 +10,7 @@ export function allowedRoute(method, url) {
   if (method === "POST" && u.pathname === "/api/compatibility/probe") return true;
   if (
     method === "GET" &&
-    /^\/api\/(status|events|projects|threads|models|usage|updates)$/.test(
+    /^\/api\/(status|events|projects|threads|models|usage|updates|task-summary)$/.test(
       u.pathname,
     )
   )
@@ -23,7 +23,7 @@ export function allowedRoute(method, url) {
   )
     return true;
   const m =
-    /^\/api\/threads\/[\w-]+(?:\/(follow|open|messages|interrupt|files|file|settings|queue|questions|media))?$/.exec(
+    /^\/api\/threads\/[\w-]+(?:\/(follow|open|messages|interrupt|files|file|settings|queue|questions|media|read-receipt))?$/.exec(
       u.pathname,
     );
   return (
@@ -39,6 +39,7 @@ export function allowedRoute(method, url) {
           "settings",
           "queue",
           "questions",
+          "read-receipt",
         ].includes(m[1]))
   );
 }

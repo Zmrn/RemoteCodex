@@ -1,0 +1,15 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center" android:padding="12dp" android:background="@drawable/widget_background">
+  <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Remote Codex" android:textColor="#AEB7C5" android:textSize="12sp" android:gravity="center" android:maxLines="1"/>
+  <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:orientation="horizontal" android:baselineAligned="false">
+    <LinearLayout android:id="@+id/widget_unread_action" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="45" android:gravity="center" android:orientation="vertical">
+      <TextView android:id="@+id/widget_unread" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:text="—" android:textColor="#FFC45E" android:textSize="46sp" android:maxLines="1"/>
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="未读回报" android:textColor="#FFC45E" android:textSize="10sp" android:maxLines="1"/>
+    </LinearLayout>
+    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="10" android:gravity="center" android:text="/" android:textColor="#788392" android:textSize="30sp" android:paddingBottom="14dp"/>
+    <LinearLayout android:id="@+id/widget_running_action" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="45" android:gravity="center" android:orientation="vertical">
+      <TextView android:id="@+id/widget_running" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:text="—" android:textColor="#69B2FF" android:textSize="46sp" android:maxLines="1"/>
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="运行中" android:textColor="#69B2FF" android:textSize="10sp" android:maxLines="1"/>
+    </LinearLayout>
+  </LinearLayout>
+  <TextView android:id="@+id/widget_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="全部设备合计" android:textColor="#8893A1" android:textSize="10sp" android:gravity="center" android:maxLines="2" android:minHeight="22dp"/>
+</LinearLayout>
