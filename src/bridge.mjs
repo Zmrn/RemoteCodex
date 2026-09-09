@@ -1,3 +1,4 @@
+import { OFFICIAL, TOOLS, EVENTS, assertSupportedBuild, supportedBuild, desktopCompatibility, protocolRequest, protocolBroadcast } from "./official-protocol.mjs";
 import { validateImageUrls, IMAGE_LIMITS } from "../public/image-input.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -158,11 +159,7 @@ export class Bridge extends EventEmitter {
       );
   }
   requireSupportedBuild() {
-    const image = this.desktop?.identity?.appToolsPipe?.image;
-    if (!image || !image.includes("OpenAI.Codex_26.901.6511.0_x64__"))
-      throw Error(
-        "Unsupported desktop build: read-only until protocol is revalidated",
-      );
+    assertSupportedBuild(this.desktop?.identity?.appToolsPipe?.image);
   }
   guard(id) {
     if (typeof id !== "string" || !/^[a-f0-9-]{36}$/.test(id))
@@ -176,7 +173,7 @@ export class Bridge extends EventEmitter {
   async codexThread(id) {
     this.guard(id);
     this.requireConnection();
-    const r = await this.desktop.call("read_thread", {
+    const r = await this.desktop.call(TOOLS.readThread, {
       threadId: id,
       turnLimit: 1,
     });
@@ -199,7 +196,7 @@ export class Bridge extends EventEmitter {
   async usage() {
     this.requireConnection();
     const desktop = this.desktop;
-    const raw = await desktop.call("get_usage_limits", {});
+    const raw = await desktop.call(TOOLS.usage, {});
     this.requireConnection();
     if (desktop !== this.desktop)
       throw Error("额度读取期间连接已更换，请重新读取");
@@ -247,11 +244,9 @@ export class Bridge extends EventEmitter {
     };
     if (!Object.keys(settings).length) throw Error("没有选择需要修改的设置");
     return this.once(key, "settings", { id, settings }, async () => {
-      const r = await this.desktop.ipc.request(
-        "thread-follower-update-thread-settings",
+      const r = await protocolRequest(this.desktop.ipc, "settings",
         { conversationId: id, threadSettings: settings },
         {
-          version: 1,
           targetClientId: owner.handledByClientId,
           timeoutMs: 30000,
         },
@@ -274,14 +269,14 @@ export class Bridge extends EventEmitter {
   }
   frame(f) {
     this.queue.frame(f);
-    if (f.type !== "broadcast" || f.method !== "thread-stream-state-changed")
+    if (f.type !== "broadcast" || f.method !== EVENTS.stream)
       return;
     const id = f.params?.conversationId;
     if (
       !this.watching.has(id) ||
       !this.connected ||
       f.sourceClientId !== this.owners?.get(id) ||
-      f.params.hostId !== "local"
+      f.params.hostId !== OFFICIAL.discovery.hostId
     )
       return;
     const c = f.params.change,
@@ -320,7 +315,7 @@ export class Bridge extends EventEmitter {
   releaseSubscription(id) {
     const owner = this.owners?.get(id);
     if (owner && this.connected) {
-      try { this.desktop.ipc.broadcast('thread-stream-following-changed', { hostId: 'local', conversationId: id, following: false }, 1, [owner]); } catch {}
+      try { protocolBroadcast(this.desktop.ipc, "following", { hostId: OFFICIAL.discovery.hostId, conversationId: id, following: false }, [owner]); } catch {}
     }
     this.watching.delete(id);
     this.live.delete(id);
@@ -344,10 +339,8 @@ export class Bridge extends EventEmitter {
       throw Error("Viewer connection changed during follow");
     this.owners ??= new Map();
     this.owners.set(id, o.handledByClientId);
-    desktop.ipc.broadcast(
-      "thread-stream-following-changed",
-      { hostId: "local", conversationId: id, following: true },
-      1,
+    protocolBroadcast(desktop.ipc, "following",
+      { hostId: OFFICIAL.discovery.hostId, conversationId: id, following: true },
       [o.handledByClientId],
     );
     this.emitEvent("owner-discovered", {
@@ -362,7 +355,7 @@ export class Bridge extends EventEmitter {
     return {
       source: "official-desktop-tool-live",
       observedAt: new Date().toISOString(),
-      data: await this.desktop.call("list_projects"),
+      data: await this.desktop.call(TOOLS.listProjects),
     };
   }
   async threads(limit = 50) {
@@ -370,7 +363,7 @@ export class Bridge extends EventEmitter {
     return {
       source: "official-desktop-tool-live",
       observedAt: new Date().toISOString(),
-      data: await this.desktop.call("list_threads", {
+      data: await this.desktop.call(TOOLS.listThreads, {
         limit: Math.min(limit, 50),
       }),
     };
@@ -378,7 +371,7 @@ export class Bridge extends EventEmitter {
   async read(id, cursor, { compact = false } = {}) {
     this.requireConnection();
     const desktop = this.desktop;
-    const data = await this.desktop.call("read_thread", {
+    const data = await this.desktop.call(TOOLS.readThread, {
       threadId: id,
       turnLimit: compact ? 2 : 10,
       includeOutputs: true,
@@ -508,7 +501,7 @@ export class Bridge extends EventEmitter {
       const request = state.requests?.find(
         (r) =>
           String(r.id) === String(input.questionRequestId) &&
-          r.method === "item/tool/requestUserInput",
+          r.method === EVENTS.userInput,
       );
       if (!request) throw Error("此问题已结束或已在其他窗口回答");
       const answers = {};
@@ -527,15 +520,13 @@ export class Bridge extends EventEmitter {
         "question-answer",
         { id, requestId: request.id, answers },
         async () => {
-          const r = await this.desktop.ipc.request(
-            "thread-follower-submit-user-input",
+          const r = await protocolRequest(this.desktop.ipc, "userInput",
             {
               conversationId: id,
               requestId: request.id,
               response: { answers },
             },
             {
-              version: 1,
               targetClientId: owner.handledByClientId,
               timeoutMs: 30000,
             },
@@ -593,8 +584,7 @@ export class Bridge extends EventEmitter {
     if (status.thread.status.type !== "active")
       throw Error("当前会话状态未知，请刷新");
     return this.once(key, "async-question-answer", { id, rows }, async () => {
-      const r = await this.desktop.ipc.request(
-        "thread-follower-steer-turn",
+      const r = await protocolRequest(this.desktop.ipc, "steer",
         {
           conversationId: id,
           input: [{ type: "text", text: prompt, text_elements: [] }],
@@ -603,7 +593,6 @@ export class Bridge extends EventEmitter {
           attachments: [],
         },
         {
-          version: 1,
           targetClientId: owner.handledByClientId,
           timeoutMs: 60000,
         },
@@ -650,13 +639,13 @@ export class Bridge extends EventEmitter {
         "-" +
         randomUUID().slice(0, 6);
       const projectTarget = project
-        ? savedProjectTarget(project, await desktop.call("list_projects"))
+        ? savedProjectTarget(project, await desktop.call(TOOLS.listProjects))
         : null;
       this.requireConnection();
       if (desktop !== this.desktop) throw Error("创建期间目标桌面连接已更换，未发送");
       dispatch();
       const r = await this.desktop.call(
-        "create_thread",
+        TOOLS.createThread,
         {
           title: name,
           prompt,
@@ -702,7 +691,7 @@ export class Bridge extends EventEmitter {
           { model: model.id, effort: model.efforts[0] },
         );
         id = created.result.threadId;
-        await this.desktop.call("set_thread_title", {
+        await this.desktop.call(TOOLS.setTitle, {
           threadId: id,
           title: "RemoteBridge-Settings-" + mode,
         });
@@ -774,7 +763,7 @@ export class Bridge extends EventEmitter {
     return this.once(key, "send", { id, prompt }, async dispatch => {
       const owner = await this.desktop.owner(id);
       dispatch();
-      const r = await this.desktop.call("send_message_to_thread", {
+      const r = await this.desktop.call(TOOLS.sendMessage, {
         threadId: id,
         prompt,
       });
@@ -791,10 +780,10 @@ export class Bridge extends EventEmitter {
     const catalog = this.desktop?.catalog ?? [];
     let supported = false;
     try { this.requireSupportedBuild(); supported = true; } catch {}
-    const has = name => catalog.some(t => t.namespace === "codex_app" && t.name === name);
+    const has = name => catalog.some(t => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === name);
     return {
-      read: has("read_thread") && has("list_threads"),
-      sendText: supported && has("send_message_to_thread"),
+      read: has(TOOLS.readThread) && has(TOOLS.listThreads),
+      sendText: supported && has(TOOLS.sendMessage),
       sendValidation: "source-reviewed; dedicated-live-test-pending",
       create: false, models: false, images: false, queue: false, interrupt: false,
       status: "renderer-poll", classification: "chatgpt-including-work-unclassified",
@@ -809,7 +798,7 @@ export class Bridge extends EventEmitter {
       throw Error("Chat 暂不支持图片或模型/权限参数；请在官方桌面操作");
     return this.once(key, "chat-send", { id, prompt }, async dispatch => {
       const desktop = this.desktop;
-      const r = await desktop.call("read_thread", { threadId: id, turnLimit: 1 });
+      const r = await desktop.call(TOOLS.readThread, { threadId: id, turnLimit: 1 });
       this.requireConnection();
       if (desktop !== this.desktop) throw Error("Viewer connection changed before Chat send");
       if (r.thread?.id !== id || r.thread.kind !== "chatgpt") throw Error("目标不是官方 ChatGPT 会话");
@@ -817,7 +806,7 @@ export class Bridge extends EventEmitter {
       // No hostId, Codex settings or owner-discovery: the official tool's
       // existing Chat branch loads this exact ID and uses its Chat composer.
       dispatch();
-      const result = await desktop.call("send_message_to_thread", { threadId: id, prompt });
+      const result = await desktop.call(TOOLS.sendMessage, { threadId: id, prompt });
       if (result.threadId !== id) throw Error("Chat send outcome unknown: official task ID mismatch");
       this.emitEvent("chat-send-accepted", { threadId: id, route: "official-app-tools -> desktop Chat composer", officialPid: desktop.identity.officialPid });
       return { threadId: id, source: "official-desktop-chat-send", officialPid: desktop.identity.officialPid };
@@ -826,7 +815,7 @@ export class Bridge extends EventEmitter {
   async open(id) {
     this.guard(id);
     this.requireConnection();
-    return this.desktop.call("navigate_to_codex_page", { threadId: id });
+    return this.desktop.call(TOOLS.navigate, { threadId: id });
   }
   async interrupt(id, key, expectedTurnId) {
     this.guardProbe(id);
@@ -835,11 +824,9 @@ export class Bridge extends EventEmitter {
       throw Error("expectedTurnId required");
     return this.once(key, "interrupt", { id, expectedTurnId }, async () => {
       const owner = await this.follow(id);
-      const r = await this.desktop.ipc.request(
-        "thread-follower-interrupt-turn",
+      const r = await protocolRequest(this.desktop.ipc, "interrupt",
         { conversationId: id, mode: "user-stop", expectedTurnId },
         {
-          version: 4,
           targetClientId: owner.handledByClientId,
           timeoutMs: 30000,
         },
@@ -911,7 +898,7 @@ export class Bridge extends EventEmitter {
           // The desktop tool resumes its own existing task. Choose this route
           // before dispatch; never retry a failed native write through it.
           dispatch();
-          const r = await this.desktop.call("send_message_to_thread", {
+          const r = await this.desktop.call(TOOLS.sendMessage, {
             threadId: id,
             prompt,
             ...(settings.model ? { model: settings.model } : {}),
@@ -945,8 +932,7 @@ export class Bridge extends EventEmitter {
         const input = [{ type: "text", text: prompt, text_elements: [] }];
         for (const url of images) input.push({ type: "image", url });
         dispatch();
-        const r = await this.desktop.ipc.request(
-          "thread-follower-start-turn",
+        const r = await protocolRequest(this.desktop.ipc, "start",
           {
             conversationId: id,
             turnStart: {
@@ -959,7 +945,6 @@ export class Bridge extends EventEmitter {
             },
           },
           {
-            version: 2,
             targetClientId: owner.handledByClientId,
             timeoutMs: 60000,
           },
@@ -986,15 +971,16 @@ export class Bridge extends EventEmitter {
         ? this.desktop.context
         : localContext(id);
     return this.desktop.call(
-      "wait_threads",
+      TOOLS.waitThreads,
       {
-        targets: [{ threadId: id, hostId: "local" }],
+        targets: [{ threadId: id, hostId: OFFICIAL.discovery.hostId }],
         timeoutMs: Math.min(timeoutMs, 50000),
       },
       context,
     );
   }
   status() {
+    const compatibility = desktopCompatibility(this.desktop?.identity?.appToolsPipe?.image);
     return {
       connected: this.connected,
       source: "official-desktop-IPC-live",
@@ -1004,10 +990,11 @@ export class Bridge extends EventEmitter {
       // Legacy clients treat these fields as read-only, so keep them empty.
       protectedThreadId: null,
       protectedThreadIds: [],
-      existingCodexWritable: true,
+      desktopCompatibility: compatibility,
+      existingCodexWritable: compatibility.writeSupported,
       projectCreation: {
-        local: this.desktop?.identity?.appToolsPipe?.image?.includes("OpenAI.Codex_26.901.6511.0_x64__") === true &&
-          ["list_projects", "create_thread"].every(name => this.desktop?.catalog?.some(t => t.namespace === "codex_app" && t.name === name)),
+        local: supportedBuild(this.desktop?.identity?.appToolsPipe?.image) &&
+          [TOOLS.listProjects, TOOLS.createThread].every(name => this.desktop?.catalog?.some(t => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === name)),
         worktree: false,
         source: "official-desktop-list-projects-and-create-thread",
       },

@@ -1,11 +1,12 @@
 {
   "name": "remote-desktop-bridge-prototype",
-  "version": "0.10.10",
+  "version": "0.10.11",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node src/server.mjs",
     "test": "node --test test/*.test.mjs",
+    "compatibility": "node scripts/compatibility-report.mjs --check",
     "probe": "node src/cli.mjs probe",
     "build:portable": "python scripts/build_portable.py",
     "build:android": "python scripts/build_android.py",

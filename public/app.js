@@ -1,3 +1,4 @@
+import { USER_INPUT_REQUEST } from "./official-events.mjs";
 import { validateImageBatch, imagePayload, imageUrls } from "./image-input.mjs";
 import { normalizeMode, matchesMode, modeTaskKey, modeCatalog, chatComposer, chatNotice, chatEmpty } from "./modes.mjs";
 import { icon, markdown, copyMarkdown } from "./ui.mjs";
@@ -1368,7 +1369,7 @@ function displayTurns() {
     }
     for (const request of liveSettingsState?.requests ?? []) {
       if (
-        request.method !== "item/tool/requestUserInput" ||
+        request.method !== USER_INPUT_REQUEST ||
         request.params?.turnId !== t.id ||
         (t.items ?? []).some(
           (i) =>

@@ -1,3 +1,4 @@
+import { OFFICIAL, EVENTS, protocolRequest } from "./official-protocol.mjs";
 import { validateImageUrls, imagesFromBody } from "../public/image-input.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -79,7 +80,7 @@ export class OfficialQueue {
     bridge,
     file = path.join(
       process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex"),
-      ".codex-global-state.json",
+      OFFICIAL.storage.globalStateFile,
     ),
   ) {
     this.bridge = bridge;
@@ -95,7 +96,7 @@ export class OfficialQueue {
       id = f.params?.conversationId;
     if (
       f.type !== "broadcast" ||
-      f.method !== "thread-queued-followups-changed" ||
+      f.method !== EVENTS.queue ||
       !b.connected ||
       !b.watching.has(id) ||
       f.sourceClientId !== b.owners?.get(id) ||
@@ -117,7 +118,7 @@ export class OfficialQueue {
   disk(id) {
     // Official storage is read-only. All mutations go to its live owner by IPC.
     const state = JSON.parse(fs.readFileSync(this.file, "utf8"))[
-      "queued-follow-ups"
+      OFFICIAL.storage.queueKey
     ];
     if (
       state !== undefined &&
@@ -185,10 +186,9 @@ export class OfficialQueue {
   async write(id, owner, messages) {
     const b = this.bridge;
     b.requireConnection();
-    const r = await b.desktop.ipc.request(
-      "thread-follower-set-queued-follow-ups-state",
+    const r = await protocolRequest(b.desktop.ipc, "queueWrite",
       { conversationId: id, state: { [id]: messages } },
-      { version: 1, targetClientId: owner, timeoutMs: 30000 },
+      { targetClientId: owner, timeoutMs: 30000 },
     );
     if (r.handledByClientId !== owner || r.result?.ok !== true)
       throw Error("Queue owner acknowledgement unknown");
@@ -340,8 +340,7 @@ export class OfficialQueue {
           try {
             b.db.queueRecoveries[key].state = "steer-unknown";
             b.save();
-            const result = await b.desktop.ipc.request(
-              "thread-follower-steer-turn",
+            const result = await protocolRequest(b.desktop.ipc, "steer",
               {
                 conversationId: id,
                 input,
@@ -349,7 +348,7 @@ export class OfficialQueue {
                 clientUserMessageId: message.id,
                 attachments: [],
               },
-              { version: 1, targetClientId: owner, timeoutMs: 60000 },
+              { targetClientId: owner, timeoutMs: 60000 },
             );
             if (result.handledByClientId !== owner)
               throw Error("Steer owner acknowledgement unknown");

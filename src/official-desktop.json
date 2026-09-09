@@ -1,0 +1,382 @@
+{
+  "schemaVersion": 1,
+  "validation": [
+    {
+      "version": "26.901.6511.0",
+      "date": "2026-09-09",
+      "scope": "Codex existing desktop owner; read, create, send, queue, settings and image paths. See evidence for limits; Chat text and Work are not claimed validated.",
+      "evidence": ["QUEUE-PREVIEW.md", "PROJECT-CREATION.md", "USAGE.md", "CHAT-MODE.md"]
+    }
+  ],
+  "support": {
+    "officialProduct": "OpenAI.Codex (Windows ChatGPT.exe)",
+    "platform": "windows-x64",
+    "verifiedVersions": [
+      "26.901.6511.0"
+    ],
+    "packagePrefix": "OpenAI.Codex_",
+    "packageSuffix": "_x64__",
+    "unknownVersionPolicy": "read-only; write requests rejected before dispatch",
+    "codex": "核心读写已验证；具体范围及限制见 COMPATIBILITY.md",
+    "chat": "列表/历史读取；文字续写待专用真实会话验证；新建/模型/图片未支持",
+    "work": "没有独立验证；列表可能与 Chat 混合"
+  },
+  "discovery": {
+    "ownerPipe": "codex-ipc",
+    "toolsPipePrefix": "codex-browser-use-",
+    "ownerImagePattern": "\\\\WindowsApps\\\\OpenAI\\.Codex_[^\\\\]+\\\\app\\\\ChatGPT\\.exe$",
+    "toolsNamespace": "codex_app",
+    "hostId": "local"
+  },
+  "storage": {
+    "globalStateFile": ".codex-global-state.json",
+    "queueKey": "queued-follow-ups",
+    "sessionIndexFile": "session_index.jsonl",
+    "source": "official-disk, read-only; not live-state proof"
+  },
+  "transport": {
+    "headerBytes": 4,
+    "byteOrder": "uint32-le",
+    "maxInboundBytes": 268435456,
+    "maxOutboundBytes": 33554432,
+    "toolsList": "tools/list",
+    "toolsCall": "tools/call",
+    "toolsListParams": {
+      "threadStartKind": "all"
+    },
+    "toolsJsonrpc": "2.0",
+    "clientType": "remote-bridge-prototype",
+    "discoveryRequest": "client-discovery-request",
+    "discoveryResponse": "client-discovery-response",
+    "noHandlerError": "no-handler-for-request"
+  },
+  "tools": {
+    "listProjects": {
+      "name": "list_projects",
+      "request": [],
+      "response": "projects[]",
+      "purpose": "项目列表",
+      "consumer": "src/bridge.mjs:projects",
+      "test": "test/projects.test.mjs"
+    },
+    "listThreads": {
+      "name": "list_threads",
+      "request": [
+        "limit"
+      ],
+      "response": "threads[], pinnedThreads[]",
+      "purpose": "会话列表",
+      "consumer": "src/bridge.mjs:threads",
+      "test": "test/chat.test.mjs"
+    },
+    "readThread": {
+      "name": "read_thread",
+      "request": [
+        "threadId",
+        "turnLimit",
+        "includeOutputs",
+        "maxOutputCharsPerItem",
+        "cursor"
+      ],
+      "response": "thread, turns, nextCursor",
+      "purpose": "历史读取",
+      "consumer": "src/bridge.mjs:read",
+      "test": "test/conversation-pages.test.mjs"
+    },
+    "createThread": {
+      "name": "create_thread",
+      "request": [
+        "prompt",
+        "target",
+        "model",
+        "thinking",
+        "title"
+      ],
+      "response": "threadId required; clientThreadId-only response treated as outcome-unknown",
+      "purpose": "新建真实任务",
+      "consumer": "src/bridge.mjs:create",
+      "test": "test/projects.test.mjs"
+    },
+    "sendMessage": {
+      "name": "send_message_to_thread",
+      "request": [
+        "threadId",
+        "prompt",
+        "model",
+        "thinking"
+      ],
+      "response": "official tool result",
+      "purpose": "继续已有任务；Chat 分支未完成实测",
+      "consumer": "src/bridge.mjs:send, nativeSend, chatSend",
+      "test": "test/send-lifecycle.test.mjs"
+    },
+    "setTitle": {
+      "name": "set_thread_title",
+      "request": [
+        "threadId",
+        "title"
+      ],
+      "response": "official tool result",
+      "purpose": "专用测试任务命名",
+      "consumer": "src/bridge.mjs:permissionContext",
+      "test": "test/settings.test.mjs"
+    },
+    "navigate": {
+      "name": "navigate_to_codex_page",
+      "request": [
+        "threadId"
+      ],
+      "response": "official tool result",
+      "purpose": "打开官方窗口同一任务",
+      "consumer": "src/bridge.mjs:open",
+      "test": "test/core.test.mjs"
+    },
+    "waitThreads": {
+      "name": "wait_threads",
+      "request": [
+        "targets",
+        "timeoutMs"
+      ],
+      "response": "official tool result",
+      "purpose": "等待任务状态",
+      "consumer": "src/bridge.mjs:wait",
+      "test": "test/context.test.mjs"
+    },
+    "usage": {
+      "name": "get_usage_limits",
+      "request": [],
+      "response": "rateLimitsByLimitId, rateLimits",
+      "purpose": "目标账号额度",
+      "consumer": "src/bridge.mjs:usage",
+      "test": "test/usage.test.mjs"
+    }
+  },
+  "ipc": {
+    "initialize": {
+      "method": "initialize",
+      "version": 1,
+      "request": [
+        "clientType"
+      ],
+      "response": [
+        "result.clientId"
+      ],
+      "purpose": "连接桥接客户端",
+      "consumer": "src/transport.mjs:connect",
+      "test": "test/core.test.mjs"
+    },
+    "owner": {
+      "method": "thread-owner-discovery",
+      "version": 1,
+      "request": [
+        "hostId",
+        "conversationId"
+      ],
+      "response": [
+        "handledByClientId"
+      ],
+      "purpose": "发现任务所有者",
+      "consumer": "src/desktop.mjs:owner",
+      "test": "test/queue.test.mjs"
+    },
+    "following": {
+      "method": "thread-stream-following-changed",
+      "version": 1,
+      "request": [
+        "hostId",
+        "conversationId",
+        "following"
+      ],
+      "response": [],
+      "purpose": "订阅/取消订阅；broadcast",
+      "consumer": "src/desktop.mjs, src/bridge.mjs",
+      "test": "test/subscriptions.test.mjs"
+    },
+    "settings": {
+      "method": "thread-follower-update-thread-settings",
+      "version": 1,
+      "request": [
+        "conversationId",
+        "threadSettings"
+      ],
+      "response": [
+        "handledByClientId"
+      ],
+      "purpose": "设置下一轮模型/权限/速度",
+      "consumer": "src/bridge.mjs:updateSettings",
+      "test": "test/settings.test.mjs"
+    },
+    "userInput": {
+      "method": "thread-follower-submit-user-input",
+      "version": 1,
+      "request": [
+        "conversationId",
+        "requestId",
+        "response.answers"
+      ],
+      "response": [
+        "handledByClientId"
+      ],
+      "purpose": "回答官方待处理问题",
+      "consumer": "src/bridge.mjs:answerQuestions",
+      "test": "test/messages.test.mjs"
+    },
+    "steer": {
+      "method": "thread-follower-steer-turn",
+      "version": 1,
+      "request": [
+        "conversationId",
+        "input",
+        "restoreMessage",
+        "clientUserMessageId",
+        "attachments"
+      ],
+      "response": [
+        "handledByClientId",
+        "result.result.turnId"
+      ],
+      "purpose": "向同一个运行中任务调整方向",
+      "consumer": "src/bridge.mjs:answerQuestions, src/queue.mjs:mutate",
+      "test": "test/queue.test.mjs"
+    },
+    "queueWrite": {
+      "method": "thread-follower-set-queued-follow-ups-state",
+      "version": 1,
+      "request": [
+        "conversationId",
+        "state"
+      ],
+      "response": [
+        "handledByClientId",
+        "result.ok"
+      ],
+      "purpose": "替换该任务完整队列",
+      "consumer": "src/queue.mjs:write",
+      "test": "test/queue.test.mjs"
+    },
+    "interrupt": {
+      "method": "thread-follower-interrupt-turn",
+      "version": 4,
+      "request": [
+        "conversationId",
+        "mode=user-stop",
+        "expectedTurnId"
+      ],
+      "response": [
+        "handledByClientId"
+      ],
+      "purpose": "仅专用测试任务中断",
+      "consumer": "src/bridge.mjs:interrupt",
+      "test": "test/core.test.mjs"
+    },
+    "start": {
+      "method": "thread-follower-start-turn",
+      "version": 2,
+      "request": [
+        "conversationId",
+        "turnStart.request.threadId",
+        "turnStart.request.input",
+        "turnStart.request.clientUserMessageId"
+      ],
+      "response": [
+        "handledByClientId",
+        "result.result.turn.id"
+      ],
+      "purpose": "空闲任务中启动下一轮",
+      "consumer": "src/bridge.mjs:nativeSend",
+      "test": "test/multi-images.test.mjs"
+    }
+  },
+  "events": {
+    "stream": {
+      "method": "thread-stream-state-changed",
+      "fields": [
+        "conversationId",
+        "hostId",
+        "change.type",
+        "change.revision",
+        "change.baseRevision",
+        "change.conversationState",
+        "change.patches"
+      ],
+      "consumer": "src/bridge.mjs:frame"
+    },
+    "queue": {
+      "method": "thread-queued-followups-changed",
+      "fields": [
+        "conversationId",
+        "messages"
+      ],
+      "consumer": "src/queue.mjs:frame"
+    },
+    "userInput": {
+      "method": "item/tool/requestUserInput",
+      "fields": [
+        "id",
+        "params.questions"
+      ],
+      "consumer": "src/bridge.mjs:answerQuestions, public/app.js"
+    }
+  },
+  "structures": {
+    "history": {
+      "consumer": "src/conversation-pages.mjs, src/state.mjs, src/message-media.mjs",
+      "fields": [
+        "thread.id",
+        "thread.kind",
+        "thread.status",
+        "turns[].id",
+        "turns[].items",
+        "nextCursor"
+      ],
+      "rule": "read_thread snapshots can lag the verified owner; history completion is not proof of current completion"
+    },
+    "ownerState": {
+      "consumer": "src/state.mjs, src/bridge.mjs",
+      "fields": [
+        "id",
+        "turnHistory.history.entitiesByKey",
+        "threadRuntimeStatus",
+        "latestThreadSettings",
+        "requests"
+      ],
+      "rule": "accept only watched conversation from discovered owner; patch baseRevision must match"
+    },
+    "queueMessage": {
+      "consumer": "src/queue.mjs",
+      "fields": [
+        "id",
+        "text",
+        "context.prompt",
+        "context.imageAttachments",
+        "cwd",
+        "createdAt",
+        "pausedReason"
+      ],
+      "rule": "official disk is read-only; preserve full raw context and revision when forwarding owner writes"
+    },
+    "modelCatalog": {
+      "consumer": "src/settings.mjs, src/service-tiers.mjs",
+      "fields": [
+        "tools[].namespace",
+        "tools[].name",
+        "tools[].inputSchema.properties.model.description"
+      ],
+      "rule": "parse actual tools/list schema; never invent models"
+    },
+    "usage": {
+      "consumer": "src/usage.mjs",
+      "fields": [
+        "rateLimitsByLimitId",
+        "rateLimits",
+        "planType",
+        "primary",
+        "secondary",
+        "usedPercent",
+        "windowDurationMins",
+        "resetsAt"
+      ],
+      "rule": "ordinary codex 300-minute quota first, 10080-minute next; separate Spark"
+    }
+  }
+}

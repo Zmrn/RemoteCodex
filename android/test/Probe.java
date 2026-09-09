@@ -18,6 +18,12 @@ public final class Probe extends Instrumentation {
   private HttpURLConnection request(String route, boolean cookie, boolean csrf)throws Exception{LocalServer s=app.server();HttpURLConnection c=(HttpURLConnection)new URL(s.origin+route).openConnection(Proxy.NO_PROXY);c.setConnectTimeout(10000);c.setReadTimeout(60000);if(cookie)c.setRequestProperty("Cookie","bridgeSession="+s.session);if(csrf)c.setRequestProperty("X-Bridge-CSRF",s.csrf);return c;}
   private String body(HttpURLConnection c)throws Exception{try(InputStream in=c.getInputStream()){ByteArrayOutputStream b=new ByteArrayOutputStream();byte[] buf=new byte[8192];int n;while((n=in.read(buf))!=-1)b.write(buf,0,n);return b.toString("UTF-8");}finally{c.disconnect();}}
   private String get(String route)throws Exception{return body(request(route,true,true));}
+  private String asset(android.content.Context context,String name)throws Exception{
+    try(InputStream in=context.getAssets().open(name)){
+      ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] buffer=new byte[8192];int n;
+      while((n=in.read(buffer))!=-1)out.write(buffer,0,n);return out.toString("UTF-8");
+    }
+  }
   private void safeBounds(String label)throws Exception{
     final int[] bounds=new int[10];
     runOnMainSync(()->{android.view.WindowInsets wi=activity.getWindow().getDecorView().getRootWindowInsets();android.graphics.Insets safe=wi.getInsets(android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.displayCutout()|android.view.WindowInsets.Type.ime());android.graphics.Rect screen=activity.getWindowManager().getCurrentWindowMetrics().getBounds();int[] xy=new int[2];activity.web.getLocationOnScreen(xy);bounds[0]=xy[0];bounds[1]=xy[1];bounds[2]=xy[0]+activity.web.getWidth();bounds[3]=xy[1]+activity.web.getHeight();bounds[4]=safe.left;bounds[5]=safe.top;bounds[6]=screen.width()-safe.right;bounds[7]=screen.height()-safe.bottom;bounds[8]=activity.web.getPaddingTop();bounds[9]=activity.web.getPaddingBottom();});
@@ -161,6 +167,20 @@ public final class Probe extends Instrumentation {
       runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
       until("document.body.classList.contains('mobile-layout') && !document.body.classList.contains('drawer-open')",15);
       require(true,"portrait drawer remains closed; no real task writes");
+    }else if(stage.equals("compatibility")){
+      JSONObject support=new JSONObject(asset(getTargetContext(),"desktop-compatibility.json"));
+      JSONObject envelope=new JSONObject(asset(getContext(),"compatibility-manifest.json"));
+      JSONObject signed=app.updates.verifyEnvelope(envelope);
+      require(signed.getString("version").equals(BuildInfo.VERSION),"signed compatibility manifest matches installed APK version");
+      require(signed.getJSONObject("desktopCompatibility").getString("catalogSha256").equals(support.getString("catalogSha256")),"APK assets and signed update use same compatibility catalog");
+      String notes=asset(getTargetContext(),"RELEASE-NOTES.md");
+      require(notes.contains(support.getJSONArray("verifiedVersions").getString(0)),"APK release notes declare supported official desktop version");
+      byte[] digest=java.security.MessageDigest.getInstance("SHA-256").digest(notes.getBytes("UTF-8"));
+      StringBuilder hex=new StringBuilder();for(byte b:digest)hex.append(String.format("%02x",b&255));
+      require(hex.toString().equals(signed.getString("releaseNotesSha256")),"release note hash matches signed Android update");
+      js("window.__compatibility=null;import(location.origin+'/official-events.mjs').then(m=>window.__compatibility=m.USER_INPUT_REQUEST).catch(e=>window.__compatibility=String(e))");
+      until("window.__compatibility!=null",10);
+      require("\"item/tool/requestUserInput\"".equals(js("window.__compatibility")),"WebView loads generated shared event constant");
     }else if(stage.equals("queue-preview")){
       String fixture;
       try(InputStream in=getContext().getAssets().open("queue-preview.js")){

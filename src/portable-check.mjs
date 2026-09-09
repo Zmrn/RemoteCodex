@@ -1,3 +1,4 @@
+import { OFFICIAL, TOOLS, desktopCompatibility } from "./official-protocol.mjs";
 // Read-only dependency and desktop connection check for the single-file release.
 import fs from "node:fs";
 import path from "node:path";
@@ -42,14 +43,15 @@ try {
   const identity = await discover();
   report.checks.win32PipeDiscovery = true;
   report.checks.officialDesktopFound = identity.pipes.some((p) =>
-    /\\WindowsApps\\OpenAI\.Codex_[^\\]+\\app\\ChatGPT\.exe$/i.test(
+    new RegExp(OFFICIAL.discovery.ownerImagePattern, "i").test(
       p.image || "",
     ),
   );
   desktop = new Desktop();
   await desktop.connect();
-  await desktop.call("list_projects");
-  await desktop.call("list_threads", { limit: 1 });
+  report.desktopCompatibility = desktopCompatibility(desktop.identity.appToolsPipe?.image);
+  await desktop.call(TOOLS.listProjects);
+  await desktop.call(TOOLS.listThreads, { limit: 1 });
   report.checks.officialProjectsAndThreads = true;
   report.result = "passed";
 } catch (error) {

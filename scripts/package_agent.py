@@ -2,8 +2,10 @@
 from pathlib import Path
 import zipfile
 import json
+from desktop_compatibility import compatibility
 root = Path(__file__).resolve().parents[1]
 version = json.loads((root / 'package.json').read_text(encoding='utf-8'))['version']
+supported = ', '.join(compatibility()['verifiedVersions'])
 dest = root / 'dist' / f'RemoteBridge-Windows-{version}-source.zip'
 dest.parent.mkdir(exist_ok=True)
 files = [p for d in ('src','public','fixtures','scripts','windows') for p in (root/d).rglob('*') if p.is_file() and '__pycache__' not in p.parts]
@@ -12,7 +14,7 @@ files += list((root/'test').glob('*.test.mjs'))
 with zipfile.ZipFile(dest,'w',zipfile.ZIP_DEFLATED) as z:
     for p in sorted(files): z.write(p, p.relative_to(root).as_posix())
     z.writestr('START-HERE.txt', f'''Remote Bridge Windows UI {version}
-Requires Node.js 22+, Python 3.10+, Microsoft Edge, and a running logged-in official ChatGPT desktop (verified package 26.901.6511.0).
+Requires Node.js 22+, Python 3.10+, Microsoft Edge, and a running logged-in official ChatGPT desktop (verified packages: {supported}).
 Double-click RemoteBridge.exe (or Open-UI.cmd). The launcher, web favicon and manifest use the ChatGPT knot with a blue network badge. The launcher source is windows/Launcher.cs; rebuild using scripts/Build-Launcher.ps1. Use the Remote Access help inside the UI for connecting another PC.
 New conversation: type in the main composer; Enter sends, Shift+Enter inserts a newline. First message is text only.
 Click the device at the bottom-left to open the picker. Weekly remaining quota is read from the selected device account in the official desktop. Narrow portrait uses a drawer; landscape uses two columns. Resize preserves the in-page draft.

@@ -1,3 +1,4 @@
+import { OFFICIAL, TOOLS, protocolRequest, protocolBroadcast } from "./official-protocol.mjs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
@@ -15,7 +16,7 @@ export function localContext(excludeId = null) {
   // Metadata establishes a local tool context only, never live task status.
   const index = path.join(
     process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex"),
-    "session_index.jsonl",
+    OFFICIAL.storage.sessionIndexFile,
   );
   try {
     const fd = fs.openSync(index, "r");
@@ -60,27 +61,27 @@ export class Desktop {
     const owned = this.identity.pipes.filter(
       (p) =>
         p.image &&
-        /\\WindowsApps\\OpenAI\.Codex_[^\\]+\\app\\ChatGPT\.exe$/i.test(
+        new RegExp(OFFICIAL.discovery.ownerImagePattern, "i").test(
           p.image,
         ),
     );
-    const desk = owned.find((p) => p.path.endsWith("codex-ipc"));
+    const desk = owned.find((p) => p.path.endsWith(OFFICIAL.discovery.ownerPipe));
     if (!desk) throw Error("Official desktop IPC owner unavailable");
     this.identity.officialPid = desk.pid;
     for (const p of owned.filter(
-      (p) => p.pid === desk.pid && !p.path.endsWith("codex-ipc"),
+      (p) => p.pid === desk.pid && !p.path.endsWith(OFFICIAL.discovery.ownerPipe),
     )) {
       const client = new Pipe(p.path);
       try {
         await client.connect();
         const f = await client.request(
-          "tools/list",
-          { threadStartKind: "all" },
+          OFFICIAL.transport.toolsList,
+          OFFICIAL.transport.toolsListParams,
           { timeoutMs: 5000 },
         );
         if (
           f.result?.tools?.some(
-            (t) => t.namespace === "codex_app" && t.name === "list_threads",
+            (t) => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === TOOLS.listThreads,
           )
         ) {
           this.tools = client;
@@ -98,15 +99,15 @@ export class Desktop {
   }
   async call(tool, args = {}, context = this.context) {
     if (
-      !this.catalog.some((t) => t.namespace === "codex_app" && t.name === tool)
+      !this.catalog.some((t) => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === tool)
     )
       throw Error("Unavailable desktop tool " + tool);
     const f = await this.tools.request(
-      "tools/call",
+      OFFICIAL.transport.toolsCall,
       {
         arguments: args,
         callId: "remote-bridge-" + randomUUID(),
-        namespace: "codex_app",
+        namespace: OFFICIAL.discovery.toolsNamespace,
         threadId: context,
         tool,
         turnId: "remote-bridge-request-" + randomUUID(),
@@ -133,8 +134,8 @@ export class Desktop {
   }
   async refreshCatalog() {
     const f = await this.tools.request(
-      "tools/list",
-      { threadStartKind: "all" },
+      OFFICIAL.transport.toolsList,
+      OFFICIAL.transport.toolsListParams,
       { timeoutMs: 10000 },
     );
     if (!Array.isArray(f.result?.tools))
@@ -143,18 +144,15 @@ export class Desktop {
     return this.catalog;
   }
   async owner(id) {
-    return this.ipc.request(
-      "thread-owner-discovery",
-      { hostId: "local", conversationId: id },
-      { version: 1 },
+    return protocolRequest(this.ipc, "owner",
+      { hostId: OFFICIAL.discovery.hostId, conversationId: id },
+      {},
     );
   }
   async follow(id) {
     const o = await this.owner(id);
-    this.ipc.broadcast(
-      "thread-stream-following-changed",
-      { hostId: "local", conversationId: id, following: true },
-      1,
+    protocolBroadcast(this.ipc, "following",
+      { hostId: OFFICIAL.discovery.hostId, conversationId: id, following: true },
       [o.handledByClientId],
     );
     return o;

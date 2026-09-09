@@ -1,8 +1,9 @@
+import { OFFICIAL, TOOLS } from "./official-protocol.mjs";
 // Current desktop tools publish their host's model/effort catalog in this schema.
 // This is a live desktop source, not a separate app-server model list.
 export function parseModels(catalog) {
   const field = catalog.find(
-    (t) => t.namespace === "codex_app" && t.name === "send_message_to_thread",
+    (t) => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === TOOLS.sendMessage,
   )?.inputSchema?.properties?.model;
   const models = [
     ...(field?.description ?? "").matchAll(

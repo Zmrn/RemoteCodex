@@ -28,6 +28,11 @@
 
 ## 同步发布（每次更新必须遵守）
 
+- **每次发布必须在发布说明和最终交付中明确列出支持的官方 ChatGPT/Codex 桌面包版本、平台、Codex/Chat/Work 支持范围及未验证项。不能只写 Remote Codex 自身版本，也不能把“可以连接/读历史”当作新版完整兼容。**
+- 官方接口和已验证版本统一在 src/official-desktop.json 管理；运行代码使用 src/official-protocol.mjs，不得重新散落硬编码版本、IPC 方法及版本号。升级处理遵循 COMPATIBILITY.md；接口字段/适配位置和回归入口见自动生成的 COMPATIBILITY-INTERFACES.md。
+- 新官方版本必须先取得实际验证证据，再更新清单中的 verifiedVersions 和 validation；不得仅扩大版本范围、删除校验或自动放行。更新清单后执行 node scripts/compatibility-report.mjs --write 和 npm run compatibility。
+- 双端构建报告、签名更新清单及 release-notes.md 必须来自同一份兼容性清单。发布器必须拒绝缺失/过期元数据和混用旧产物；发布时同时覆盖固定 release-notes.md，其哈希受更新签名保护。
+
 1. `package.json` 是唯一正式版本来源。APK versionCode 为 `major*1000000 + minor*1000 + patch`；minor、patch 必须小于 1000。
 2. **每次正式更新同时构建、验证并发布 Android APK 和 Windows EXE，不允许只更新其中一端。** 运行 `python scripts/build-release.py --publish`；该脚本先构建双端，再发布。
 3. 固定文件名为 `RemoteCodex.exe`、`RemoteCodex.apk`，版本显示在程序左下角；不要在文件名中加版本。

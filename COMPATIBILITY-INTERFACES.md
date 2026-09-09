@@ -1,0 +1,60 @@
+# 官方桌面接口清单
+
+由 src/official-desktop.json 生成；修改源清单后运行 node scripts/compatibility-report.mjs --write。
+此清单描述桥接器实际使用的桌面内部接口，不代表 OpenAI 对第三方的稳定性承诺。字段为已使用字段摘要，不是完整官方 schema。
+
+已验证官方版本：26.901.6511.0（windows-x64）。
+Chat：列表/历史读取；文字续写待专用真实会话验证；新建/模型/图片未支持。Work：没有独立验证；列表可能与 Chat 混合。
+
+## 连接和数据来源
+
+- 所有者管道：codex-ipc；工具管道前缀：codex-browser-use-。
+- 先通过 Win32 验证管道 PID 和官方进程映像，再获取 tools/list；全部写入转交现有桌面所有者。
+- 传输：4 字节小端长度 + JSON；app-tools 使用 JSON-RPC 2.0，桌面 IPC 使用 requestId/sourceClientId/version/targetClientId 信封，两者不能混用。
+- 实时流只接受当前订阅任务的已发现所有者，patch 基线不匹配时标记未知并重读。
+- 磁盘队列：.codex-global-state.json / queued-follow-ups；仅只读，不能证明实时状态。
+- 全部未知写入回执不得自动重发；安全限制、原始上下文和当前任务 ID 必须保留。
+
+## 桌面 app-tools
+
+| 方法 | 用途 | 请求字段 | 返回字段 | 调用/适配位置 | 回归 |
+| --- | --- | --- | --- | --- | --- |
+| list_projects | 项目列表 |  | projects[] | src/bridge.mjs:projects | test/projects.test.mjs |
+| list_threads | 会话列表 | limit | threads[], pinnedThreads[] | src/bridge.mjs:threads | test/chat.test.mjs |
+| read_thread | 历史读取 | threadId, turnLimit, includeOutputs, maxOutputCharsPerItem, cursor | thread, turns, nextCursor | src/bridge.mjs:read | test/conversation-pages.test.mjs |
+| create_thread | 新建真实任务 | prompt, target, model, thinking, title | threadId required; clientThreadId-only response treated as outcome-unknown | src/bridge.mjs:create | test/projects.test.mjs |
+| send_message_to_thread | 继续已有任务；Chat 分支未完成实测 | threadId, prompt, model, thinking | official tool result | src/bridge.mjs:send, nativeSend, chatSend | test/send-lifecycle.test.mjs |
+| set_thread_title | 专用测试任务命名 | threadId, title | official tool result | src/bridge.mjs:permissionContext | test/settings.test.mjs |
+| navigate_to_codex_page | 打开官方窗口同一任务 | threadId | official tool result | src/bridge.mjs:open | test/core.test.mjs |
+| wait_threads | 等待任务状态 | targets, timeoutMs | official tool result | src/bridge.mjs:wait | test/context.test.mjs |
+| get_usage_limits | 目标账号额度 |  | rateLimitsByLimitId, rateLimits | src/bridge.mjs:usage | test/usage.test.mjs |
+
+## 所有者 IPC
+
+| 方法 | 协议版本 | 用途 | 请求字段 | 返回字段 | 调用位置 | 回归 |
+| --- | --- | --- | --- | --- | --- | --- |
+| initialize | 1 | 连接桥接客户端 | clientType | result.clientId | src/transport.mjs:connect | test/core.test.mjs |
+| thread-owner-discovery | 1 | 发现任务所有者 | hostId, conversationId | handledByClientId | src/desktop.mjs:owner | test/queue.test.mjs |
+| thread-stream-following-changed | 1 | 订阅/取消订阅；broadcast | hostId, conversationId, following |  | src/desktop.mjs, src/bridge.mjs | test/subscriptions.test.mjs |
+| thread-follower-update-thread-settings | 1 | 设置下一轮模型/权限/速度 | conversationId, threadSettings | handledByClientId | src/bridge.mjs:updateSettings | test/settings.test.mjs |
+| thread-follower-submit-user-input | 1 | 回答官方待处理问题 | conversationId, requestId, response.answers | handledByClientId | src/bridge.mjs:answerQuestions | test/messages.test.mjs |
+| thread-follower-steer-turn | 1 | 向同一个运行中任务调整方向 | conversationId, input, restoreMessage, clientUserMessageId, attachments | handledByClientId, result.result.turnId | src/bridge.mjs:answerQuestions, src/queue.mjs:mutate | test/queue.test.mjs |
+| thread-follower-set-queued-follow-ups-state | 1 | 替换该任务完整队列 | conversationId, state | handledByClientId, result.ok | src/queue.mjs:write | test/queue.test.mjs |
+| thread-follower-interrupt-turn | 4 | 仅专用测试任务中断 | conversationId, mode=user-stop, expectedTurnId | handledByClientId | src/bridge.mjs:interrupt | test/core.test.mjs |
+| thread-follower-start-turn | 2 | 空闲任务中启动下一轮 | conversationId, turnStart.request.threadId, turnStart.request.input, turnStart.request.clientUserMessageId | handledByClientId, result.result.turn.id | src/bridge.mjs:nativeSend | test/multi-images.test.mjs |
+
+## 事件和依赖结构
+
+| 事件 | 字段 | 消费位置 |
+| --- | --- | --- |
+| thread-stream-state-changed | conversationId, hostId, change.type, change.revision, change.baseRevision, change.conversationState, change.patches | src/bridge.mjs:frame |
+| thread-queued-followups-changed | conversationId, messages | src/queue.mjs:frame |
+| item/tool/requestUserInput | id, params.questions | src/bridge.mjs:answerQuestions, public/app.js |
+
+| 结构 | 字段 | 适配位置 | 约束 |
+| --- | --- | --- | --- |
+| history | thread.id, thread.kind, thread.status, turns[].id, turns[].items, nextCursor | src/conversation-pages.mjs, src/state.mjs, src/message-media.mjs | read_thread snapshots can lag the verified owner; history completion is not proof of current completion |
+| ownerState | id, turnHistory.history.entitiesByKey, threadRuntimeStatus, latestThreadSettings, requests | src/state.mjs, src/bridge.mjs | accept only watched conversation from discovered owner; patch baseRevision must match |
+| queueMessage | id, text, context.prompt, context.imageAttachments, cwd, createdAt, pausedReason | src/queue.mjs | official disk is read-only; preserve full raw context and revision when forwarding owner writes |
+| modelCatalog | tools[].namespace, tools[].name, tools[].inputSchema.properties.model.description | src/settings.mjs, src/service-tiers.mjs | parse actual tools/list schema; never invent models |
+| usage | rateLimitsByLimitId, rateLimits, planType, primary, secondary, usedPercent, windowDurationMins, resetsAt | src/usage.mjs | ordinary codex 300-minute quota first, 10080-minute next; separate Spark |

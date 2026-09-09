@@ -1,14 +1,15 @@
+import { OFFICIAL, protocolRequest } from "./official-protocol.mjs";
 import net from "node:net";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 
 // Owner snapshots contain native images and accumulated tool output. This is
 // an inbound limit on verified local pipes, not an HTTP upload allowance.
-export const MAX_INBOUND_FRAME = 256 * 1024 * 1024;
+export const MAX_INBOUND_FRAME = OFFICIAL.transport.maxInboundBytes;
 
 export function encode(frame) {
   const b = Buffer.from(JSON.stringify(frame));
-  if (b.length > 32 * 1024 * 1024) throw Error("Frame too large");
+  if (b.length > OFFICIAL.transport.maxOutboundBytes) throw Error("Frame too large");
   const h = Buffer.alloc(4);
   h.writeUInt32LE(b.length);
   return Buffer.concat([h, b]);
@@ -47,10 +48,9 @@ export class Pipe extends EventEmitter {
       this.socket.once("error", rej);
     });
     if (this.kind === "desktop") {
-      const f = await this.request(
-        "initialize",
-        { clientType: "remote-bridge-prototype" },
-        { version: 1 },
+      const f = await protocolRequest(this, "initialize",
+        { clientType: OFFICIAL.transport.clientType },
+        {},
       );
       this.clientId = f.result.clientId;
     }
@@ -99,9 +99,9 @@ export class Pipe extends EventEmitter {
     }
   }
   receive(f) {
-    if (f.type === "client-discovery-request") {
+    if (f.type === OFFICIAL.transport.discoveryRequest) {
       this.send({
-        type: "client-discovery-response",
+        type: OFFICIAL.transport.discoveryResponse,
         requestId: f.requestId,
         response: { canHandle: false },
       });
@@ -112,7 +112,7 @@ export class Pipe extends EventEmitter {
         type: "response",
         requestId: f.requestId,
         resultType: "error",
-        error: "no-handler-for-request",
+        error: OFFICIAL.transport.noHandlerError,
       });
       return;
     }
@@ -143,7 +143,7 @@ export class Pipe extends EventEmitter {
     const id = randomUUID();
     const frame =
       this.kind === "tools"
-        ? { id, jsonrpc: "2.0", method, params }
+        ? { id, jsonrpc: OFFICIAL.transport.toolsJsonrpc, method, params }
         : {
             type: "request",
             requestId: id,

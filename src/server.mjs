@@ -32,6 +32,7 @@ export async function startServer({
   let closing = false;
   const staticTypes = new Map([
     ["/app.js", "text/javascript; charset=utf-8"],
+    ["/official-events.mjs", "text/javascript; charset=utf-8"],
     ["/modes.mjs", "text/javascript; charset=utf-8"],
     ["/ui.mjs", "text/javascript; charset=utf-8"],
     ["/markdown.mjs", "text/javascript; charset=utf-8"],

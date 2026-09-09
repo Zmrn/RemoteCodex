@@ -1,6 +1,8 @@
 # Remote Codex · ChatGPT 桌面会话桥接器
 
-Windows / Android 原型 **0.10.6**。连接已经运行的官方 ChatGPT 桌面端，通过它管理的同一个 Codex 任务收发消息、查看实时状态和操作队列。Windows 可自由调整窗口大小；Android 竖屏使用侧栏抽屉，横屏使用桌面布局。
+Windows / Android 原型，当前版本以 package.json 和发布说明为准。连接已经运行的官方 ChatGPT 桌面端，通过它管理的同一个 Codex 任务收发消息、查看实时状态和操作队列。Windows 可自由调整窗口大小；Android 竖屏使用侧栏抽屉，横屏使用桌面布局。
+
+官方接口、协议版本和已验证应用版本集中在 src/official-desktop.json；可读清单见 [COMPATIBILITY-INTERFACES.md](COMPATIBILITY-INTERFACES.md)，升级适配和发布检查见 [COMPATIBILITY.md](COMPATIBILITY.md)。每次双端发布自动生成明确列出支持官方版本的 RELEASE-NOTES.md；支持信息和说明哈希写入签名更新清单。
 
 0.10.6 完整处理七项交互 review 问题：发送确认后的草稿清理、发送前拒绝后的安全重试、问答输入焦点与草稿持久化、内容读取失败重试、Android 大图原文件保存，以及观看订阅和快照回收。结果与边界见 [REVIEW-FIXES.md](REVIEW-FIXES.md)。
 

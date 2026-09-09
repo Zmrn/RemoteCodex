@@ -9,6 +9,7 @@ import subprocess
 import urllib.request
 import zipfile
 from release_config import config
+from desktop_compatibility import compatibility, release_notes
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIMES = {
@@ -61,6 +62,7 @@ def main():
     args.cache.mkdir(parents=True, exist_ok=True)
     package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     version = args.version or package["version"]
+    desktop_support = compatibility()
     if not __import__("re").fullmatch(r"\d+\.\d+\.\d+", version): raise ValueError("Invalid version")
     files = {}
     for folder in ("src", "public"):
@@ -70,6 +72,7 @@ def main():
     for name in ("package.json", "README.md", "PORTABLE.md", "THIRD_PARTY_NOTICES.md", "FARFIELD-LICENSE.txt"):
         files[name] = (ROOT / name).read_bytes()
     package["version"] = version
+    files["RELEASE-NOTES.md"] = release_notes(version)
     files["package.json"] = json.dumps(package, indent=2).encode()
     files["src/update-source.json"] = json.dumps({"manifestUrl": config()["baseUrl"] + "latest.json", "checkIntervalMs": 3600000}).encode()
     with zipfile.ZipFile(io.BytesIO(download(args.cache, RUNTIMES["node"]))) as archive:
@@ -133,6 +136,7 @@ def main():
         "file": dest.name, "version": version, "bytes": dest.stat().st_size,
         "sha256": sha(dest.read_bytes()), "payloadSha256": payload_hash,
         "payloadFiles": len(files), "runtimeSources": RUNTIMES,
+        "desktopCompatibility": desktop_support,
     }
     (dest.with_suffix(".build.json")).write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2), flush=True)

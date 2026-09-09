@@ -2,6 +2,7 @@
 from pathlib import Path
 import argparse, hashlib, json, os, secrets, subprocess, sys, zipfile, tempfile
 from release_config import ROOT, config, android_tools, version_code
+from desktop_compatibility import compatibility, release_notes
 
 def run(args, **kwargs):
     subprocess.run([str(x) for x in args], check=True, **kwargs)
@@ -34,6 +35,7 @@ def main():
     settings = config()
     sdk, jdk, tools, android = android_tools()
     version = args.version or json.loads((ROOT / 'package.json').read_text())['version']
+    desktop_support = compatibility()
     code = version_code(version)
     (ROOT / 'work').mkdir(exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix='android-build-' + version + '-', dir=ROOT / 'work'))
@@ -42,6 +44,8 @@ def main():
     for file in (ROOT / 'public').iterdir():
         if file.is_file(): (assets / 'web' / file.name).write_bytes(file.read_bytes())
     (assets / 'release.json').write_text(json.dumps({'baseUrl': settings['baseUrl']}))
+    (assets / 'desktop-compatibility.json').write_text(json.dumps(desktop_support), encoding='utf-8')
+    (assets / 'RELEASE-NOTES.md').write_bytes(release_notes(version))
     (assets / 'update-public-key.pem').write_bytes((ROOT / 'src/update-public-key.pem').read_bytes())
     (resource / 'app_icon.png').write_bytes((ROOT / 'public/app-icon-192.png').read_bytes())
     manifest = work / 'AndroidManifest.xml'
@@ -69,7 +73,7 @@ def main():
     run([*signer, 'sign', '--ks', key, '--ks-key-alias', 'remote-codex', '--ks-pass', 'env:REMOTE_CODEX_SIGNING_PASSWORD', '--out', output, aligned], env=env)
     run([*signer, 'verify', '--verbose', '--print-certs', output])
     report = {'file': output.name, 'version': version, 'versionCode': code, 'bytes': output.stat().st_size,
-        'sha256': hashlib.sha256(output.read_bytes()).hexdigest(), 'packageName': 'com.anso.remotecodex'}
+        'sha256': hashlib.sha256(output.read_bytes()).hexdigest(), 'packageName': 'com.anso.remotecodex', 'desktopCompatibility': desktop_support}
     output.with_suffix('.apk.build.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
 

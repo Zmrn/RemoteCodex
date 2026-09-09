@@ -9,6 +9,9 @@ import {
   createHash,
 } from "node:crypto";
 import { protect } from "../src/agents.mjs";
+import { supportManifest } from "../src/official-protocol.mjs";
+import { isDeepStrictEqual } from "node:util";
+import { checkGenerated, releaseNotes } from "./compatibility-report.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const keyFile = path.join(root, "data/release-signing-key.json"),
   publicFile = path.join(root, "src/update-public-key.pem");
@@ -35,6 +38,12 @@ if (process.argv[2] === "--init") {
   const android = path.extname(exePath ?? "").toLowerCase() === ".apk";
   if (!exePath || !outputPath || !/^\d+\.\d+\.\d+$/.test(version ?? ""))
     throw Error("Usage: node scripts/sign-release.mjs EXE VERSION OUTPUT_JSON");
+  checkGenerated();
+  const support = supportManifest();
+  const buildFile = exePath.replace(/\.(exe|apk)$/i, android ? ".apk.build.json" : ".build.json");
+  const build = JSON.parse(fs.readFileSync(buildFile, "utf8"));
+  if (build.version !== version || !isDeepStrictEqual(build.desktopCompatibility, support))
+    throw Error("Rebuild artifact with the current official desktop compatibility catalog before signing");
   const privateKey = await protect(
     JSON.parse(fs.readFileSync(keyFile)).sealedPrivateKey,
     "unprotect",
@@ -57,6 +66,8 @@ if (process.argv[2] === "--init") {
       bytes: bytes.length,
       sha256: createHash("sha256").update(bytes).digest("hex"),
       publishedAt: new Date().toISOString(),
+      desktopCompatibility: support,
+      releaseNotesSha256: createHash("sha256").update(releaseNotes(version)).digest("hex"),
     }),
   );
   fs.writeFileSync(
