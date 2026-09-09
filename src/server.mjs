@@ -34,6 +34,8 @@ export async function startServer({
     ["/app.js", "text/javascript; charset=utf-8"],
     ["/modes.mjs", "text/javascript; charset=utf-8"],
     ["/ui.mjs", "text/javascript; charset=utf-8"],
+    ["/markdown.mjs", "text/javascript; charset=utf-8"],
+    ["/marked.mjs", "text/javascript; charset=utf-8"],
     ["/markdown-images.mjs", "text/javascript; charset=utf-8"],
     ["/citations.mjs", "text/javascript; charset=utf-8"],
     ["/message-content.mjs", "text/javascript; charset=utf-8"],

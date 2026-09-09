@@ -53,6 +53,29 @@ public final class Probe extends Instrumentation {
       require(read.getJSONObject("data").has("thread") && read.getJSONObject("data").getJSONArray("turns").length()>0,"real task read through APK proxy");result.putString("taskId",thread);result.putString("source",read.getString("source"));
       js("document.getElementById('prompt').value='ANDROID_UPGRADE_DRAFT';window.remoteCodexSaveDrafts()");SystemClock.sleep(700);
       require(true,"draft saved without sending a task message");
+    }else if(stage.equals("markdown")){
+      String markdown="# Markdown probe\n\n| Priority | Description |\n| :--- | ---: |\n";
+      for(int i=1;i<=7;i++)markdown+="| P"+i+" | **Row "+i+"** and `x\\|y` |\n";
+      markdown+="\n> Quote\n> - Parent\n>   - Nested\n\n- [x] Done\n- [ ] Pending\n\n```js\nconst literal = '<tag> &amp;';\n```\n\n";
+      markdown+="Source \ue200cite\ue202turn1view0\ue201\n\n<script>window.__markdownBad=true</script>\n\n[unsafe](javascript:alert(1))";
+      js("window.__markdownProbe=null;import(location.origin+'/ui.mjs').then(({markdown})=>{const node=markdown("+JSONObject.quote(markdown)+");node.id='markdown-probe';node.style.cssText='position:fixed;inset:0;background:#101722;z-index:999;overflow:auto;padding:32px';document.body.append(node);window.__markdownProbe=true}).catch(e=>window.__markdownProbe=String(e))");
+      until("window.__markdownProbe===true",15);
+      require("true".equals(js("(()=>{const r=document.getElementById('markdown-probe');return r.querySelectorAll('table tbody tr').length===7 && r.querySelectorAll('table th').length===2 && r.querySelectorAll('table strong').length===7 && r.querySelector('table code').textContent==='x|y' && r.querySelectorAll('table th')[1].style.textAlign==='right'})()")),"APK renders a seven-row GFM table, alignment and inline formatting");
+      require("true".equals(js("(()=>{const r=document.getElementById('markdown-probe');return !!r.querySelector('h1') && !!r.querySelector('blockquote ul ul') && r.querySelectorAll('input[type=checkbox]:disabled').length===2 && r.querySelectorAll('input:checked').length===1 && r.querySelector('pre code').textContent===\"const literal = '<tag> &amp;';\"})()")),"APK renders headings, nested lists, readonly tasks and literal code");
+      require("true".equals(js("!window.__markdownBad && !document.querySelector('#markdown-probe script,#markdown-probe a[href^=javascript]') && !!document.querySelector('#markdown-probe .citation-ref')")),"Markdown preserves citation controls and never executes raw HTML or unsafe URLs");
+      require("true".equals(js("performance.getEntriesByType('resource').some(e=>e.name===location.origin+'/marked.mjs')")),"Markdown parser is bundled and loaded from private loopback, without a CDN");
+      runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
+      until("innerWidth<innerHeight",15);
+      require("true".equals(js("(()=>{const r=document.getElementById('markdown-probe'),t=r.querySelector('.table-scroll');t.scrollLeft=100;return r.scrollWidth<=r.clientWidth && document.documentElement.scrollWidth<=innerWidth && t.getBoundingClientRect().right<=innerWidth && (t.scrollWidth<=t.clientWidth || t.scrollLeft>0)})()")),"Portrait table scroll stays inside viewport");
+      js("window.__wideTableProbe=false;import(location.origin+'/ui.mjs').then(({markdown})=>{const node=markdown('|One|Two|Three|Four|Five|Six|\\n|---|---|---|---|---|---|\\n|a|b|c|d|e|f|');node.id='wide-table-probe';document.getElementById('markdown-probe').append(node);window.__wideTableProbe=true})");
+      until("window.__wideTableProbe===true",10);
+      require("true".equals(js("(()=>{const r=document.getElementById('markdown-probe'),t=document.querySelector('#wide-table-probe .table-scroll');t.scrollLeft=100;return r.scrollWidth<=r.clientWidth && t.scrollWidth>t.clientWidth && t.scrollLeft>0})()")),"Portrait six-column table scrolls inside its container");
+      js("document.getElementById('wide-table-probe').remove()");
+      runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));
+      until("innerWidth>innerHeight",15);
+      require("true".equals(js("(()=>{const r=document.getElementById('markdown-probe');return r.scrollWidth<=r.clientWidth && document.documentElement.scrollWidth<=innerWidth && r.querySelectorAll('table tbody tr').length===7})()")),"Landscape table retains all rows without page overflow");
+      js("document.getElementById('markdown-probe').remove()");
+      runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
     }else if(stage.equals("web-images")){
       String source="https://interfaceingame.com/wp-content/uploads/detroit-become-human/detroit-become-human-audio.jpg";
       String markdown="![Image one]("+source+")\n\n![Image two](https://interfaceingame.com/wp-content/uploads/nierautomata/nierautomata-settings.jpg)";

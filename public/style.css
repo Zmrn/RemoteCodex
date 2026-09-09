@@ -2923,3 +2923,26 @@ dialog textarea,
 .remote-image-error { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); }
 .remote-image-error[hidden] { display: none; }
 .remote-image-error button { color: var(--blue); }
+
+/* CommonMark/GFM blocks share the same layout on Windows and Android. */
+.markdown { min-width: 0; overflow-wrap: anywhere; }
+.markdown p { white-space: normal; }
+.markdown h1 { font-size: 23px; margin: 26px 0 14px; font-weight: 650; }
+.markdown h6 { font-size: 15px; margin: 20px 0 10px; font-weight: 600; }
+.markdown > :first-child { margin-top: 0; }
+.markdown blockquote { margin: 12px 0 18px; padding: 3px 0 3px 16px; border-left: 3px solid var(--line); color: var(--muted); }
+.markdown blockquote > :last-child { margin-bottom: 0; }
+.markdown hr { margin: 22px 0; border: 0; border-top: 1px solid var(--line); }
+.markdown li > p { margin: 0 0 7px; }
+.markdown li > ul, .markdown li > ol { margin: 5px 0; }
+.markdown .task-list-item { list-style: none; }
+.markdown .task-list-item > input { margin: 0 7px 0 -21px; vertical-align: middle; accent-color: var(--blue); }
+.markdown .table-scroll { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; margin: 14px 0 22px; border-radius: 6px; }
+.markdown .table-scroll:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.markdown table { width: 100%; border-collapse: collapse; font-size: 0.94em; line-height: 1.65; }
+.markdown th, .markdown td { border-bottom: 1px solid var(--line); padding: 11px 13px; text-align: left; vertical-align: top; min-width: 5rem; }
+.markdown th { font-weight: 650; color: var(--ink); }
+.markdown tbody tr:last-child td { border-bottom: 0; }
+.markdown td > .remote-message-image { min-width: 100px; }
+.markdown pre { max-width: 100%; }
+.markdown pre code { white-space: pre; overflow-wrap: normal; }

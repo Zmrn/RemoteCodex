@@ -40,6 +40,12 @@ python scripts/build-release.py --publish
 
 ## 复测
 
+0.10.5 将会话 Markdown 改为随包内置的 GFM 解析器和安全 DOM 渲染。表格、嵌套列表、标题、引用、任务列表及代码使用 Windows/Android 共用样式；普通表格自动换行，宽表格只在容器内左右滑动。Android 15 隔离模拟器通过 `stage=markdown` 的表格结构、排版、安全链接、引用和横竖屏检查，未将模拟器结果视为物理手机验证。详见 [MARKDOWN.md](MARKDOWN.md)。
+
+```powershell
+adb -s emulator-5580 shell am instrument -w -e stage markdown com.anso.remotecodex.tests/.Probe
+```
+
 0.10.4 源码调整：WebView 放入原生安全区域容器，系统栏、刘海和键盘的 Insets 用来缩小 WebView 实际尺寸；不再把 padding 加在 WebView 内部。API 30+ 使用明确的 systemBars、displayCutout、ime 类型；API 26–29 保留 adjustResize 和旧 Insets 兼容路径。
 
 Codex 图片选择器允许一次选择多张，多次选择或粘贴追加到草稿，单张移除。缩略图横向滚动，不撑高输入区。每条最多 20 张、每张 5 MiB、合计 10 MiB；保持原始图片字节，不自动压缩。草稿切换、更新恢复、队列取回和调整方向均保留多张图片及顺序。被控 Windows 需更新到 0.10.4，旧版目标明确拒绝多图发送并保留草稿；单图继续兼容旧版。Chat 图片仍未接入，Codex 首条消息仍需文字。

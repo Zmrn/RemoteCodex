@@ -2,7 +2,7 @@
 
 0.9.0 的内嵌 Windows 界面使用 Microsoft.Web.WebView2 SDK 1.0.4191.47；Microsoft 的完整许可条款随包保留在 `runtime/webview2/LICENSE.txt`。SDK 原包来自 NuGet 官方源，固定 SHA-256 写入构建脚本。仅分发 SDK 的托管组件及 x64 Loader，实际浏览器运行时使用电脑已安装的 Microsoft Edge WebView2 Runtime，不修改或重分发官方 ChatGPT。
 
-原型运行代码使用 Node.js/Python 标准库，无第三方 npm/Python 包。单 EXE 版本额外分发 Node.js 22.19.0 和 CPython 3.13.2 官方 Windows 运行时，分别完整保留其 `runtime/node/LICENSE`、`runtime/python/LICENSE.txt` 与官方分发附带的许可文件；来源和 SHA-256 位于 `scripts/build_portable.py` 及包内 `runtime/SOURCES.json`。调查时参考了 Farfield 的桌面 IPC 分帧、客户端发现和所有者转发机制；相关 MIT 声明完整保留在 `FARFIELD-LICENSE.txt`。
+桥接后端使用 Node.js/Python 标准库。单 EXE 版本额外分发 Node.js 22.19.0 和 CPython 3.13.2 官方 Windows 运行时，分别完整保留其 `runtime/node/LICENSE`、`runtime/python/LICENSE.txt` 与官方分发附带的许可文件；来源和 SHA-256 位于 `scripts/build_portable.py` 及包内 `runtime/SOURCES.json`。调查时参考了 Farfield 的桌面 IPC 分帧、客户端发现和所有者转发机制；相关 MIT 声明完整保留在 `FARFIELD-LICENSE.txt`。
 
 Farfield：Copyright (c) 2026 Anshu Chimala，MIT，commit `a479046dfa2f13b3942d9ec3e56f56a0b84e8bee`。
 
@@ -13,3 +13,5 @@ OpenCodex（AGPL-3.0）与 Dexgram（MIT）仅用于只读调查，未把其实�
 Prettier 3.6.2 与 Playwright Core 1.56.1 仅用于格式化和本地浏览器测试，不是运行原型所必需的依赖，也未随源码分发。
 
 图标按用户要求使用 ChatGPT 结形标志，并叠加本项目的蓝色网络徽标。结形 SVG 来源：<https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg>，原始文件信息页：<https://commons.wikimedia.org/wiki/File:ChatGPT_logo.svg>。ChatGPT/OpenAI 标志和商标属于 OpenAI；本项目不主张该标志的原创权，也不表示官方出品或背书。可编辑图标为 `public/app-icon.svg`，生成的 PNG/ICO 仅用于本原型界面及启动入口。
+
+0.10.5 的 Markdown 前端使用 Marked 18.0.12（MIT）。ES module 固定保存为 `public/marked.mjs`，完整许可证保留为 `public/marked.LICENSE.txt`，Windows 和 Android 均随包分发；运行时不依赖 CDN。原始包来自 https://registry.npmjs.org/marked/-/marked-18.0.12.tgz，SHA-512（base64）：`LEm4ga2YeI2T3GVHj9b0BaDPPk93LLTHMFeMyQbNIzPxc8vCI0y/scy0ZA6z6lXKyT9j9Nhl/OC6ZYKYGuFScA==`。仅使用 lexer 生成结构化 token，再由本项目创建 DOM，不调用其 HTML 输出直接填充会话页面。
