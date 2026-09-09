@@ -17,6 +17,8 @@ jar=work/'test.jar'
 with zipfile.ZipFile(jar,'w') as z:
     for f in classes.rglob('*.class'):z.write(f,f.relative_to(classes).as_posix())
 run([jdk/'bin/java.exe','-cp',tools/'lib/d8.jar','com.android.tools.r8.D8','--lib',android,'--classpath',production,'--min-api','26','--output',dex,jar])
-with zipfile.ZipFile(unsigned,'a') as z:z.write(dex/'classes.dex','classes.dex')
+with zipfile.ZipFile(unsigned,'a') as z:
+    z.write(dex/'classes.dex','classes.dex')
+    z.write(ROOT/'scripts/fixtures/queue-preview.js','assets/queue-preview.js')
 aligned=work/'aligned.apk';run([tools/'zipalign.exe','-f','4',unsigned,aligned]);key,env=password(jdk)
 run([jdk/'bin/java.exe','-jar',tools/'lib/apksigner.jar','sign','--ks',key,'--ks-key-alias','remote-codex','--ks-pass','env:REMOTE_CODEX_SIGNING_PASSWORD','--out',ROOT/'work/RemoteCodex-tests.apk',aligned],env=env)

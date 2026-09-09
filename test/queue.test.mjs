@@ -10,6 +10,7 @@ import {
 } from "../src/queue.mjs";
 const id = "66666666-6666-4666-8666-666666666666",
   owner = "official-test-owner";
+const png = "data:image/png;base64," + fs.readFileSync(path.join(ROOT, "fixtures/vision-probe.png")).toString("base64");
 function fixture(taskId = id) {
   const id = taskId;
   fs.mkdirSync(path.join(ROOT, "test/scratch"), { recursive: true });
@@ -233,4 +234,29 @@ test("multiple images survive official queue enqueue, take, restart recovery and
   assert.equal(requests.at(-1).method,"thread-follower-steer-turn");
   assert.equal(requests.at(-1).opts.targetClientId,owner);
   assert.deepEqual(requests.at(-1).params.input.filter(i=>i.type==="image").map(i=>i.url),urls);
+});
+
+test("queue metadata omits all image bytes, preserves legacy clients and scoped durable recovery", async () => {
+  const { q, b, requests } = fixture();
+  await q.mutate(id, "preview-enqueue-1", { action: "enqueue", prompt: "preview fixture", imageDataUrls: [png, png], revision: q.read(id).revision });
+  const legacy = q.read(id, true), metadata = q.read(id, true, true);
+  assert.equal(metadata.previewProtocol, "refs-v1");
+  assert.equal(metadata.revision, legacy.revision);
+  assert.equal(metadata.confirmed, true);
+  assert.equal(metadata.messages[0].editable, true);
+  assert.equal(JSON.stringify(metadata).includes("base64"), false);
+  assert.equal(metadata.messages[0].imageRefs.length, 2);
+  const ref = metadata.messages[0].imageRefs[0];
+  assert.deepEqual(b.media.read(id, ref.id).bytes, Buffer.from(png.split(",")[1], "base64"));
+  assert.throws(() => b.media.read("different-thread", ref.id));
+  assert.equal(q.read(id, false, true).messages[0].editable, false);
+  const take = await q.mutate(id, "preview-take-1", { action: "take", messageId: "preview-enqueue-1", revision: metadata.revision });
+  assert.deepEqual(take.result.draft.imageDataUrls, [png, png]);
+  const recovery = q.read(id, true, true).recoveries[0];
+  assert.equal(JSON.stringify(recovery).includes("base64"), false);
+  assert.deepEqual(q.recovery(id, recovery.recoveryId).draft.imageDataUrls, [png, png]);
+  assert.throws(() => q.recovery("different-thread", recovery.recoveryId));
+  b.db.queueRecoveries[recovery.recoveryId].state = "steer-unknown";
+  assert.throws(() => q.recovery(id, recovery.recoveryId));
+  assert.equal(requests.length, 2, "preview and recovery reads never mutate the owner");
 });

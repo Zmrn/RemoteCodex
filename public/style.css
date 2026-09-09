@@ -2946,6 +2946,9 @@ dialog textarea,
 #attachment button { min-width: 30px; min-height: 36px; }
 .queue-images { display: flex; gap: 3px; max-width: 100px; min-width: 24px; overflow-x: auto; }
 .queue-images .queue-image { flex-shrink: 0; }
+.queue-image-slot { display: inline-flex; flex: 0 0 30px; width: 30px; height: 30px; align-items: center; justify-content: center; border-radius: 5px; background: var(--surface); color: var(--muted); }
+.queue-image-slot > svg { width: 18px; height: 18px; opacity: .6; }
+.queue-image-retry { width: 100%; height: 100%; padding: 0; color: var(--muted); }
 .remote-message-image { display: flex; flex-direction: column; align-items: flex-start; margin: 12px 0; max-width: 100%; }
 .remote-message-image > img { display: block; max-width: min(100%, 360px); max-height: 230px; width: auto; height: auto; object-fit: contain; border-radius: 9px; border: 1px solid var(--line); }
 .remote-message-image > img[hidden] { display: none; }

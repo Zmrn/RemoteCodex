@@ -132,24 +132,43 @@ export class OfficialQueue {
       throw Error("官方队列格式未知");
     return messages;
   }
-  read(id, multiImageInput = true) {
+  recovery(id, key) {
+    this.bridge.requireConnection();
+    const recovery = this.bridge.db.queueRecoveries?.[key];
+    if (!recovery || recovery.threadId !== id || recovery.state !== "draft")
+      throw Error("草稿已变化，请刷新队列后重试");
+    return { recoveryId: key, draft: publicQueueMessage(recovery.message) };
+  }
+  read(id, multiImageInput = true, previews = false) {
     this.bridge.requireConnection();
     const live = this.live.get(id),
       verified = !!live && live.owner === this.bridge.owners?.get(id);
     const messages = verified ? live.messages : this.disk(id),
       revision = queueRevision(messages);
+    const present = (message) => {
+      const result = publicQueueMessage(message, multiImageInput);
+      if (previews) {
+        result.imageRefs = result.imageDataUrls.map((source, i) =>
+          this.bridge.media.add(id, source, "排队图片-" + (i + 1) + "." + source.slice(11, source.indexOf(";")), true),
+        ).filter(Boolean);
+        delete result.imageDataUrls;
+        delete result.imageDataUrl;
+      }
+      return result;
+    };
     return {
+      ...(previews ? { previewProtocol: "refs-v1" } : {}),
       source: verified ? "official-owner-queue-broadcast" : "official-disk",
       confirmed: !!verified,
       observedAt: new Date().toISOString(),
       revision,
-      messages: messages.map(m => publicQueueMessage(m, multiImageInput)),
+      messages: messages.map(present),
       recoveries: Object.entries(this.bridge.db.queueRecoveries ?? {})
         .filter(([, r]) => r.threadId === id)
         .map(([key, r]) => ({
           recoveryId: key,
           state: r.state,
-          draft: publicQueueMessage(r.message, multiImageInput),
+          draft: present(r.message),
         })),
     };
   }

@@ -220,7 +220,10 @@ export async function startServer({
           });
           return res.end(file.bytes);
         }
-        if (match[2] === "queue") return json(res, 200, bridge.queue.read(id, url.searchParams.get("images") === "multi-v1"));
+        if (match[2] === "queue") return json(res, 200,
+          url.searchParams.has("recoveryId")
+            ? bridge.queue.recovery(id, url.searchParams.get("recoveryId"))
+            : bridge.queue.read(id, url.searchParams.get("images") === "multi-v1", url.searchParams.get("previews") === "refs-v1"));
         if (!match[2]) {
           if (url.searchParams.get("paging") === "items-v1")
             return json(

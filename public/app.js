@@ -147,6 +147,14 @@ const queueUI = new QueueUI({
     recoveryId: takenDrafts.get(taskKey())?.recoveryId,
   }),
   api: agentApi,
+  loadImage: async (context, ref, signal) => {
+    const response = await fetch(base(context.agent) + `/threads/${context.id}/media?id=${encodeURIComponent(ref.id)}`, {
+      headers: { "X-Bridge-CSRF": csrf },
+      signal: AbortSignal.any([signal, agentReads.signal, taskReads.signal, AbortSignal.timeout(75000)]),
+    });
+    if (!response.ok) throw Error("排队图片暂时不可用");
+    return response.blob();
+  },
   journal,
   onChange: permissions,
   onError: error,
@@ -1483,6 +1491,8 @@ async function readTask(job, older) {
   const { a, id, g, seq } = job;
   const requestedCursor = older === "gap" ? gapCursor : older ? cursor : null;
   const sidebarSeq = ++sidebarSequence;
+  // Queue text must not wait for the task history or its attachments.
+  if (!older && mode === "codex") queueUI.refresh();
   try {
     const r = await agentApi(
       a,
@@ -1605,7 +1615,6 @@ async function readTask(job, older) {
       taskData.thread.cwd;
     displayTurns();
     permissions();
-    if (mode === "codex") queueUI.refresh();
     if (atBottom) scroll.scrollTop = scroll.scrollHeight;
     else restoreMessageAnchor(anchor);
   } catch (e) {

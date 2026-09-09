@@ -161,6 +161,21 @@ public final class Probe extends Instrumentation {
       runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
       until("document.body.classList.contains('mobile-layout') && !document.body.classList.contains('drawer-open')",15);
       require(true,"portrait drawer remains closed; no real task writes");
+    }else if(stage.equals("queue-preview")){
+      String fixture;
+      try(InputStream in=getContext().getAssets().open("queue-preview.js")){
+        ByteArrayOutputStream bytes=new ByteArrayOutputStream();byte[] buffer=new byte[8192];int n;
+        while((n=in.read(buffer))!=-1)bytes.write(buffer,0,n);fixture=bytes.toString("UTF-8");
+      }
+      js(fixture);
+      for(int orientation:new int[]{android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE}){
+        runOnMainSync(()->activity.setRequestedOrientation(orientation));
+        until(orientation==android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT?"innerHeight>innerWidth":"innerWidth>innerHeight",15);
+        js("window.__queuePreview=null;window.runQueuePreviewProbe().then(r=>window.__queuePreview=r).catch(e=>window.__queuePreview={error:String(e)})");
+        until("window.__queuePreview!=null",20);
+        require("true".equals(js("window.__queuePreview.passed===true")),"Android queue progressive image lifecycle "+orientation+": "+js("JSON.stringify(window.__queuePreview)"));
+      }
+      runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
     }else if(stage.equals("usage")){
       js("window.__usageProbe=null;import(location.origin+'/usage-view.mjs').then(({renderQuota})=>{const root=document.createElement('div');root.id='usage-probe';root.style.cssText='position:fixed;inset:0;z-index:900;background:#161e2a;padding:24px;overflow:auto';for(const id of ['agent-quota','usage-details','usage-observed','usage-account-note']){const n=document.createElement('div');n.dataset.quota=id;root.append(n)}document.body.append(root);const $=id=>root.querySelector('[data-quota='+id+']');const row=(duration,value,id='codex')=>({limitId:id,label:id==='codex'?'Codex':'Spark',remainingPercent:value,windowDurationMins:duration,resetsAt:1789435536});const data={schemaVersion:2,planType:'plus',observedAt:new Date().toISOString(),fiveHour:[row(300,32),row(300,99,'spark')],weekly:[row(10080,79)]};const draw=connected=>renderQuota({$,data,state:'available',connected});draw(true);window.__usageProbe={$,data,draw}}).catch(e=>window.__usageProbe={error:String(e)})");
       until("window.__usageProbe!=null",15);

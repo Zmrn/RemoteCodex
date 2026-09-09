@@ -11,6 +11,7 @@ export class QueueUI {
   constructor({
     getContext,
     api,
+    loadImage,
     journal,
     onChange,
     onError,
@@ -20,6 +21,7 @@ export class QueueUI {
     Object.assign(this, {
       getContext,
       api,
+      loadImage,
       journal,
       onChange,
       onError,
@@ -31,6 +33,10 @@ export class QueueUI {
     this.sequence = 0;
     this.current = null;
     this.lastRender = "";
+    this.previewKey = null;
+    this.previews = new Map();
+    this.imageLoads = 0;
+    this.refreshJob = null;
     document.addEventListener("pointerdown", (e) => {
       if (!e.target.closest(".queue-more"))
         this.root
@@ -50,29 +56,124 @@ export class QueueUI {
   }
   reset(unknown = false) {
     this.sequence++;
+    this.refreshJob?.controller.abort();
+    this.refreshJob = null;
+    this.clearPreviews();
     this.current = unknown
       ? { unknown: true, messages: [], recoveries: [] }
       : null;
     this.lastRender = "";
     this.render();
   }
-  async refresh() {
-    const c = this.getContext(),
-      seq = ++this.sequence;
+  refresh() {
+    const c = this.getContext();
     if (!c.id || !c.connected) {
-      this.current = null;
+      this.reset();
+      return Promise.resolve();
+    }
+    if (this.refreshJob?.key === c.key) {
+      this.refreshJob.pending = true;
+      return this.refreshJob.promise;
+    }
+    this.refreshJob?.controller.abort();
+    const job = { key: c.key, seq: ++this.sequence, controller: new AbortController() };
+    this.refreshJob = job;
+    job.promise = (async () => {
+      try {
+        const result = await this.api(c.agent, `/threads/${c.id}/queue?images=multi-v1&previews=refs-v1`, undefined, { signal: job.controller.signal });
+        if (job.seq !== this.sequence || c.key !== this.getContext().key) return;
+        this.current = result;
+      } catch {
+        if (job.seq !== this.sequence || c.key !== this.getContext().key) return;
+        this.current = { messages: [], recoveries: [], unknown: true };
+      }
       this.render();
-      return;
+    })().finally(() => {
+      if (this.refreshJob !== job) return;
+      this.refreshJob = null;
+      if (job.pending) this.refresh();
+    });
+    return job.promise;
+  }
+  clearPreviews() {
+    for (const entry of this.previews.values()) this.releasePreview(entry);
+    this.previews.clear();
+    this.previewKey = null;
+  }
+  releasePreview(entry) {
+    entry.controller?.abort();
+    if (entry.url) URL.revokeObjectURL(entry.url);
+    entry.targets.clear();
+  }
+  preview(ref, context) {
+    let entry = this.previews.get(ref.id);
+    if (!entry) {
+      entry = { ref, context, targets: new Set(), state: "queued" };
+      this.previews.set(ref.id, entry);
     }
-    try {
-      const result = await this.api(c.agent, `/threads/${c.id}/queue?images=multi-v1`);
-      if (seq !== this.sequence || c.key !== this.getContext().key) return;
-      this.current = result;
-    } catch {
-      if (seq !== this.sequence) return;
-      this.current = { messages: [], recoveries: [], unknown: true };
+    const slot = el("span", "queue-image-slot");
+    entry.targets.add(slot);
+    this.paintPreview(entry, slot);
+    return slot;
+  }
+  paintPreview(entry, slot) {
+    slot.replaceChildren();
+    slot.removeAttribute("title");
+    slot.removeAttribute("aria-label");
+    slot.dataset.state = entry.state;
+    slot.setAttribute("aria-busy", String(["queued", "loading"].includes(entry.state)));
+    if (entry.state === "ready") {
+      const img = el("img", "queue-image");
+      img.src = entry.url;
+      img.alt = "排队图片";
+      img.onerror = () => {
+        if (this.previews.get(entry.ref.id) !== entry || entry.state !== "ready") return;
+        URL.revokeObjectURL(entry.url);
+        entry.url = null;
+        entry.state = "failed";
+        for (const target of entry.targets) this.paintPreview(entry, target);
+      };
+      zoomableImage(img, entry.ref.name);
+      slot.append(img);
+    } else if (entry.state === "failed") {
+      const retry = el("button", "queue-image-retry", "↻");
+      retry.type = "button";
+      retry.title = "图片加载失败，点击重试";
+      retry.setAttribute("aria-label", retry.title);
+      retry.onclick = () => {
+        entry.state = "queued";
+        for (const target of entry.targets) this.paintPreview(entry, target);
+        this.pumpImages();
+      };
+      slot.append(retry);
+    } else {
+      slot.title = "图片加载中";
+      slot.setAttribute("aria-label", "图片加载中");
+      slot.append(icon("image"));
     }
-    this.render();
+  }
+  pumpImages() {
+    // Limit preview traffic; queue metadata and explicit actions remain independent.
+    for (const entry of this.previews.values()) {
+      if (this.imageLoads >= 2) break;
+      if (entry.state !== "queued") continue;
+      entry.state = "loading";
+      entry.controller = new AbortController();
+      this.imageLoads++;
+      Promise.resolve().then(() => this.loadImage(entry.context, entry.ref, entry.controller.signal))
+        .then(blob => {
+          if (entry.controller.signal.aborted || this.previews.get(entry.ref.id) !== entry) return;
+          entry.url = URL.createObjectURL(blob);
+          entry.state = "ready";
+        }).catch(() => {
+          if (!entry.controller.signal.aborted) entry.state = "failed";
+        }).finally(() => {
+          this.imageLoads--;
+          if (this.previews.get(entry.ref.id) === entry)
+            for (const target of entry.targets) this.paintPreview(entry, target);
+          this.pumpImages();
+        });
+    }
   }
   render() {
     const c = this.getContext(),
@@ -91,6 +192,9 @@ export class QueueUI {
     ]);
     if (signature === this.lastRender) return;
     this.lastRender = signature;
+    if (this.previewKey !== c.key || !c.connected || q?.unknown) this.clearPreviews();
+    this.previewKey = c.key;
+    for (const entry of this.previews.values()) entry.targets.clear();
     const messages = q?.messages ?? [],
       recoveries = (q?.recoveries ?? []).filter(
         (r) => r.recoveryId !== c.recoveryId,
@@ -98,7 +202,7 @@ export class QueueUI {
     this.root.hidden =
       !c.id || (!messages.length && !recoveries.length && !q?.unknown);
     this.root.replaceChildren();
-    if (this.root.hidden) return;
+    if (this.root.hidden) { this.clearPreviews(); return; }
     if (q?.unknown) {
       this.root.append(
         el("div", "queue-notice", "队列状态未知 · 重新连接后恢复"),
@@ -111,6 +215,7 @@ export class QueueUI {
       row.dataset.messageId = m.id;
       row.append(icon("queue"));
       const images = el("span", "queue-images");
+      for (const ref of m.imageRefs ?? []) images.append(this.preview(ref, c));
       for (const url of imageUrls(m.imageDataUrls ?? m.imageDataUrl)) {
         const img = el("img", "queue-image");
         img.src = url;
@@ -184,15 +289,38 @@ export class QueueUI {
         r.state === "draft" ? "继续编辑" : "状态未知",
       );
       b.type = "button";
-      b.disabled = r.state !== "draft" || !r.draft.editable || this.busy || !c.writable;
+      b.disabled = r.state !== "draft" || !r.draft.editable || this.busy || !c.writable || !c.connected;
       b.onclick = () =>
-        this.restoreDraft(r.draft, r.recoveryId, c).catch(this.onError);
+        this.restoreRecovery(r, c).catch(this.onError);
       row.append(b);
       this.root.append(row);
     }
+    for (const [key, entry] of this.previews) {
+      if (entry.targets.size) continue;
+      this.releasePreview(entry);
+      this.previews.delete(key);
+    }
+    this.pumpImages();
+  }
+  async restoreRecovery(recovery, c) {
+    if (this.busy || !c.connected || !c.writable) return;
+    if (c.hasDraft) { this.onToast("输入框已有草稿，请先发送或清空，再取回排队消息"); return; }
+    this.busy = true;
+    this.onChange();
+    this.render();
+    try {
+      const draft = recovery.draft.imageRefs
+        ? (await this.api(c.agent, `/threads/${c.id}/queue?images=multi-v1&recoveryId=${encodeURIComponent(recovery.recoveryId)}`)).draft
+        : recovery.draft;
+      await this.restoreDraft(draft, recovery.recoveryId, c);
+    } finally {
+      this.busy = false;
+      this.onChange();
+      this.render();
+    }
   }
   async enqueue(prompt, images, key, recoveryId, c) {
-    const q = await this.api(c.agent, `/threads/${c.id}/queue`);
+    const q = await this.api(c.agent, `/threads/${c.id}/queue?images=multi-v1&previews=refs-v1`);
     return this.api(c.agent, `/threads/${c.id}/queue`, {
       action: "enqueue",
       prompt,
