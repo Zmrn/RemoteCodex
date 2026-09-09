@@ -313,11 +313,11 @@ const acknowledgedReports = new Map();
 function checkVisibleReport() {
   clearTimeout(receiptTimer);
   const report = visibleReport;
-  if (!report || !status.connected || document.hidden || !document.hasFocus() || !status.taskSummary?.readReceipts) return;
+  if (!report || !status.connected || document.hidden || !document.hasFocus() || document.querySelector(".conversation").inert || !status.taskSummary?.readReceipts) return;
   const key = report.a + ":" + report.id;
   if (acknowledgedReports.get(key) === report.token) return;
   receiptTimer = setTimeout(async () => {
-    if (visibleReport !== report || report.g !== generation || report.id !== selected || !status.connected || document.hidden || !document.hasFocus()) return;
+    if (visibleReport !== report || report.g !== generation || report.id !== selected || !status.connected || document.hidden || !document.hasFocus() || document.querySelector(".conversation").inert) return;
     const scroll = $("message-scroll"), item = $("messages").querySelector('[data-item-id="' + CSS.escape(report.itemId) + '"]');
     if (!item || scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 80) return;
     const rect = item.getBoundingClientRect(), viewport = scroll.getBoundingClientRect();
@@ -1096,7 +1096,7 @@ async function switchAgent(id, record = true, resumeId = null, nextMode = mode) 
   document.querySelector(".conversation").classList.add("is-new");
   $("title").textContent = "新对话";
   modelSettings(null);
-  closeDrawer(false);
+  closeAgentMenu();
   $("empty").hidden = false;
   $("file-tray").hidden = true;
   setPromptValue(draft.get(taskKey()) ?? "");
@@ -1150,7 +1150,7 @@ async function switchAgent(id, record = true, resumeId = null, nextMode = mode) 
     modeUI();
     stream(id, g);
     if (record) recordRoute(id, null);
-    if (resumeId) await selectThread(resumeId, false);
+    if (resumeId) await selectThread(resumeId, false, { preserveDrawer: true });
   } catch (e) {
     if (g !== generation) return;
     setConnection(false);
@@ -1159,16 +1159,17 @@ async function switchAgent(id, record = true, resumeId = null, nextMode = mode) 
     $("empty-description").textContent =
       "地址已保存，正在自动重连。请保持目标电脑的桥接程序打开。";
     renderThreads();
-    if (resumeId) await selectThread(resumeId, false);
+    if (resumeId) await selectThread(resumeId, false, { preserveDrawer: true });
   }
 }
-async function selectThread(id, record = true) {
+async function selectThread(id, record = true, { preserveDrawer = false } = {}) {
   const a = agentId,
     g = generation;
   closeSettingsMenu(false);
   viewEpoch++;
   document.querySelector(".conversation").classList.remove("is-new");
-  closeDrawer(false);
+  // Restoring a task after a mode/device change must not dismiss navigation.
+  if (!preserveDrawer) closeDrawer(false);
   if (record) recordRoute(agentId, id);
   saveDraft();
   selected = id;
@@ -1939,6 +1940,7 @@ async function navigateBy(delta) {
   routeIndex = i;
   const r = routeHistory[i];
   navigationButtons();
+  closeDrawer(false);
   if (r.a !== agentId || r.mode !== mode) await switchAgent(r.a, false, r.t, r.mode);
   else if (r.t) await selectThread(r.t, false);
   else newConversation(false);
@@ -2941,6 +2943,7 @@ window.remoteCodexOpenTask = async (destination) => {
   if (navigation !== widgetNavigation) return;
   if (!data.agents.some(a => a.id === destination.agent)) throw Error("小组件中的设备已移除，请刷新小组件");
   agents = data.agents;
+  closeDrawer(false);
   await switchAgent(destination.agent, true, destination.thread, normalizeMode(destination.mode));
 };
 api("/api/agents")
@@ -2961,7 +2964,7 @@ api("/api/agents")
     const requested =
       saved?.thread || new URL(location.href).searchParams.get("thread");
     if (requested && /^[a-f0-9-]{36}$/.test(requested))
-      await selectThread(requested);
+      await selectThread(requested, true, { preserveDrawer: true });
     if (saved) {
       draft = new Map(saved.drafts || []);
       pendingSettings = new Map(saved.settings || []);
@@ -3056,6 +3059,7 @@ function closeDrawer(restoreFocus = true) {
   document.querySelector(".mobile-topbar").inert = false;
   $("mobile-menu").setAttribute("aria-expanded", "false");
   if (wasOpen && restoreFocus) $("mobile-menu").focus();
+  if (wasOpen) checkVisibleReport();
 }
 $("mobile-menu").onclick = openDrawer;
 $("drawer-close").onclick = $("drawer-backdrop").onclick = () => closeDrawer();
