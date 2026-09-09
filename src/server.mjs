@@ -24,6 +24,7 @@ export async function startServer({
   access,
 } = {}) {
   agents ??= new Agents(bridge.dataDir ?? DATA_DIR);
+  await agents.preserve?.();
   access ??= new LocalAccess(bridge.dataDir ?? DATA_DIR);
   const compatibilityProbes = new CompatibilityProbes(bridge.dataDir ?? DATA_DIR);
   const updater = new Updater(bridge.dataDir ?? DATA_DIR, (e) =>

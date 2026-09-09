@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { captureDeviceUpdate, verifyDeviceUpdate } from "./device-update-snapshot.mjs";
 import {
   verifyManifest,
   verifyExecutable,
@@ -137,12 +138,14 @@ try {
       await sleep(100);
     }
   }
+  const deviceSnapshot = captureDeviceUpdate(path.join(job.home, "data"), path.join(dir, "device-backups", randomUUID()));
   await replaceFile(job.candidate, job.launcher);
   replaced = true;
   await run(job.launcher, ["--port", url.port]);
   const after = await api("/instance");
   if (after.version !== manifest.version || after.instanceId === job.instanceId)
     throw Error("新版本启动校验失败");
+  verifyDeviceUpdate(path.join(job.home, "data"), deviceSnapshot);
   result({
     status: "updated",
     fromVersion: job.version,

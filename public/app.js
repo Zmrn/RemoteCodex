@@ -800,10 +800,10 @@ function closeAgentMenu(restoreFocus = false) {
   if (wasOpen && restoreFocus) $("footer-agent").focus();
 }
 let agentRefresh = 0;
-let reportedStorageRecovery = false;
+const reportedStorageRecovery = new Set();
 function storageNotice(data) {
-  if (data.storage?.recovered && !reportedStorageRecovery) {
-    reportedStorageRecovery = true;
+  if (data.storage?.recovered && !reportedStorageRecovery.has(data.storage.source)) {
+    reportedStorageRecovery.add(data.storage.source);
     toast(data.storage.warning);
   }
 }
