@@ -119,31 +119,15 @@ public final class WidgetMonitor {
     persist(next);changed();
   }
   public void devicesChanged(){changed();DeviceSyncService.ensure(app);DeviceSyncService.refresh(app);if(!DeviceSyncService.running)refreshAsync(null);}
-  public synchronized JSONObject snapshot()throws Exception{
-    JSONArray devices=app.devices.list().getJSONArray("agents"),items=new JSONArray();Map<String,JSONObject> tasks=new LinkedHashMap<>();
-    int offline=0,unknown=0,incomplete=0,known=0;long oldest=Long.MAX_VALUE,now=System.currentTimeMillis();
-    for(int i=0;i<devices.length();i++){
-      JSONObject device=devices.getJSONObject(i);String id=device.getString("id");JSONObject value=cached.optJSONObject(id);
-      if(value==null||!value.optString("signature").equals(signature(id))||value.optJSONArray("threads")==null){unknown++;continue;}
-      known++;long at=value.optLong("receivedAt",0);oldest=Math.min(oldest,at);
-      boolean stale=!value.optBoolean("available")||now-at>(DeviceSyncService.running?60000:20*60*1000);
-      if(stale)offline++;if(!value.optBoolean("complete"))incomplete++;
-      JSONArray rows=value.getJSONArray("threads");
-      for(int j=0;j<rows.length();j++){
-        JSONObject t=new JSONObject(rows.getJSONObject(j).toString());String key=t.getString("kind")+":"+t.getString("id");
-        t.put("agentId",id).put("deviceName",device.getString("name")).put("stale",stale||t.optBoolean("cached")||t.optBoolean("unknown")).put("receivedAt",at);
-        JSONObject previous=tasks.get(key);
-        boolean read=previous!=null&&!t.optString("reportToken").isEmpty()&&previous.optString("reportToken").equals(t.optString("reportToken"))&&(!previous.optBoolean("unread")||!t.optBoolean("unread"));
-        if(previous==null||previous.optBoolean("stale")&&!t.optBoolean("stale")||previous.optBoolean("stale")==t.optBoolean("stale")&&(t.optDouble("updatedAt")>previous.optDouble("updatedAt")||t.optDouble("updatedAt")==previous.optDouble("updatedAt")&&at>previous.optLong("receivedAt")))tasks.put(key,t);
-        if(read)tasks.get(key).put("unread",false);
-      }
+  public synchronized JSONObject snapshot()throws Exception{return snapshot("");}
+  public synchronized JSONObject snapshot(String selected)throws Exception{
+    JSONArray configured=app.devices.list().getJSONArray("agents"),entries=new JSONArray();
+    for(int i=0;i<configured.length();i++){
+      JSONObject device=configured.getJSONObject(i);String id=device.getString("id");JSONObject value=cached.optJSONObject(id);
+      JSONObject entry=new JSONObject().put("id",id).put("name",device.getString("name"));
+      try{if(value!=null&&value.optString("signature").equals(signature(id)))entry.put("value",value);}catch(Exception ignored){/* Removed or changed while reading: no old endpoint's cache. */}
+      entries.put(entry);
     }
-    int unread=0,running=0;for(JSONObject task:tasks.values()){if(task.optBoolean("running"))running++;else if(task.optBoolean("unread"))unread++;items.put(task);}
-    String time=oldest==Long.MAX_VALUE?"":new java.text.SimpleDateFormat(now-oldest>24*60*60*1000?"MM-dd HH:mm":"HH:mm",java.util.Locale.getDefault()).format(new java.util.Date(oldest));
-    String label=devices.length()==0?"添加设备":known==0?"暂无数据 · 点击刷新":unknown>0?unknown+" 台未连接 · 部分统计":offline>0?"含离线缓存 · "+time:incomplete>0?"部分统计 · 点击查看":"全部设备合计 · "+time;
-    if(!cacheError.isEmpty())label=cacheError;
-    return new JSONObject().put("known",known>0||devices.length()==0).put("unread",unread).put("running",running).put("label",label)
-      .put("complete",known==devices.length()&&offline==0&&incomplete==0&&cacheError.isEmpty()).put("working",working)
-      .put("devices",devices.length()).put("connectedDevices",known-offline).put("offline",offline+unknown).put("lastUpdated",time).put("threads",items);
+    return WidgetSnapshot.build(entries,selected,System.currentTimeMillis(),DeviceSyncService.running,working,cacheError);
   }
 }

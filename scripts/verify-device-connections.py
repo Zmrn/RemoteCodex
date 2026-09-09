@@ -17,5 +17,7 @@ if hashlib.sha256(jar.read_bytes()).hexdigest() != expected: raise RuntimeError(
 work = Path(tempfile.mkdtemp(prefix='device-connections-jvm-', dir=ROOT/'work'))
 source = ROOT / 'android/src/com/anso/remotecodex'
 subprocess.run([str(jdk/'bin/javac.exe'), '--release', '8', '-encoding', 'UTF-8', '-cp', str(jar), '-d', str(work),
-                str(source/'DevicePoller.java'), str(source/'SummaryConnection.java'), str(ROOT/'android/host-test/DeviceConnectionTests.java')], check=True)
+                str(source/'DevicePoller.java'), str(source/'SummaryConnection.java'), str(source/'WidgetSizing.java'), str(source/'WidgetSnapshot.java'),
+                str(ROOT/'android/host-test/DeviceConnectionTests.java'), str(ROOT/'android/host-test/WidgetPresentationTests.java')], check=True)
 subprocess.run([str(jdk/'bin/java.exe'), '-ea', '-cp', str(work)+';'+str(jar), 'DeviceConnectionTests'], check=True, timeout=30)
+subprocess.run([str(jdk/'bin/java.exe'), '-ea', '-cp', str(work)+';'+str(jar), 'WidgetPresentationTests'], check=True, timeout=30)
