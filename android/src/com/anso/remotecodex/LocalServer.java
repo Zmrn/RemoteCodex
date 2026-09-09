@@ -47,6 +47,8 @@ public final class LocalServer {
       else if(route.equals("/api/agents")&&method.equals("POST")){answer=app.devices.save(input);app.widgetMonitor.devicesChanged();}
       else if(route.equals("/api/agents/select")&&method.equals("POST"))answer=app.devices.select(input.getString("id"));
       else if(route.equals("/api/agents/remove")&&method.equals("POST")){answer=app.devices.remove(input.getString("id"));app.widgetMonitor.devicesChanged();}
+      else if(route.equals("/api/device-connections")&&method.equals("GET"))answer=DeviceSyncService.state(app);
+      else if(route.equals("/api/device-connections")&&method.equals("POST")){DeviceSyncService.setEnabled(app,input.getBoolean("enabled"));answer=DeviceSyncService.state(app);}
       else if(route.equals("/api/updates")&&method.equals("GET"))answer=app.updates.status();
       else if(route.equals("/api/updates/check")&&method.equals("POST")){app.updates.checkAsync(false);answer=app.updates.status();}
       else if(route.equals("/api/updates/install")&&method.equals("POST")){app.updates.installAsync();answer=app.updates.status();}

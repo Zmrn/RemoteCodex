@@ -45,6 +45,7 @@ export async function startServer({
     ["/message-content.mjs", "text/javascript; charset=utf-8"],
     ["/conversation-history.mjs", "text/javascript; charset=utf-8"],
     ["/reconnect.mjs", "text/javascript; charset=utf-8"],
+    ["/device-connections.mjs", "text/javascript; charset=utf-8"],
     ["/image-input.mjs", "text/javascript; charset=utf-8"],
     ["/clipboard-images.mjs", "text/javascript; charset=utf-8"],
     ["/help-updates.mjs", "text/javascript; charset=utf-8"],

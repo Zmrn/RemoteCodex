@@ -23,7 +23,7 @@ public final class WidgetInboxActivity extends Activity {
     LinearLayout actions=new LinearLayout(this);Button refresh=new Button(this);refresh.setText("刷新");refresh.setOnClickListener(v->app.widgetMonitor.refreshAsync(null));actions.addView(refresh,new LinearLayout.LayoutParams(0,-2,1));
     Button open=new Button(this);open.setText("打开应用");open.setOnClickListener(v->startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP)));actions.addView(open,new LinearLayout.LayoutParams(0,-2,1));root.addView(actions);
   }
-  @Override protected void onStart(){super.onStart();app.widgetMonitor.listen(listener);render();app.widgetMonitor.refreshAsync(null);}
+  @Override protected void onStart(){super.onStart();DeviceSyncService.ensure(app);app.widgetMonitor.listen(listener);render();app.widgetMonitor.refreshAsync(null);}
   @Override protected void onStop(){app.widgetMonitor.unlisten(listener);super.onStop();}
   private void render(){try{
     JSONObject s=app.widgetMonitor.snapshot();status.setText(s.getString("label")+" · "+s.getInt("devices")+" 台设备"+(s.optString("lastUpdated").isEmpty()?"":" · 更新于 "+s.getString("lastUpdated"))+(s.optBoolean("working")?" · 刷新中":""));

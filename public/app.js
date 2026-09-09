@@ -10,6 +10,7 @@ import { mergeTurns, overlaps } from "./conversation-history.mjs";
 import { Reconnector } from "./reconnect.mjs";
 import { clipboardImages } from "./clipboard-images.mjs";
 import { HelpUpdates } from "./help-updates.mjs";
+import { DeviceConnections } from "./device-connections.mjs";
 import { zoomableImage } from "./image-viewer.mjs";
 import { ProjectPicker } from "./project-picker.mjs";
 import { renderQuota } from "./usage-view.mjs";
@@ -2930,6 +2931,7 @@ $("setup-dialog").addEventListener("close", () => {
   $("pairing-key").hidden = $("copy-key").hidden = true;
 });
 modeUI();
+if (android) new DeviceConnections({ $, api });
 let widgetDestination = null, widgetNavigation = 0;
 window.remoteCodexOpenTask = async (destination) => {
   if (!android || !destination || !/^[a-f0-9-]{36}$/.test(destination.thread ?? "") || !/^[a-f0-9-]{36}$/.test(destination.agent ?? "")) return;

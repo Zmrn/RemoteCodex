@@ -28,5 +28,5 @@ public final class TaskWidget extends AppWidgetProvider {
   @Override public void onAppWidgetOptionsChanged(Context c,AppWidgetManager m,int id,Bundle b){render(c);}
   @Override public void onEnabled(Context c){WidgetJob.schedule(c);WidgetJob.refresh(c);}
   @Override public void onDisabled(Context c){WidgetJob.cancel(c);}
-  @Override public void onReceive(Context c,Intent intent){super.onReceive(c,intent);String action=intent.getAction();if(REFRESH.equals(action)||Intent.ACTION_BOOT_COMPLETED.equals(action)||Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)){render(c);WidgetJob.schedule(c);if(exists(c))WidgetJob.refresh(c);}}
+  @Override public void onReceive(Context c,Intent intent){super.onReceive(c,intent);String action=intent.getAction();if(REFRESH.equals(action)||Intent.ACTION_BOOT_COMPLETED.equals(action)||Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)){DeviceSyncService.ensure(c);render(c);WidgetJob.schedule(c);if(exists(c))WidgetJob.refresh(c);}}
 }
