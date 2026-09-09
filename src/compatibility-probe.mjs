@@ -51,7 +51,7 @@ export async function inspectDesktop(desktop) {
   const source = sourceProtocols(desktop.identity.appToolsPipe.image);
   const required = Object.values(OFFICIAL.ipc).filter(s => s.method.startsWith("thread-"));
   const matches = source.some(s => required.every(spec => s.methods[spec.method] === spec.version));
-  return { compatibility, tools, source, schemaMatched: tools.every(t => t.available && !t.missing.length), sourceProtocolsMatched: matches };
+  return { compatibility, connection: desktop.identity.connection, tools, source, schemaMatched: tools.every(t => t.available && !t.missing.length), sourceProtocolsMatched: matches };
 }
 export class CompatibilityProbes {
   constructor(dir) { this.dir = path.join(dir, "compatibility-probes"); fs.mkdirSync(this.dir, { recursive: true }); this.running = new Map(); }
@@ -105,11 +105,21 @@ export class CompatibilityProbes {
       const reply = turn.items.filter(i => i.type === "agentMessage").map(i => i.text).join("\n");
       check("model sees both images: red blue white yellow circle square", [/红|red/i,/蓝|blue/i,/白|white/i,/黄|yellow/i,/圆|circle/i,/方|square/i].every(re => re.test(reply)));
       const owner = (await b.follow(id)).handledByClientId; report.ownerClientId = owner;
-      const original = b.desktop.ipc.request.bind(b.desktop.ipc);
-      b.desktop.ipc.request = (method, params, options) => {
-        if (params?.conversationId && method !== OFFICIAL.ipc.owner.method) { b.guard(params.conversationId); assert.equal(params.conversationId, id); report.requests.push({ method, conversationId: id, targetClientId: options.targetClientId }); save(); }
-        return original(method, params, options);
+      const recordRequests = () => {
+        const original = b.desktop.ipc.request.bind(b.desktop.ipc);
+        b.desktop.ipc.request = async (method, params, options) => {
+          let record;
+          if (params?.conversationId && method !== OFFICIAL.ipc.owner.method) {
+            b.guard(params.conversationId); assert.equal(params.conversationId, id);
+            record = { method, conversationId: id, targetClientId: options.targetClientId };
+            report.requests.push(record); save();
+          }
+          const response = await original(method, params, options);
+          if (record) { record.handledByClientId = response.handledByClientId; save(); }
+          return response;
+        };
       };
+      recordRequests();
       const settings = await b.updateSettings(id, key + "-settings", { model: model.id, effort: "low", permissionMode: "read-only" });
       check("model/effort/permission settings same owner", settings.status === "accepted");
       await b.nativeSend(id, key + "-hold", "这是停止和重连测试。请使用 clock.sleep 等待 45 秒；如无该工具，用一次 PowerShell Start-Sleep -Seconds 45。不要读写文件或访问网络。等待后只回复 HOLD_DONE。");
@@ -121,6 +131,8 @@ export class CompatibilityProbes {
       const removed = await b.queue.mutate(id, key + "-remove", { action: "delete", revision: b.queue.read(id).revision, messageId: key + "-queue" });
       check("queue removal accepted", removed.status === "accepted");
       b.disconnect(); await b.connect(); await b.follow(id);
+      report.reconnectedVia = b.desktop.identity.connection;
+      recordRequests();
       check("viewer reconnect retains active task and turn", await until(() => activeTurnId(b.live.get(id)?.state) === active));
       const stopped = await b.interrupt(id, key + "-stop", active);
       check("same owner confirms stop", stopped.status === "accepted" && stopped.result.handledByClientId === owner);
@@ -128,6 +140,8 @@ export class CompatibilityProbes {
       const next = await b.nativeSend(id, key + "-continue", "只回复 SAME_TASK_CONTINUED。不要使用工具。");
       check("continue same task after stop", next.status === "accepted");
       await until(async () => { const r = await b.read(id); return r.data.thread.id === id && r.data.thread.status?.type === "idle" && r.data.turns.some(t => t.items?.some(i => i.type === "agentMessage" && i.text?.includes("SAME_TASK_CONTINUED"))); });
+      report.liveEvidence = b.events.filter(e => e.kind === "thread-state" && e.threadId === id)
+        .map(e => ({ time: e.time, ownerClientId: e.ownerClientId, revision: e.revision, changeType: e.changeType, status: e.status }));
       report.phase = "passed"; report.finishedAt = new Date().toISOString(); save();
     } finally { b.disconnect(); clearInterval(b.subscriptionTimer); }
   }

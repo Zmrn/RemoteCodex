@@ -16,6 +16,8 @@ GET /api/status 的 desktopCompatibility 提供已验证版本、清单 SHA-256�
 
 精确支持 Windows x64 官方包 26.901.6511.0、26.903.8094.0，证据见 CREATE-IMAGES.md 和清单 validation。记录的是已验证的 Codex 核心功能，不能据此宣称每种官方功能都可用：
 
+0.10.15 支持 VS Code 先运行并持有共享 IPC 管道的情况，官方 app-tools 仍须属于 ChatGPT.exe；不能把转发 PID 当作任务 owner。当前实测组合与签名校验、失败处理、专用任务证据见 [VSCODE-COEXISTENCE.md](VSCODE-COEXISTENCE.md)。GET /api/status 的 desktopConnection 返回脱敏的两类进程身份，失联时为 null。
+
 - Codex 已验证主要读写、队列、设置及图片链路。具体证据与限制见清单 validation 条目引用的文档。
 - 新建项目目前只支持真实项目的“本地”环境。工作树/分支切换未实现，首轮速度参数也未接入。
 - 用户主动中断可用于已支持版本的普通 Codex 会话，验证当前轮次和官方所有者；自动中断测试仍仅专用任务，证据见 INTERRUPT.md。待审批状态可展示，不应称为已实现任意审批处理。

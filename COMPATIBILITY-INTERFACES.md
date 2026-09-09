@@ -8,8 +8,9 @@ Chat：列表/历史读取；文字续写待专用真实会话验证；新建/�
 
 ## 连接和数据来源
 
-- 所有者管道：codex-ipc；工具管道前缀：codex-browser-use-。
-- 先通过 Win32 验证管道 PID 和官方进程映像，再获取 tools/list；全部写入转交现有桌面所有者。
+- 共享转发管道：codex-ipc；官方工具管道前缀：codex-browser-use-。
+- 官方 app-tools 必须属于 WindowsApps 中的 ChatGPT.exe，并提供真实 tools/list。转发管道可由官方进程或签名有效、发布者/公司/产品均匹配中央清单的 Microsoft VS Code 持有；两者不要求同一 PID。握手后再次验证 PID/映像，身份变化时关闭并重新发现。
+- 管道 PID 不等于任务 owner；按真实 conversationId 发现 handledByClientId，再定向转发，核对相同 owner 回执及事件。协议没有 owner UUID 到 Windows PID 的查询字段，能力标志不是官方进程证明。共存验证见 VSCODE-COEXISTENCE.md。
 - 传输：4 字节小端长度 + JSON；app-tools 使用 JSON-RPC 2.0，桌面 IPC 使用 requestId/sourceClientId/version/targetClientId 信封，两者不能混用。
 - 实时流只接受当前订阅任务的已发现所有者，patch 基线不匹配时标记未知并重读。
 - 磁盘队列：.codex-global-state.json / queued-follow-ups；仅只读，不能证明实时状态。

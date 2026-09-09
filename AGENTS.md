@@ -5,7 +5,7 @@
 ## 新会话接手
 
 - 先确认实际操作系统、主机、工作目录、Git 远端/分支及工作区状态，不能把云端/沙箱测试说成本机验证。本机原工作区中的仓库位于 `outputs/remote-codex/`；直接克隆时以包含本文件与 package.json 的 Git 根目录为准。远端为 `https://gitee.com/Anso/remote-codex.git`，本次交接分支为 `main`，开工时重新核对。
-- 当前交接基线（2026-09-09）：Remote Codex **0.10.14**，本机与笔记本均已安装验证；Windows x64 官方包 **26.901.6511.0、26.903.8094.0** 的 Codex 核心读写已验证。软件版本以 package.json 为准，官方支持范围以 src/official-desktop.json 的 validation 为准；交接快照不是实时状态，也不代表所有功能均已验证。
+- 当前源码基线（2026-09-09）：Remote Codex **0.10.15**，新增 VS Code 持有共享 IPC 管道时的官方 ChatGPT 桥接，真实专用任务的 12 项检查通过，见 [VSCODE-COEXISTENCE.md](VSCODE-COEXISTENCE.md)。安装/发布结果以该报告为准。Windows x64 官方包 **26.901.6511.0、26.903.8094.0** 的 Codex 核心读写已验证。软件版本以 package.json 为准，官方支持范围以 src/official-desktop.json 的 validation 为准；交接快照不是实时状态，也不代表所有功能均已验证。
 - 最近修复及证据见 [CREATE-IMAGES.md](CREATE-IMAGES.md)：新建文字/多图、失败草稿保留、正式控制端跨设备发送；115 项 Node 回归、13 项窗口检查、Android API 35 横竖屏及真实官方 owner 测试已通过。新官方版本、Chat 写入、原生生图等不能由这些结果推定成功。
 - 交接时有三份原有未跟踪文件：`CHAT-FEASIBILITY.md`、`scripts/build-chat-ui.py`、`windows/ChatUi.cs`。保留并在相关任务中单独审阅，不自动删除、覆盖、纳入发布或用 `git add -A` 顺带提交；它们不是已完成 Chat 功能的证明。
 - `work/` 中的现场证据、临时设备更新脚本和 `release.local.json` 不在 Git 中。新克隆缺少它们时，从已提交文档与 scripts 中的复测入口接手；不要杜撰设备地址、访问密钥或重新生成签名身份。
@@ -64,6 +64,7 @@
 
 - **每次发布必须在发布说明和最终交付中明确列出支持的官方 ChatGPT/Codex 桌面包版本、平台、Codex/Chat/Work 支持范围及未验证项。不能只写 Remote Codex 自身版本，也不能把“可以连接/读历史”当作新版完整兼容。**
 - 官方接口和已验证版本统一在 src/official-desktop.json 管理；运行代码使用 src/official-protocol.mjs，不得重新散落硬编码版本、IPC 方法及版本号。升级处理遵循 COMPATIBILITY.md；接口字段/适配位置和回归入口见自动生成的 COMPATIBILITY-INTERFACES.md。
+- `codex-ipc` 是共享转发管道，其 PID 可能属于已验证的 Microsoft VS Code；不能再要求它与官方 app-tools 同一 PID。官方 app-tools 身份、转发进程签名/产品、任务 owner 是三个不同检查，不能只按 Code.exe 文件名放行，也不能把 supportsUntrustedAppInput 当作 ChatGPT 身份证明。规则与已测组合集中在 discovery.sharedBroker；维护/复测见 VSCODE-COEXISTENCE.md。
 - 新官方版本必须先取得实际验证证据，再更新清单中的 verifiedVersions 和 validation；不得仅扩大版本范围、删除校验或自动放行。更新清单后执行 node scripts/compatibility-report.mjs --write 和 npm run compatibility。
 - 双端构建报告、签名更新清单及 release-notes.md 必须来自同一份兼容性清单。发布器必须拒绝缺失/过期元数据和混用旧产物；发布时同时覆盖固定 release-notes.md，其哈希受更新签名保护。
 

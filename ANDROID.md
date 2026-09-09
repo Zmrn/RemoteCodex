@@ -1,5 +1,7 @@
 # Android 控制端
 
+0.10.15 发布时须与 Windows 同步；本次仅交接源码，尚未发布。被控 Windows 新增 VS Code 共享 IPC 支持，手机沿用同一个官方任务接口；实测范围见 [VSCODE-COEXISTENCE.md](VSCODE-COEXISTENCE.md)，并非在手机上启动 Codex 后端。
+
 0.10.14 已支持 Codex 新建时一次提交文字和多张图片，或者只发图片；目标 Windows 接入端也需更新。官方创建接口只有文字参数，因此同一任务会先完成一轮自动准备，再接收完整原生图片输入。Android API 35 横竖屏、失败保留草稿和正式设备转发均已验证，见 [CREATE-IMAGES.md](CREATE-IMAGES.md)。接手开发先读 [AGENTS.md](AGENTS.md)，下面带旧版本号的段落保留历史验证范围。
 
 0.10.9 的设备菜单同时显示普通 Codex 的 5h 和周额度。Plus 主显示优先 5h，Pro 主额度只提供周窗口时显示周额度；Spark 独立额度只在详情出现。两类窗口由目标电脑的官方数据识别，被控 Windows 同样需更新到 0.10.9。复测为 `stage=usage`，见 `USAGE.md`。

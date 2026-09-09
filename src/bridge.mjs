@@ -131,7 +131,7 @@ export class Bridge extends EventEmitter {
     };
     desktop.ipc.on("disconnected", lost);
     desktop.tools.on("disconnected", lost);
-    this.emitEvent("connected", { officialPid: desktop.identity.officialPid });
+    this.emitEvent("connected", { officialPid: desktop.identity.officialPid, connection: desktop.identity.connection ?? null });
     for (const id of this.watching) {
       if (generation !== this.connectionGeneration || !this.connected) break;
       try {
@@ -1050,6 +1050,7 @@ export class Bridge extends EventEmitter {
       connected: this.connected,
       source: "official-desktop-IPC-live",
       officialPid: this.desktop?.identity?.officialPid ?? null,
+      desktopConnection: this.connected ? this.desktop?.identity?.connection ?? null : null,
       readOnlyThreadIds: [],
       testExcludedThreadIds: testExcludedThreadIds(),
       // Legacy clients treat these fields as read-only, so keep them empty.

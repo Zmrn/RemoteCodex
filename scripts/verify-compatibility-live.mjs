@@ -12,7 +12,7 @@ try {
     return { key, method: expected.name, available: !!live, declaredFieldsMissing: expected.request.filter(k => !properties.includes(k)) };
   });
   const matched = tools.every(t => t.available && !t.declaredFieldsMissing.length);
-  console.log(JSON.stringify({ source: "Win32 pipe identity + official tools/list", compatibility, tools, catalogMatches: matched,
+  console.log(JSON.stringify({ source: "Win32 pipe identity + official tools/list", connection: desktop.identity.connection, compatibility, tools, catalogMatches: matched,
     ownerIpcWritesTested: false, taskWrites: 0, note: "Schema names alone never validate owner IPC writes or automatically authorize a new version." }, null, 2));
   if (!matched) process.exitCode = 1;
 } finally { desktop.close(); }

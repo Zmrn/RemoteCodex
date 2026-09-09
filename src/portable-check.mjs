@@ -49,6 +49,7 @@ try {
   );
   desktop = new Desktop();
   await desktop.connect();
+  report.desktopConnection = desktop.identity.connection;
   report.desktopCompatibility = desktopCompatibility(desktop.identity.appToolsPipe?.image);
   await desktop.call(TOOLS.listProjects);
   await desktop.call(TOOLS.listThreads, { limit: 1 });

@@ -18,9 +18,10 @@
     {
       "version": "26.903.8094.0",
       "date": "2026-09-09",
-      "scope": "Live laptop Windows x64 official owner: text create/read, two-image native send in same created task, model/effort/read-only settings, queue add/remove, viewer reconnect without stopping active turn, interrupt and same-task continuation. Project selection, questions/approval submission, native image generation, Chat writes and Work are not revalidated on this build.",
+      "scope": "Live Windows x64 official owner on laptop and local Microsoft VS Code shared IPC broker: text create/read, two-image native send in same created task, model/effort/read-only settings, queue add/remove, viewer reconnect without stopping active turn, interrupt and same-task continuation. Project selection, questions/approval submission, native image generation, Chat writes and Work are not revalidated on this build.",
       "evidence": [
-        "CREATE-IMAGES.md"
+        "CREATE-IMAGES.md",
+        "VSCODE-COEXISTENCE.md"
       ]
     }
   ],
@@ -42,6 +43,20 @@
     "ownerPipe": "codex-ipc",
     "toolsPipePrefix": "codex-browser-use-",
     "ownerImagePattern": "\\\\WindowsApps\\\\OpenAI\\.Codex_[^\\\\]+\\\\app\\\\ChatGPT\\.exe$",
+    "sharedBroker": {
+      "kind": "vscode",
+      "executable": "Code.exe",
+      "signatureStatus": "Valid",
+      "publisherSimpleName": "Microsoft Corporation",
+      "productName": "Visual Studio Code",
+      "companyName": "Microsoft Corporation",
+      "validation": {
+        "officialVersion": "26.903.8094.0",
+        "brokerVersion": "1.136.2",
+        "extensionVersion": "26.903.61454",
+        "evidence": "VSCODE-COEXISTENCE.md"
+      }
+    },
     "toolsNamespace": "codex_app",
     "hostId": "local"
   },
