@@ -64,7 +64,19 @@
     "globalStateFile": ".codex-global-state.json",
     "queueKey": "queued-follow-ups",
     "sessionIndexFile": "session_index.jsonl",
-    "source": "official-disk, read-only; not live-state proof"
+    "source": "official-disk, read-only; not live-state proof",
+    "readState": {
+      "key": "electron-thread-read-state-v1",
+      "version": 1,
+      "atomKey": "electron-persisted-atom-state",
+      "legacyKey": "unread-thread-ids-by-host-v1",
+      "verifiedVersions": [
+        "26.903.8094.0"
+      ],
+      "maxBytes": 8388608,
+      "authFile": "auth.json",
+      "identityClaim": "https://api.openai.com/auth"
+    }
   },
   "transport": {
     "headerBytes": 4,
@@ -320,6 +332,21 @@
       "purpose": "空闲任务中启动下一轮",
       "consumer": "src/bridge.mjs:nativeSend",
       "test": "test/multi-images.test.mjs"
+    },
+    "readStateChanged": {
+      "method": "thread-read-state-changed",
+      "version": 3,
+      "request": [
+        "hostId",
+        "conversationId",
+        "hasUnreadTurn",
+        "context.identity",
+        "context.executionHostKey"
+      ],
+      "response": [],
+      "purpose": "用户读到当前回报后通知官方清除未读标记；broadcast，无逐轮条件回执",
+      "consumer": "src/official-report-read.mjs",
+      "test": "test/official-report-read.test.mjs"
     }
   },
   "events": {
@@ -412,6 +439,15 @@
         "resetsAt"
       ],
       "rule": "ordinary codex 300-minute quota first, 10080-minute next; separate Spark"
+    },
+    "officialReadState": {
+      "fields": [
+        "version",
+        "unreadByIdentity",
+        "legacyMigration"
+      ],
+      "consumer": "src/official-read-state.mjs",
+      "rule": "Read-only snapshot from verified desktop process CODEX_HOME. Codex only; absence across all stored partitions excludes a report for this refresh only, never persists a receipt. Unknown versions/scope/file failures retain Remote Codex receipts. See OFFICIAL-READ-STATE.md."
     }
   }
 }

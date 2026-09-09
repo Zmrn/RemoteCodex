@@ -1,5 +1,6 @@
 import com.anso.remotecodex.WidgetSizing;
 import com.anso.remotecodex.WidgetSnapshot;
+import com.anso.remotecodex.WidgetReadState;
 import org.json.*;
 
 public final class WidgetPresentationTests {
@@ -37,6 +38,25 @@ public final class WidgetPresentationTests {
     JSONObject empty=snapshot(new JSONArray(),"");check(empty.getBoolean("known")&&empty.getBoolean("complete")&&empty.getInt("unread")==0,"no configured devices produces intentional empty state");
     JSONObject stale=snapshot(new JSONArray().put(device("old",true,61000,task("x",false,true,"x",100))),"");check(stale.getInt("offline")==1&&stale.getJSONArray("threads").getJSONObject(0).getBoolean("stale"),"aged foreground result marked stale");
     JSONObject broken=WidgetSnapshot.build(devices,"",now,true,false,"缓存读取失败");check(!broken.getBoolean("complete")&&broken.getString("cacheError").equals("缓存读取失败"),"cache error remains visible in details");
+    String token=new String(new char[64]).replace('\0','a');
+    JSONObject prior=task("same",false,true,token,100),incoming=task("same",false,false,token,100).put("unknown",true).put("officialRead",true);
+    WidgetReadState.mergeUnknown(incoming,prior);check(!incoming.getBoolean("unread")&&incoming.getBoolean("cached"),"unknown runtime does not restore an exact report's old unread flag");
+    JSONObject renewed=task("same",false,true,token,100).put("unknown",true);
+    WidgetReadState.mergeUnknown(renewed,incoming);check(renewed.getBoolean("unread"),"new official unread evidence can reappear for a cached exact report");
+    JSONObject different=task("same",false,false,"new-token",200).put("unknown",true).put("officialRead",true);
+    WidgetReadState.mergeUnknown(different,prior);check(different.getBoolean("unread")&&different.getString("reportToken").equals(token)&&!different.optBoolean("officialRead"),"unknown different report cannot clear a previous report");
+    JSONArray readPeers=new JSONArray().put(device("read",false,120000,task("same",false,false,token,100).put("officialRead",true))).put(device("unread",true,1000,task("same",false,true,token,100)));
+    check(snapshot(readPeers,"").getInt("unread")==1,"offline official absence cannot suppress a live unread report");
+    readPeers.getJSONObject(0).getJSONObject("value").put("available",true).put("receivedAt",now-500);
+    check(snapshot(readPeers,"").getInt("unread")==0,"fresh exact official read state clears aggregate without changing receipts");
+    readPeers.getJSONObject(0).getJSONObject("value").getJSONArray("threads").getJSONObject(0).put("unknown",true);
+    check(snapshot(readPeers,"").getInt("unread")==0,"official read evidence remains fresh independently of unknown runtime");
+    readPeers.getJSONObject(0).getJSONObject("value").put("available",false).getJSONArray("threads").getJSONObject(0).put("officialRead",false);
+    check(snapshot(readPeers,"").getInt("unread")==0,"durable Remote Codex receipt still clears an exact report when its source disconnects");
+    JSONObject changed=task("same",false,false,"different",200).put("unknown",true).put("officialRead",true);
+    WidgetReadState.mergeUnknown(changed,task("same",false,false,token,100).put("officialRead",true));
+    JSONArray unknownPeers=new JSONArray().put(device("cached",true,500,changed)).put(device("current",true,1000,task("same",false,true,token,100)));
+    check(snapshot(unknownPeers,"").getInt("unread")==1,"a cached different-report official observation cannot become fresh again");
     System.out.println("Widget presentation: "+passed+" checks passed (host JVM; no APK execution)");
   }
 }

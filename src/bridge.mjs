@@ -14,6 +14,7 @@ import { DATA_DIR } from "./runtime.mjs";
 import { MessageMedia } from "./message-media.mjs";
 import { readOfficialHistory } from "./history-read.mjs";
 import { TaskReports } from "./task-reports.mjs";
+import { markOfficialReportRead } from "./official-report-read.mjs";
 import { SubscriptionLeases } from "./subscriptions.mjs";
 import { Reconnector } from "../public/reconnect.mjs";
 import {
@@ -161,6 +162,7 @@ export class Bridge extends EventEmitter {
         "connection-interrupted: reconnect before reading or sending",
       );
   }
+  markOfficialReportRead(id, token) { return markOfficialReportRead(this, id, token); }
   requireSupportedBuild() {
     assertSupportedBuild(this.desktop?.identity?.appToolsPipe?.image);
   }

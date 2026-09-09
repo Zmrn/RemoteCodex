@@ -71,9 +71,12 @@ public final class WidgetMonitor {
           if(!tid.matches("[a-f0-9-]{36}")||!Arrays.asList("codex","chatgpt").contains(kind))throw new IOException("统计格式异常");
           clean.put(new JSONObject().put("id",tid).put("kind",kind).put("title",title.substring(0,Math.min(240,title.length())))
             .put("running",t.getBoolean("running")).put("unread",t.getBoolean("unread")&&!t.getBoolean("running"))
+            .put("officialRead",t.optBoolean("officialRead"))
             .put("unknown",t.optBoolean("unknown")).put("reportToken",t.optString("reportToken","")).put("updatedAt",t.optDouble("updatedAt",0)));
         }
         row.put("threads",clean).put("complete",value.getBoolean("complete")).put("receivedAt",System.currentTimeMillis()).put("available",true);
+        JSONObject official=value.optJSONObject("officialReadState");
+        row.put("officialReadStatus",official==null?"unsupported":official.optString("status","unavailable"));
       }catch(Exception e){String reason=e.getMessage();row.put("available",false).put("error",Arrays.asList("目标需更新","访问密钥无效","官方桌面尚未连接").contains(reason)?reason:"设备离线，正在重连");}
       // Each device commits immediately. A slow/offline peer never holds its result.
       if(Thread.currentThread().isInterrupted())throw new InterruptedException();
@@ -90,8 +93,8 @@ public final class WidgetMonitor {
       JSONArray incoming=row.getJSONArray("threads");
       for(int i=0;i<incoming.length();i++){
         JSONObject t=incoming.getJSONObject(i),before=old.get(t.getString("kind")+":"+t.getString("id"));
-        if(t.optBoolean("unknown")&&before!=null)t.put("running",before.optBoolean("running")).put("unread",before.optBoolean("unread")).put("reportToken",before.optString("reportToken")).put("cached",true);
-        if(readTokens.has(id+":"+t.getString("id")+":"+t.optString("reportToken")))t.put("unread",false);
+        WidgetReadState.mergeUnknown(t,before);
+        if(readTokens.has(id+":"+t.getString("id")+":"+t.optString("reportToken")))t.put("unread",false).put("officialRead",false);
       }
       next.put(id,row);
     }else{
@@ -115,7 +118,7 @@ public final class WidgetMonitor {
     // Watermarks cover in-flight requests; the bridge owns durable receipts.
     Iterator<String> keys=readTokens.keys();while(keys.hasNext()){String key=keys.next();if(System.currentTimeMillis()-readTokens.optLong(key)>30L*24*60*60*1000)keys.remove();}
     JSONArray rows=device==null?null:device.optJSONArray("threads");
-    if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(row.getString("id").equals(thread)&&row.optString("reportToken").equals(token))row.put("unread",false);}
+    if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(row.getString("id").equals(thread)&&row.optString("reportToken").equals(token))row.put("unread",false).put("officialRead",false);}
     persist(next);changed();
   }
   public void devicesChanged(){changed();DeviceSyncService.ensure(app);DeviceSyncService.refresh(app);if(!DeviceSyncService.running)refreshAsync(null);}

@@ -325,6 +325,8 @@ function checkVisibleReport() {
     try {
       const result = await agentApi(report.a, "/threads/" + report.id + "/read-receipt", { token: report.token });
       if (result.accepted) acknowledgedReports.set(key, report.token);
+      if (result.accepted && ["unavailable", "unconfirmed"].includes(result.officialReadSync?.status) && visibleReport === report)
+        toast("已读已记录，官方标记暂未同步");
     } catch { /* Viewing still succeeds when a receipt cannot be saved. */ }
   }, 800);
 }

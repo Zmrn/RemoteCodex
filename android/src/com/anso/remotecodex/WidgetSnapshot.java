@@ -15,7 +15,7 @@ public final class WidgetSnapshot {
       boolean stale=!hasData||!value.optBoolean("available")||now-at>(syncing?60000:20*60*1000);
       String status=!hasData?(value==null?"尚未取得统计":value.optString("error","尚未取得统计")):stale?(value.optBoolean("available")?"统计已过期":value.optString("error","设备未连接")):value.optBoolean("complete")?"已连接":"已连接 · 部分统计";
       states.put(new JSONObject().put("id",id).put("name",device.getString("name")).put("known",hasData)
-        .put("stale",stale).put("status",status).put("lastUpdated",formatTime(at,now)));
+        .put("stale",stale).put("status",status+(hasData?("available".equals(value.optString("officialReadStatus"))?" · 已同步本机 Codex 已读":" · 仅 Remote Codex 已读"):"")).put("lastUpdated",formatTime(at,now)));
       if(!selected.isEmpty()&&!selected.equals(id))continue;
       total++;
       if(!hasData){unknown++;continue;}
@@ -24,8 +24,9 @@ public final class WidgetSnapshot {
       for(int j=0;j<rows.length();j++){
         JSONObject t=new JSONObject(rows.getJSONObject(j).toString());String key=t.getString("kind")+":"+t.getString("id");
         t.put("agentId",id).put("deviceName",device.getString("name")).put("stale",stale||t.optBoolean("cached")||t.optBoolean("unknown")).put("receivedAt",at);
+        t.put("officialReadFresh",!stale&&!t.optBoolean("officialReadCached")&&t.optBoolean("officialRead"));
         JSONObject previous=tasks.get(key);
-        boolean read=previous!=null&&!t.optString("reportToken").isEmpty()&&previous.optString("reportToken").equals(t.optString("reportToken"))&&(!previous.optBoolean("unread")||!t.optBoolean("unread"));
+        boolean read=previous!=null&&!t.optString("reportToken").isEmpty()&&previous.optString("reportToken").equals(t.optString("reportToken"))&&(WidgetReadState.canClear(previous)||WidgetReadState.canClear(t));
         if(previous==null||previous.optBoolean("stale")&&!t.optBoolean("stale")||previous.optBoolean("stale")==t.optBoolean("stale")&&(t.optDouble("updatedAt")>previous.optDouble("updatedAt")||t.optDouble("updatedAt")==previous.optDouble("updatedAt")&&at>previous.optLong("receivedAt")))tasks.put(key,t);
         if(read)tasks.get(key).put("unread",false);
       }

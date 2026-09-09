@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { TOOLS } from "./official-protocol.mjs";
+import { OFFICIAL, TOOLS } from "./official-protocol.mjs";
 import { lockAgents } from "./agent-storage.mjs";
+import { OfficialReadState } from "./official-read-state.mjs";
 
 const digest = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const active = value => ["active", "running", "inProgress", "waiting-approval", "waiting-user-input"].includes(typeof value === "string" ? value : value?.type);
@@ -40,7 +41,7 @@ export class TaskReports {
     if (!receipt) return null;
     const key = data.thread.id + ":" + receipt.token;
     this.issued.delete(key);
-    this.issued.set(key, { ...receipt, at: this.now() });
+    this.issued.set(key, { ...receipt, kind: data.thread.kind, at: this.now() });
     while (this.issued.size > 4096) this.issued.delete(this.issued.keys().next().value);
     return receipt;
   }
@@ -51,7 +52,16 @@ export class TaskReports {
     let locked;
     try { locked = await lockAgents(this.file); }
     catch { throw Error("已读记录暂时无法锁定，请稍后重试；已保留原记录"); }
-    return locked(() => this.commitReceipt(id, token));
+    const saved = await locked(() => this.commitReceipt(id, token));
+    if (issued.kind !== 'codex' || !this.bridge.markOfficialReportRead) return saved;
+    this.officialPending ??= new Map();
+    const key = id + ':' + token;
+    if (!this.officialPending.has(key)) {
+      const pending = Promise.resolve().then(() => this.bridge.markOfficialReportRead(id, token)).catch(() => ({ status: 'unavailable' }))
+        .finally(() => this.officialPending.delete(key));
+      this.officialPending.set(key, pending);
+    }
+    return { ...saved, officialReadSync: await this.officialPending.get(key) };
   }
   commitReceipt(id, token) {
     const state = this.receipts();
@@ -76,6 +86,7 @@ export class TaskReports {
   }
   async collect() {
     const bridge = this.bridge, desktop = bridge.desktop;
+    if (this.cacheDesktop !== desktop) { this.cacheDesktop = desktop; this.cache.clear(); }
     const current = () => { bridge.requireConnection(); if (desktop !== bridge.desktop) throw Error("Viewer connection changed during summary"); };
     const list = (await bridge.threads(50, { timeoutMs: 6000 })).data; current();
     const deadline = this.now() + 10000;
@@ -105,8 +116,21 @@ export class TaskReports {
       }
     }));
     current();
+    if (this.readStateDesktop !== desktop) {
+      this.readStateDesktop = desktop;
+      this.readState = new OfficialReadState(desktop);
+    }
+    const official = await this.readState.snapshot(); current();
+    const localIds = new Set(rows.filter(row => row.hostId === OFFICIAL.discovery.hostId).map(row => row.id));
+    for (const row of result) {
+      if (localIds.has(row.id) && row.kind === "codex" && row.reportToken && row.unread && !row.running && official.excludes(row.id)) {
+        row.unread = false;
+        row.officialRead = true;
+      }
+    }
     const ids = new Set(rows.map(t => t.id)); for (const id of this.cache.keys()) if (!ids.has(id)) this.cache.delete(id);
-    return { schemaVersion: 1, observedAt: this.now(), source: "official-list-and-latest-report + remote-codex-read-receipts",
+    return { schemaVersion: 1, observedAt: this.now(), source: "official-list-and-latest-report + remote-codex-read-receipts + official-unread-snapshot",
+      officialReadState: { status: official.status, modes: ["codex"], conservative: true },
       complete: (list.threads?.length ?? 0) < 50 && !(list.unavailableHosts?.length || list.unavailableSources?.length) && !result.some(t => t.unknown),
       listLimited: (list.threads?.length ?? 0) >= 50, threads: result };
   }

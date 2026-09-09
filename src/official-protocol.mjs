@@ -35,12 +35,13 @@ export function desktopCompatibility(image) {
 }
 export function protocolRequest(pipe, key, params, options = {}) {
   const spec = OFFICIAL.ipc[key];
-  if (!spec || key === "following") throw Error("Unknown official request: " + key);
+  if (!spec || key === "following" || key === "readStateChanged") throw Error("Unknown official request: " + key);
   if (Object.hasOwn(options, "version")) throw Error("Official protocol versions must come from the catalog");
   return pipe.request(spec.method, params, { ...options, version: spec.version });
 }
 export function protocolBroadcast(pipe, key, params, targets) {
   const spec = OFFICIAL.ipc[key];
-  if (key !== "following") throw Error("Unknown official broadcast: " + key);
+  if (key !== "following" && key !== "readStateChanged") throw Error("Unknown official broadcast: " + key);
+  if (key === "readStateChanged" && params.hasUnreadTurn !== false) throw Error("Read synchronization can only clear the unread flag");
   return pipe.broadcast(spec.method, params, spec.version, targets);
 }

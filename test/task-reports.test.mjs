@@ -114,3 +114,27 @@ test("summary and receipt forwarding expose only intended HTTP methods", () => {
   assert.equal(allowedRoute("GET", `/api/threads/${id}/read-receipt`), false);
   assert.equal(allowedRoute("POST", "/api/agents"), false);
 });
+
+test("official absence changes only this refresh, including cached reports; later unread marks and new returns are not lost", async t => {
+  const f = fixture(t); let excludes = true;
+  f.reports.readStateDesktop = f.bridge.desktop;
+  f.reports.readState = { snapshot: async () => ({ status: 'available', excludes: () => excludes }) };
+  let row = (await f.reports.summary()).threads[0]; assert.equal(row.unread, false); assert.equal(row.officialRead, true);
+  assert.equal(fs.existsSync(f.reports.file), false);
+  excludes = false; row = (await f.reports.summary()).threads[0]; assert.equal(row.unread, true); assert.equal(row.officialRead, undefined);
+  assert.equal(f.calls.length, 1);
+  await f.reports.acknowledge(id, row.reportToken); excludes = true;
+  row = (await f.reports.summary()).threads[0]; assert.equal(row.unread, false); assert.equal(row.officialRead, undefined);
+  const bytes = fs.readFileSync(f.reports.file); f.data.set(id, report('new return')); f.rows[0].updatedAt++; excludes = false;
+  assert.equal((await f.reports.summary()).threads[0].unread, true); assert.deepEqual(fs.readFileSync(f.reports.file), bytes);
+});
+test("official read exclusion is local Codex only and can clear exact unread evidence without inventing runtime state", async t => {
+  const f = fixture(t);
+  f.reports.readStateDesktop = f.bridge.desktop;
+  f.reports.readState = { snapshot: async () => ({ status: 'available', excludes: () => true }) };
+  f.rows[0].hostId = 'remote'; assert.equal((await f.reports.summary()).threads[0].unread, true);
+  f.rows[0].hostId = 'local'; f.rows[0].kind = 'chatgpt'; f.data.set(id, report('chat', 'idle', 'chatgpt'));
+  assert.equal((await f.reports.summary()).threads[0].unread, true);
+  f.rows[0].kind = 'codex'; f.data.set(id, report('codex', 'notLoaded'));
+  const row = (await f.reports.summary()).threads[0]; assert.equal(row.unread, false); assert.equal(row.unknown, true); assert.equal(row.officialRead, true);
+});
