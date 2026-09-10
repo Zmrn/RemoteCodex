@@ -72,3 +72,24 @@ cd RemoteCodex
 ```
 
 仓库不包含签名材料、release.local.json、已保存设备或用户会话。MIT LICENSE 与已有第三方许可证分别保留，EXE/APK 打包包含本项目许可证。
+
+## 2026-09-10 实测记录
+
+用户已明确授权配置原签名并验证双端云端打包。构建源码为 `20d782f662bd6215879719ed233d325be78eeb64`，版本保持 **0.10.27**；之后的记录提交只修改文档，不代表重新打包。
+
+- [Checks 34437896315](https://github.com/Zmrn/RemoteCodex/actions/runs/34437896315)：已通过，GitHub 标准 Windows 运行器上的 Node 回归、接口清单、窗口和通知检查。
+- [Build EXE and APK 34437906384](https://github.com/Zmrn/RemoteCodex/actions/runs/34437906384)：已通过，2026-09-10 04:37:37–04:38:47 UTC。由对话脚本直接派发、跟踪并下载，无需网页操作。
+- 正式密钥恢复、198 项 Node 回归、窗口检查、EXE/APK 构建、49 项 Android 主机 JVM 检查、清单签名、兼容元数据及产物白名单检查、临时签名文件清理、双端产物上传：已通过。
+- 下载后核对运行编号、源码提交、两个清单 RSA 签名、两个程序大小/SHA-256、支持说明哈希：已通过。本机再次执行 `apksigner verify --verbose --print-certs`，APK v2/v3 签名通过，原证书指纹一致。
+- 真实 ChatGPT 会话行为、安装/运行 APK、替换本机客户端、上传更新服务器：未测试/未执行。本轮为构建设施验收，不扩大官方版本支持范围，不覆盖现有同版本正式资源。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44115456 | `0be90ccc134956491ddda35b7f6f3a0caa788db374d5733d545e540895641bf6` |
+| RemoteCodex.apk | 257537 | `091f017d21c96051db5a932a9b6d199d73f0f70fb3b81aac7012420b12ea118a` |
+
+APK 安装证书 SHA-256：`3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`。Windows 此处验证的是原更新清单 RSA 签名，并非新增 Authenticode 签名。
+
+当前产物沿用中央清单：Windows x64 官方 **26.901.6511.0、26.903.8094.0** 的 Codex 核心读写有既有实测，具体功能及版本限制见 `COMPATIBILITY.md`；Chat 仅列表/历史读取，文字续写未完成真实验证，新建/模型/图片未支持；Work 无独立验证。本次云端构建不构成这些接口的新实测证据。
+
+八份产物下载在本工作区被忽略的 `work/github-downloads/34437906384/`。GitHub artifact 保留 3 天，过期后原运行不能继续下载；本地已下载文件保留，未来可通过对话派发新的构建。`GITHUB-BUILD.json` 记录来源和未执行项。

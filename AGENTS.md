@@ -90,6 +90,7 @@
 
 - GitHub Actions 和对话式构建入口见 [GITHUB-ACTIONS.md](GITHUB-ACTIONS.md)。用户说“打包当前版本”时，先确认源码与 GitHub main 一致，再执行 `node scripts/github-actions.mjs build`，使用返回的 runId watch/download；不要让用户必须手动打开网页，派发结果未知不能重复提交。本地不必重建。迁移期同时推送 GitHub/Gitee，合并保留其他设备提交，不能强推或删除旧远端。
 - CI Checks 无正式密钥；正式双端 build 只用 main 的 signing 环境和原签名身份。不得上传本地 DPAPI 登录凭据、SSH 凭据、用户数据或整个 work/data；签名材料只通过获授权的 GitHub 加密 Secrets 配置，缺失时报错，不生成替代证书。产物仅白名单文件，保留 3 天，固定标准 windows-2022，不启用付费规格。云端构建不代表真实官方桥接验证，不登录 ChatGPT/执行 APK，不自动改现有更新入口或部署资源；构建与正式发布是两个操作。
+- 2026-09-10 用户已授权并完成 signing 环境原签名配置，通常无需再次迁移或上传。首次双端云端构建 `34437906384`（源码 `20d782f`、0.10.27）及对话式下载验签通过：198 Node、49 主机 JVM、原 APK 证书和双端清单/哈希；详情、产物哈希及官方支持范围见 GITHUB-ACTIONS.md。本轮未安装/运行 APK、更新现有客户端或发布更新资源。同版本云端重建不能覆盖已发布的正式资源。
 
 - **每次发布必须在发布说明和最终交付中明确列出支持的官方 ChatGPT/Codex 桌面包版本、平台、Codex/Chat/Work 支持范围及未验证项。不能只写 Remote Codex 自身版本，也不能把“可以连接/读历史”当作新版完整兼容。**
 - 官方接口和已验证版本统一在 src/official-desktop.json 管理；运行代码使用 src/official-protocol.mjs，不得重新散落硬编码版本、IPC 方法及版本号。升级处理遵循 COMPATIBILITY.md；接口字段/适配位置和回归入口见自动生成的 COMPATIBILITY-INTERFACES.md。
