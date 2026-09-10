@@ -1,3 +1,4 @@
+import { pendingApprovals } from './approvals.mjs';
 const bad = new Set(["__proto__", "constructor", "prototype"]);
 // The merged page already carries messages. The UI needs live settings and
 // pending questions, not another copy of every turn and tool output.
@@ -9,7 +10,7 @@ export function conversationView(result) {
     live: {
       ...result.live,
       activeTurnId: activeTurnId(state),
-      state: Object.fromEntries(
+      state: { approvals: pendingApprovals(state), ...Object.fromEntries(
         [
           "latestThreadSettings",
           "latestModel",
@@ -19,7 +20,7 @@ export function conversationView(result) {
         ]
           .filter((key) => Object.hasOwn(state, key))
           .map((key) => [key, state[key]]),
-      ),
+      ) },
     },
   };
 }

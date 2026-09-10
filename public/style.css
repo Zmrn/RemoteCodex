@@ -3064,3 +3064,18 @@ dialog textarea,
 @media(max-width:560px) { .compatibility-columns { grid-template-columns:1fr; gap:10px; } .compatibility-columns > div { display:grid; grid-template-columns:6em minmax(0,1fr); gap:10px; } .compatibility-columns dd { margin:0; } }
 .orphan-preview { white-space:pre-wrap; max-height:180px; overflow:auto; }
 #connection[role="button"] { cursor:pointer; }
+
+/* Official browser access requests: shared Windows / Android UI. */
+.approval-card{border:1px solid #344b69;border-radius:16px;padding:20px;margin:16px 0;background:#172230;min-width:0;overflow-wrap:anywhere}
+.approval-card h3{font-size:17px;margin:9px 0 14px;font-weight:600}
+.approval-card p{white-space:pre-wrap;line-height:1.6;margin:10px 0}
+.approval-origin{display:block;color:#bed9ff;font-size:16px;white-space:pre-wrap;overflow-wrap:anywhere}
+.approval-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.approval-actions button,.approval-official{padding:10px 14px;border:1px solid #43566d;border-radius:10px;background:#263546;color:#e6edf7;cursor:pointer;white-space:normal}
+.approval-actions .approval-primary{background:#2466b2;border-color:#4389d8}
+.approval-card button:disabled{opacity:.5;cursor:default}
+.approval-status:empty{display:none}.approval-status{color:#c6d7ee;font-size:13px}
+.approval-official{background:transparent;margin:4px 0 12px;font-size:13px}
+.approval-card>.field-help:last-child{display:block;line-height:1.6}
+.approval-history{background:transparent;border-color:#2e3947;padding:14px 18px}
+@media(max-width:520px){.approval-card{padding:16px}.approval-actions button{flex:1 1 110px}}

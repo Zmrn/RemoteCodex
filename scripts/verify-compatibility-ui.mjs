@@ -45,8 +45,8 @@ try {
     document.getElementById('setup-dialog').showModal();
   }, { report, normal });
   await page.locator('#help-compatibility').click();
-  await page.waitForFunction(() => document.querySelectorAll('.compatibility-row').length === 19);
-  assert.match(await page.locator('.compatibility-summary').innerText(), /19 项 · 1 项异常 · 1 项待验证/);
+  await page.waitForFunction(n => document.querySelectorAll('.compatibility-row').length === n, report.rows.length);
+  assert.match(await page.locator('.compatibility-summary').innerText(), new RegExp(report.rows.length + ' 项 · 1 项异常 · 1 项待验证'));
   assert.equal(await page.locator('.compatibility-row').first().getAttribute('data-status'), 'error');
   assert.equal(await page.locator('.compatibility-row').nth(1).getAttribute('data-status'), 'warning');
   assert.match(await page.locator('#compatibility-versions').innerText(), /目标 Remote Codex[\s\S]*正在运行的官方版[\s\S]*官方最新版[\s\S]*99.1.2.3/);
@@ -64,7 +64,7 @@ try {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copied = text; } } });
   });
   await page.getByRole('button', { name: '复制检查报告', exact: true }).click();
-  assert.equal((await page.evaluate(() => JSON.parse(copied))).rows.length, 19);
+  assert.equal((await page.evaluate(() => JSON.parse(copied))).rows.length, report.rows.length);
   assert.doesNotMatch(await page.evaluate(() => copied), /公司的电脑|private-hostname/);
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw Error(); } } }));
   await page.getByRole('button', { name: '复制检查报告', exact: true }).click();

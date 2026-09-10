@@ -14,6 +14,8 @@ GET /api/status 的 desktopCompatibility 提供已验证版本、清单 SHA-256�
 
 帮助页的“官方接口兼容性”提供可截图、可复制的只读对照报告，见 [COMPATIBILITY-VIEW.md](COMPATIBILITY-VIEW.md)。按用户 2026-09-10 要求，只比较 Remote 实际使用的接口名单，忽略名单外变化；不会为了查看报告执行下面的真实任务测试。网上的官方更新清单提供版本号，运行版工具目录和已下载包分别提供工具参数及静态协议声明。
 
+网站访问授权新增 MCP elicitation 响应 v1，名单现含 20 项实际使用指令。仅 26.903.8094.0 的 Browser origin 请求开放窄范围响应，官方原文/协议与隔离回归已核对，真实授权往返尚未验证；所有网站权限和其他审批不扩大，见 [BROWSER-APPROVALS.md](BROWSER-APPROVALS.md)。
+
 ## 当前范围
 
 精确支持 Windows x64 官方包 26.901.6511.0、26.903.8094.0，证据见 CREATE-IMAGES.md 和清单 validation。记录的是已验证的 Codex 核心功能，不能据此宣称每种官方功能都可用：

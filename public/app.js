@@ -9,6 +9,7 @@ import { icon, markdown, copyMarkdown } from "./ui.mjs";
 import { QueueUI } from "./queue-ui.mjs";
 import { DraftDiscards } from "./draft-discards.mjs";
 import { DeviceSettings, accessSummary } from "./device-settings.mjs";
+import { ApprovalsUI } from "./approvals-ui.mjs";
 import { QuestionsUI } from "./questions-ui.mjs";
 import { questionReply, userContent } from "./message-content.mjs";
 import { mergeTurns, overlaps } from "./conversation-history.mjs";
@@ -549,6 +550,22 @@ const questionUI = new QuestionsUI(async (context, payload) => {
   if (context.agent === agentId && context.id === selected)
     setTimeout(() => read(), 250);
 }, scheduleDraftBackup);
+const approvalContextCurrent = context => mode === 'codex' && context.agent === agentId && context.id === selected && context.epoch === viewEpoch;
+const approvalUI = new ApprovalsUI({
+  submit: async (context, payload) => {
+    const current = () => approvalContextCurrent(context) && status.connected && status.browserApprovals?.supported === true &&
+      liveSettingsState?.approvals?.some(a => a.requestId === payload.approvalRequestId && a.token === payload.token);
+    if (!current()) return { status: 'not-sent', error: '设备、连接或授权请求已变化，请刷新。' };
+    let j;
+    try { j = await journal(context.agent, context.id, 'browser-approval:' + payload.approvalRequestId, payload); }
+    catch { return { status: 'not-sent', error: '无法保存防重复提交记录，请检查本地存储。' }; }
+    if (!current()) return { status: 'not-sent', error: '查看目标已变化，授权未发送。' };
+    return agentApi(context.agent, '/threads/' + context.id + '/approvals', { ...payload, requestId: j.id });
+  },
+  openOfficial: context => approvalContextCurrent(context)
+    ? agentApi(context.agent, '/threads/' + context.id + '/open', {}) : Promise.reject(Error('查看目标已变化')),
+  refresh: context => { if (approvalContextCurrent(context)) { headHash = null; scheduleRead(); } },
+});
 const messageImageCache = new Map();
 const messageImageObserver = new IntersectionObserver(
   (entries) => {
@@ -1360,6 +1377,10 @@ async function selectThread(id, record = true, { preserveDrawer = false } = {}) 
   await read();
 }
 function renderItem(item, turnId) {
+  if (mode === 'codex' && item.type === 'mcpServerElicitation') {
+    if (liveSettingsState?.approvals?.some(a => a.requestId === String(item.requestId))) return null;
+    return approvalUI.history(item);
+  }
   const pending = item.type === "userInputResponse" && liveSettingsState?.requests?.find(r =>
     r.method === USER_INPUT_REQUEST && r.params?.turnId === turnId && String(r.id) === String(item.requestId));
   if (pending) item = { ...item, completed: false, answers: undefined, questions: pending.params.questions ?? item.questions };
@@ -1574,6 +1595,9 @@ function displayTurns() {
     }
     incoming.append(wrapper);
   }
+  if (mode === 'codex') for (const approval of liveSettingsState?.approvals ?? []) incoming.append(approvalUI.card(approval, {
+    agent: agentId, id: selected, epoch: viewEpoch, connected: status.connected, writable: status.browserApprovals?.supported === true,
+  }));
   reconcileMessages($("messages"), [...incoming.children]);
 }
 function releaseViewing() {
@@ -1582,7 +1606,7 @@ function releaseViewing() {
   if (previous?.leased) api(base(previous.agent) + '/threads/' + previous.thread + '/follow', { viewerId: previous.viewerId, following: false }, { keepalive: true }).catch(() => {});
 }
 function reconcileMessages(parent, incoming) {
-  const key = node => node.dataset.turnId ? 'turn:' + node.dataset.turnId : node.questionKey ? 'question:' + node.questionKey : node.dataset.itemId ? 'item:' + node.dataset.itemId : null;
+  const key = node => node.dataset.turnId ? 'turn:' + node.dataset.turnId : node.questionKey ? 'question:' + node.questionKey : node.approvalKey ? 'approval:' + node.approvalKey : node.dataset.itemId ? 'item:' + node.dataset.itemId : null;
   const old = new Map([...parent.children].filter(node => key(node)).map(node => [key(node), node]));
   const desired = incoming.map(node => {
     const previous = old.get(key(node));
@@ -1591,6 +1615,9 @@ function reconcileMessages(parent, incoming) {
       node = previous;
     } else if (previous?.questionKey && previous.questionKey === node.questionKey && previous.questionSignature === node.questionSignature) {
       // Keep the actual textarea attached: refocusing a new textarea breaks IME composition.
+      node = previous;
+    } else if (previous?.approvalKey && previous.approvalSignature === node.approvalSignature) {
+      // Keep keyboard focus while the same official request remains unchanged.
       node = previous;
     }
     return node;

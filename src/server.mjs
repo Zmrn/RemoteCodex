@@ -66,6 +66,8 @@ export async function startServer({
     ["/project-picker.mjs", "text/javascript; charset=utf-8"],
     ["/usage-view.mjs", "text/javascript; charset=utf-8"],
     ["/questions-ui.mjs", "text/javascript; charset=utf-8"],
+    ["/approvals-ui.mjs", "text/javascript; charset=utf-8"],
+    ["/approval-content.mjs", "text/javascript; charset=utf-8"],
     ["/queue-ui.mjs", "text/javascript; charset=utf-8"],
     ["/draft-discards.mjs", "text/javascript; charset=utf-8"],
     ["/device-settings.mjs", "text/javascript; charset=utf-8"],
@@ -248,7 +250,7 @@ export async function startServer({
       if (req.method === "GET" && url.pathname === "/api/usage")
         return json(res, 200, await bridge.usage());
       const match =
-        /^\/api\/threads\/([\w-]+)(?:\/(messages|follow|open|files|file|interrupt|settings|queue|questions|media|read-receipt))?$/.exec(
+        /^\/api\/threads\/([\w-]+)(?:\/(messages|follow|open|files|file|interrupt|settings|queue|questions|approvals|media|read-receipt))?$/.exec(
           url.pathname,
         );
       if (req.method === "GET" && match) {
@@ -419,6 +421,8 @@ export async function startServer({
         );
       if (match) {
         const id = match[1];
+        if (match[2] === "approvals")
+          return json(res, 200, await bridge.answerApproval(id, body.requestId, body));
         if (match[2] === "questions")
           return json(
             res,

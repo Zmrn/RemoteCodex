@@ -352,6 +352,22 @@
       "purpose": "用户读到当前回报后通知官方清除未读标记；broadcast，无逐轮条件回执",
       "consumer": "src/official-report-read.mjs",
       "test": "test/official-report-read.test.mjs"
+    },
+    "mcpElicitation": {
+      "method": "thread-follower-submit-mcp-server-elicitation-response",
+      "version": 1,
+      "request": [
+        "conversationId",
+        "requestId",
+        "response"
+      ],
+      "response": [
+        "handledByClientId",
+        "result.result.ok"
+      ],
+      "purpose": "用户处理浏览器网站访问授权；不扩大为任意 MCP 表单或所有网站授权",
+      "consumer": "src/approvals.mjs:answerApproval",
+      "test": "test/approvals.test.mjs"
     }
   },
   "events": {
@@ -383,6 +399,21 @@
         "params.questions"
       ],
       "consumer": "src/bridge.mjs:answerQuestions, public/app.js"
+    },
+    "mcpElicitation": {
+      "method": "mcpServer/elicitation/request",
+      "fields": [
+        "id",
+        "params.threadId",
+        "params.turnId",
+        "params.serverName",
+        "params.mode",
+        "params.message",
+        "params.requestedSchema",
+        "params._meta"
+      ],
+      "consumer": "src/approvals.mjs:pendingApprovals",
+      "test": "test/approvals.test.mjs"
     }
   },
   "structures": {
@@ -480,5 +511,12 @@
       ],
       "rule": "Windows other-device notifications use fresh verified owner snapshots only; current runtime gates result/question events; stable IDs deduplicate delivery, never unread or answers; Chat and Work excluded. Supported owner versions follow storage.readState.verifiedVersions."
     }
+  },
+  "browserApprovals": {
+    "implementationVersions": [
+      "26.903.8094.0"
+    ],
+    "scope": "Browser origin approval only; source protocol and isolated regressions verified, live submission not tested; all-sites policy unavailable",
+    "evidence": "BROWSER-APPROVALS.md"
   }
 }

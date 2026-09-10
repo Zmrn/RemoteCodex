@@ -121,7 +121,7 @@ test('production server serves the shared module and coalesces only authenticate
     for (let i = 0; i < 100 && !finish; i++) await new Promise(r => setTimeout(r, 5));
     await new Promise(r => setTimeout(r, 30));
     assert.equal(count, 1); finish(buildCompatibilityReport(fixture()));
-    for (const response of await Promise.all([a,b])) assert.equal((await response.json()).rows.length, 19);
+    for (const response of await Promise.all([a,b])) assert.equal((await response.json()).rows.length, Object.keys(OFFICIAL.tools).length + Object.keys(OFFICIAL.ipc).length);
     assert.equal((await fetch(address + '/api/compatibility/report', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: '{}' })).status, 404);
     assert.equal(allowedRoute('GET', '/api/compatibility/report'), true);
     assert.equal(allowedRoute('POST', '/api/compatibility/report'), false);

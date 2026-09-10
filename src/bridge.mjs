@@ -18,6 +18,7 @@ import { DurableJson } from "./durable-json.mjs";
 import { markOfficialReportRead } from "./official-report-read.mjs";
 import { resolveOfficialHome } from "./official-read-state.mjs";
 import { SubscriptionLeases } from "./subscriptions.mjs";
+import { answerApproval, supportsBrowserApproval } from "./approvals.mjs";
 import { Reconnector } from "../public/reconnect.mjs";
 import {
   ConversationPages,
@@ -508,6 +509,7 @@ export class Bridge extends EventEmitter {
     try { return await pending; }
     finally { if (this.requestFlights.get(key) === pending) this.requestFlights.delete(key); }
   }
+  answerApproval(id, key, input) { return answerApproval(this, id, key, input); }
   async answerQuestions(id, key, input) {
     await this.codexThread(id);
     const owner = await this.follow(id);
@@ -1121,6 +1123,7 @@ export class Bridge extends EventEmitter {
       protectedThreadIds: [],
       desktopCompatibility: compatibility,
       existingCodexWritable: compatibility.writeSupported && this.stateStore.health.writable,
+      browserApprovals: { supported: compatibility.writeSupported && this.stateStore.health.writable && supportsBrowserApproval(this.desktop?.identity?.appToolsPipe?.image), source: 'official-desktop-owner-IPC', allSites: false },
       storageHealth: [this.stateStore.health],
       taskSummary: { supported: true, schemaVersion: 2, statePolicy: 'official-only', readReceipts: true },
       interrupt: { supported: compatibility.writeSupported, source: "official-desktop-owner-IPC" },

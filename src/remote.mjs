@@ -24,7 +24,7 @@ export function allowedRoute(method, url) {
   )
     return true;
   const m =
-    /^\/api\/threads\/[\w-]+(?:\/(follow|open|messages|interrupt|files|file|settings|queue|questions|media|read-receipt))?$/.exec(
+    /^\/api\/threads\/[\w-]+(?:\/(follow|open|messages|interrupt|files|file|settings|queue|questions|approvals|media|read-receipt))?$/.exec(
       u.pathname,
     );
   return (
@@ -40,6 +40,7 @@ export function allowedRoute(method, url) {
           "settings",
           "queue",
           "questions",
+          "approvals",
           "read-receipt",
         ].includes(m[1]))
   );
