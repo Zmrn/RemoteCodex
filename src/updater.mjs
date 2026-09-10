@@ -13,7 +13,8 @@ import {
 import { updateSource as source, releaseAssetUrl, fetchUpdateAsset, readUpdateBytes } from './update-channel.mjs';
 
 export class Updater {
-  constructor(dir, notify = () => {}) {
+  constructor(dir, notify = () => {}, { verifyUpdateManifest = verifyManifest } = {}) {
+    this.verifyUpdateManifest = verifyUpdateManifest;
     this.dir = path.join(dir, "updates");
     this.settingsFile = path.join(dir, "update-settings.json");
     this.store = new DurableJson(this.settingsFile,{label:"更新设置",empty:{automatic:true},validate:value=>value&&typeof value==='object'&&typeof value.automatic==='boolean'&&Object.keys(value).every(k=>k==='automatic')});
@@ -59,6 +60,7 @@ export class Updater {
     );
   }
   status() {
+    const ready = this.readyStatus();
     let result = null;
     try {
       result = JSON.parse(fs.readFileSync(path.join(this.dir, "result.json")));
@@ -78,6 +80,9 @@ export class Updater {
       automatic: !!this.settings.automatic,
       phase: this.phase,
       latestVersion: this.latest?.version ?? null,
+      downloadVersion: this.downloadVersion ?? null,
+      downloadedVersion: ready.version,
+      packageState: ready.state,
       available:
         !!this.latest && newerVersion(this.latest.version, INSTANCE.version),
       checkedAt: this.checkedAt ?? null,
@@ -88,6 +93,27 @@ export class Updater {
       source: source.manifestUrl,
       checkIntervalMinutes: source.checkIntervalMs / 60000,
     };
+  }
+  readyStatus() {
+    const file = path.join(this.dir, "ready.exe"), metadata = path.join(this.dir, "ready-manifest.json");
+    try {
+      const stat = fs.statSync(file), meta = fs.statSync(metadata);
+      const stamp = [stat.size, stat.mtimeMs, stat.ctimeMs, meta.size, meta.mtimeMs, meta.ctimeMs].join(":");
+      if (this.readyStamp !== stamp) {
+        this.readyStamp = stamp;
+        this.readyPackage = { version: null, state: "unverified" };
+        try {
+          const manifest = this.verifyUpdateManifest(JSON.parse(fs.readFileSync(metadata, "utf8")));
+          if (stat.size !== manifest.bytes) throw Error("更新文件大小不符");
+          verifyExecutable(file, manifest);
+          this.readyPackage = { version: manifest.version, state: "verified" };
+        } catch {} // Cache a failed verification until the candidate or metadata changes.
+      }
+      return this.readyPackage;
+    } catch {
+      this.readyStamp = null;
+      return { version: null, state: fs.existsSync(file) ? "unverified" : "none" };
+    }
   }
   configure(input) {
     if (
@@ -122,7 +148,7 @@ export class Updater {
         throw Error("GitHub 更新资源暂不可用（" + response.status + "）");
       const text = (await readUpdateBytes(response, 24000)).toString('utf8');
       const envelope = JSON.parse(text),
-        latest = verifyManifest(envelope);
+        latest = this.verifyUpdateManifest(envelope);
       this.envelope = envelope;
       this.latest = latest;
       this.checkedAt = new Date().toISOString();
@@ -159,11 +185,12 @@ export class Updater {
     this.phase = "downloading";
     this.error = "";
     this.progress = 0;
+    this.downloadVersion = this.latest.version;
     this.downloadAndApply().catch((error) => {
       this.phase = "error";
       this.error = error.message;
       this.installing = false;
-    });
+    }).finally(() => { this.downloadVersion = null; });
     return this.status();
   }
   async downloadAndApply() {
@@ -202,6 +229,12 @@ export class Updater {
       if (this.closed) throw Error("桥接器已关闭，取消本次安装");
       fs.renameSync(partial, file);
     }
+    // Associate a verified candidate with its own signed manifest, independently
+    // of a later latest-version check. A restart must reverify both before display.
+    const metadata = path.join(this.dir, "ready-manifest.json");
+    fs.writeFileSync(metadata + ".tmp", JSON.stringify(envelope));
+    fs.renameSync(metadata + ".tmp", metadata);
+    this.readyStamp = null;
     while (!this.force && this.busy()) {
       this.phase = "waiting";
       await new Promise((resolve) => setTimeout(resolve, 2000));

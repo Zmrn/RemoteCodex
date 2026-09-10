@@ -1,5 +1,7 @@
 # GitHub 直接更新
 
+更新页版本展示的源码修复见 [UPDATE-STATUS.md](UPDATE-STATUS.md)：当前安装、远端最新和已校验包分开显示，包含检查时间和旧包提示；尚未进入已发布的 0.10.30。
+
 最新发布为 [0.10.30](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.30)，包含图片加载/重试、Ctrl+Enter 调整方向与官方已读通知修复；详细验证见本文末尾。0.10.29 是首次迁移到 GitHub 直接更新的版本。
 
 2026-09-10 用户要求不再经原远端服务器分发更新。Windows 和 Android 更新入口改为 GitHub Releases，公开配置统一在 `src/update-source.json`。客户端不需要 GitHub 登录或访问密钥；设备互连仍沿用原连接方式。

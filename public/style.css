@@ -2790,6 +2790,27 @@ a {
 .help-update-panel h3 {
   margin-top: 0;
 }
+.update-versions {
+  margin: 12px 0;
+  display: grid;
+  gap: 10px;
+  font-size: 14px;
+}
+.update-versions > div {
+  display: grid;
+  grid-template-columns: 5em minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+}
+.update-versions dt { color: var(--muted); }
+.update-versions dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.update-checked, .update-package-note { margin: 8px 0; }
+.update-package-note { color: var(--text); }
 .help-update-panel .check-label {
   margin-top: 14px;
 }

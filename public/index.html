@@ -511,6 +511,7 @@
         </section>
         <section id="update-fields" hidden>
           <h3>此设备的软件更新</h3>
+          <div id="update-versions"></div>
           <p id="update-status" class="field-help" role="status">
             正在读取版本…
           </p>
@@ -552,6 +553,7 @@
       <button id="help-diagnose" type="button">诊断当前设备连接</button>
       <section class="help-update-panel">
         <h3>本程序更新</h3>
+        <div id="help-update-versions"></div>
         <p id="help-update-status" role="status">正在读取版本…</p>
         <progress
           id="help-update-progress"
@@ -580,7 +582,7 @@
           />自动检查并安装更新</label
         >
         <p id="help-update-error" class="form-error" role="alert"></p>
-        <p class="field-help">
+        <p id="help-update-scope" class="field-help">
           更新当前 Windows 程序；其他电脑的更新仍可在各自的设备设置中管理。
         </p>
       </section>

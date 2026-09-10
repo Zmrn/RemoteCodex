@@ -57,6 +57,7 @@ export async function startServer({
     ["/image-input.mjs", "text/javascript; charset=utf-8"],
     ["/clipboard-images.mjs", "text/javascript; charset=utf-8"],
     ["/help-updates.mjs", "text/javascript; charset=utf-8"],
+    ["/update-view.mjs", "text/javascript; charset=utf-8"],
     ["/image-viewer.mjs", "text/javascript; charset=utf-8"],
     ["/image-load-state.mjs", "text/javascript; charset=utf-8"],
     ["/project-picker.mjs", "text/javascript; charset=utf-8"],

@@ -1,3 +1,5 @@
+import { renderUpdateVersions } from './update-view.mjs';
+
 export function accessEndpoint(host, port) {
   return (host.includes(":") ? `[${host}]` : host) + ":" + port;
 }
@@ -83,6 +85,8 @@ export class DeviceSettings {
     $("local-key").value = "";
     $("local-key").type = "password";
     this.loaded = false;
+    this.renderUpdates({});
+    $("update-status").textContent = "正在读取此设备的更新状态…";
     if (local) this.loadAccess().catch((e) => this.fail(e));
     if (agent) {
       this.loadUpdates();
@@ -134,57 +138,53 @@ export class DeviceSettings {
   }
   async loadUpdates() {
     const sequence = this.sequence;
+    if (this.actingSequence === sequence || this.loadingSequence === sequence) return;
+    this.loadingSequence = sequence;
+    const request = this.updateRequest = (this.updateRequest || 0) + 1;
     try {
       const state = await this.updateApi();
-      if (sequence === this.sequence) this.renderUpdates(state);
+      if (sequence === this.sequence && request === this.updateRequest) this.renderUpdates(state);
     } catch (error) {
-      if (sequence === this.sequence) {
+      if (sequence === this.sequence && request === this.updateRequest) {
         this.$("update-status").textContent =
           "无法读取此设备的更新状态：" + error.message;
         this.$("automatic-updates").disabled = true;
         this.$("install-update").disabled = true;
       }
+    } finally {
+      if (this.loadingSequence === sequence) this.loadingSequence = null;
     }
   }
   renderUpdates(state) {
-    const $ = this.$,
-      names = {
-        idle: "尚未检查",
-        checking: "正在检查",
-        current: "已是最新版",
-        available: "发现新版本",
-        downloading: `正在下载 ${state.progress}%`,
-        waiting: "已下载，等待草稿发送或设置编辑结束",
-        installing: "正在安装，连接将自动恢复",
-        error: state.error,
-      };
+    const $ = this.$, view = renderUpdateVersions($("update-versions"), state);
     $("update-status").textContent =
-      `当前 ${state.currentVersion} · ${names[state.phase] || state.phase}` +
-      (state.available ? ` ${state.latestVersion}` : "") +
+      view.label +
       (state.result?.status === "rolled-back" ? " · 上次更新失败，已回退" : "");
     $("automatic-updates").checked = state.automatic;
     $("automatic-updates").disabled = !state.supported;
-    $("check-updates").disabled = [
-      "checking",
-      "downloading",
-      "installing",
-    ].includes(state.phase);
-    $("install-update").disabled =
-      !state.supported ||
-      !state.available ||
-      ["downloading", "installing"].includes(state.phase);
-    if (!state.supported)
+    $("check-updates").disabled = view.checkDisabled;
+    $("install-update").disabled = view.installDisabled;
+    $("install-update").textContent = view.installLabel;
+    if (state.supported === false)
       $("update-status").textContent += " · 自动安装需要单 EXE 版本";
   }
   async updateAction(action, body = {}) {
+    const sequence = this.sequence, agent = this.agent;
+    if (!agent || this.actingSequence === sequence) return;
+    this.actingSequence = sequence;
+    this.updateRequest = (this.updateRequest || 0) + 1;
+    for (const id of ["check-updates", "install-update", "automatic-updates"]) this.$(id).disabled = true;
     try {
-      if (action === "install" && this.agent?.kind === "local")
+      if (action === "install" && agent.kind === "local")
         await this.backupDrafts();
-      const sequence = this.sequence,
-        state = await this.updateApi("/" + action, body);
+      if (sequence !== this.sequence) return;
+      const state = await this.agentApi(agent.id, "/updates/" + action, body);
       if (sequence === this.sequence) this.renderUpdates(state);
     } catch (error) {
-      this.fail(error);
+      if (sequence === this.sequence) this.fail(error);
+    } finally {
+      if (this.actingSequence === sequence) this.actingSequence = null;
+      if (sequence === this.sequence) this.loadUpdates();
     }
   }
 }

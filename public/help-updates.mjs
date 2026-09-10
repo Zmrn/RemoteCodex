@@ -1,3 +1,5 @@
+import { renderUpdateVersions } from './update-view.mjs';
+
 export class HelpUpdates {
   constructor({ $, api, backupDrafts }) {
     Object.assign(this, { $, api, backupDrafts });
@@ -14,53 +16,35 @@ export class HelpUpdates {
   async refresh() {
     if (this.loading || this.acting) return;
     this.loading = true;
+    const sequence = this.sequence;
     try {
-      this.render(await this.api("/api/updates"));
+      const state = await this.api("/api/updates");
+      if (sequence === this.sequence) this.render(state);
     } catch {
+      if (sequence !== this.sequence) return;
       this.$("help-update-status").textContent =
         "更新状态暂时不可用，正在重新连接…";
+      this.$("help-install-update").disabled = true;
+      this.$("help-automatic-updates").disabled = true;
     } finally {
       this.loading = false;
     }
   }
   render(state) {
     const $ = this.$;
-    const phase = state.phase;
-    const active = ["downloading", "waiting", "installing"].includes(phase);
-    const progress = ["waiting", "installing"].includes(phase)
-      ? 100
-      : Math.max(0, Math.min(100, Number(state.progress) || 0));
-    const labels = {
-      idle: "尚未检查更新",
-      checking: "正在检查更新…",
-      current: "已是最新版本",
-      available: "发现新版本 " + state.latestVersion,
-      downloading: `正在下载 ${state.latestVersion} · ${progress}%`,
-      waiting: "下载完成，可立即安装；自动安装正在等待草稿或编辑结束",
-      installing: "正在安装，稍后自动重新打开",
-      error: state.error || "更新失败，请重试",
-    };
-    const label = labels[phase] || "更新状态未知";
-    const displayLabel = state.platform === "android" && phase === "waiting"
-      ? "下载完成，点击安装后由 Android 系统确认"
-      : label;
-    $("help-update-status").textContent =
-      `当前版本 ${state.currentVersion ?? "未知"} · ${displayLabel}`;
+    const view = renderUpdateVersions($("help-update-versions"), state);
+    const { active, progress, label } = view;
+    $("help-update-status").textContent = label;
     $("help-update-progress").hidden = !active;
     $("help-update-progress").value = progress;
     $("help-automatic-updates").checked = !!state.automatic;
     $("help-automatic-updates").disabled = !state.supported;
-    $("help-check-updates").disabled = [
-      "checking",
-      "downloading",
-      "installing",
-    ].includes(phase);
-    $("help-install-update").disabled =
-      !state.supported ||
-      !state.available ||
-      ["downloading", "installing"].includes(phase);
-    $("help-install-update").textContent =
-      phase === "waiting" ? "立即安装" : "安装更新";
+    $("help-check-updates").disabled = view.checkDisabled;
+    $("help-install-update").disabled = view.installDisabled;
+    $("help-install-update").textContent = view.installLabel;
+    $("help-update-scope").textContent = state.platform === "android"
+      ? "更新当前手机上的 App，安装需要 Android 系统确认。其他电脑可在各自的设备设置中更新。"
+      : "更新当前 Windows 程序；其他电脑可在各自的设备设置中更新。";
     const notice = state.available || active;
     $("help").classList.toggle("has-update", !!notice);
     $("help").title = notice ? label + "，点击查看更新" : "帮助与软件更新";
@@ -73,6 +57,10 @@ export class HelpUpdates {
   async action(action, body = {}) {
     if (this.acting) return;
     this.acting = true;
+    this.sequence = (this.sequence || 0) + 1;
+    this.$("help-check-updates").disabled = true;
+    this.$("help-install-update").disabled = true;
+    this.$("help-automatic-updates").disabled = true;
     this.$("help-update-error").textContent = "";
     try {
       if (action === "install") await this.backupDrafts();
@@ -81,6 +69,7 @@ export class HelpUpdates {
       this.$("help-update-error").textContent = e.message;
     } finally {
       this.acting = false;
+      this.refresh();
     }
   }
 }

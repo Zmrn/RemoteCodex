@@ -43,6 +43,8 @@ jobs:
           npm install --no-save --package-lock=false --ignore-scripts playwright-core@1.62.1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/verify-report-read-ui.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/verify-update-status-ui.mjs
       - name: Windows placement and notification regressions
         shell: pwsh
         run: |
