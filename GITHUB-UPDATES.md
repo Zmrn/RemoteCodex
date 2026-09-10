@@ -1,5 +1,26 @@
 # GitHub 直接更新
 
+## 0.10.33 正式发布（2026-09-11）
+
+[GitHub Release v0.10.33](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.33)已公开，包含超长Codex历史只读分页、独立图片加载及重连后引用刷新。目标Windows接入端与使用的控制端都需更新。8份未完成Chat修改独立保留，未纳入安装包。
+
+最终版本268项Node22.19.0、接口清单和新/旧历史UI通过后，提交`2c3fd27238ce4413b4216677b60779270c020ed3`推送GitHub；同提交[Checks34506235201](https://github.com/Zmrn/RemoteCodex/actions/runs/34506235201)全部成功，preflight通过，仅派发一次[Build34506575435](https://github.com/Zmrn/RemoteCodex/actions/runs/34506575435)。requestId为`4af34969-8b13-40b3-a8c3-8dc29e3e2958`，云端签名前同SHA门禁及构建全部成功，没有本地构建或重复派发。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44156928 | `e7269803328ab79fdada9e9333d99f7478159a42a80fe427c534f6451b4388c6` |
+| RemoteCodex.apk | 274371 | `1a887b8e2cda37409addd1be051454de2fa39d7fe9c6eeb6b4f24c8a3cc55fb5` |
+
+两个更新清单原RSA签名、APK v2/v3原证书、包名com.anso.remotecodex与versionCode10033通过。APK证书SHA-256仍为`3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`；中央清单SHA-256为`281138712486a95963d29897793c0a9a57c62d64ea2db9f4ff704f56a4c55dcf`，对应构建提交和包内实际字节。双端源码/界面、发布说明、兼容元数据和GitHub更新源一致，包内无用户配置或签名私钥。
+
+EXE在隔离home、PATH仅含System32的环境完成内嵌Node22.19.0/Python3.13.2、DPAPI、资源及官方项目/任务只读自检；确认官方26.903.9818.0/PID30692。包内源码再次只读验证实际问题任务：32页820项、无重复、独立2041041字节PNG成功，最大响应143690字节，刷新一致，首次连接+失败降级+索引约9.1秒。另确认20/20接口、23/23功能条件匹配，不等同于真实任务写入往返。
+
+隔离0.10.32云包到0.10.33云包完成设备保存、升级、强制重启及显式删除检查；现有客户端设备/接入/更新/通知设置和草稿文件字节未改变。标准发布器八项资源上传并逐项读回后公开；随后不携带GitHub登录凭据，通过生产更新函数读取latest双清单，再按v0.10.33完整下载APK/EXE和说明，签名、长度、哈希均一致。上传、读回、公开和匿名下载均首次成功。
+
+本版降级仅处理官方当前列表可确认的本机Codex内容显示；发送、停止与已读同步仍使用官方实时核验，不能声称超限任务的全部操作已恢复。官方接口兼容按功能判断；Chat/Work未完成适配不扩大。没有运行APK/模拟器、升级现有客户端、重启官方应用或向真实任务写入。GITHUB-BUILD.json保留云端产出时published/liveDesktopTested=false，不改写已验签产物。
+
+证据在会话`work/release-033/work/`：checks-watch.log、preflight.json、build-dispatch.log、build-watch.log、package-verification.json、packaged-history.log、packaged-policy.json、agent-restart.log、installed-data-after.json、release-state.json、online-verification.json。发布记录提交不再次构建。
+
 ## 0.10.32 正式发布（2026-09-10）
 
 [GitHub Release v0.10.32](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.32) 已公开。用户明确要求发布后，先在最终 0.10.32 工作树通过 Node22.19.0 的 259 项测试、接口清单及 5 组功能独立/7 组兼容报告/7 组已读 UI 检查；提交 `9b7dfa03f3056f7a686a0aaec8065b951e585c39` 的 [Checks34497736006](https://github.com/Zmrn/RemoteCodex/actions/runs/34497736006) 全部成功后，通过只读 preflight，仅派发一次 [Build34498105728](https://github.com/Zmrn/RemoteCodex/actions/runs/34498105728)。requestId 为 `5142fd0f-0e84-4e44-bdb3-e494f8ff9e49`，云端签名前同 SHA Checks 门禁实际通过，所有构建步骤首次成功。
