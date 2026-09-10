@@ -13,6 +13,7 @@ import { assertProbeTarget, testExcludedThreadIds } from "./probe-safety.mjs";
 import { DATA_DIR } from "./runtime.mjs";
 import { MessageMedia } from "./message-media.mjs";
 import { readOfficialHistory } from "./history-read.mjs";
+import { RolloutHistory } from "./rollout-history.mjs";
 import { TaskReports } from "./task-reports.mjs";
 import { DurableJson } from "./durable-json.mjs";
 import { markOfficialReportRead } from "./official-report-read.mjs";
@@ -63,6 +64,7 @@ export class Bridge extends EventEmitter {
     this.queue = new OfficialQueue(this);
     this.media = new MessageMedia();
     this.pages = new ConversationPages();
+    this.rolloutHistory = new RolloutHistory();
     this.taskReports = new TaskReports(this);
     this.desktopFactory = desktopFactory;
     this.homeResolver = homeResolver;
@@ -154,6 +156,8 @@ export class Bridge extends EventEmitter {
     return desktop.identity;
   }
   disconnect() {
+    this.rolloutHistory.clear();
+    this.media.deferred.clear();
     this.subscriptions.clear();
     this.connectionGeneration++;
     this.reconnector?.stop();
@@ -391,13 +395,27 @@ export class Bridge extends EventEmitter {
   }
   async read(id, cursor, { compact = false } = {}) {
     this.requireConnection();
-    const desktop = this.desktop;
-    const { data, readNotice } = await readOfficialHistory(desktop, id, cursor, compact ? 2 : 10, () => {
+    const desktop = this.desktop, identity = desktop.identity;
+    const check = () => {
       this.requireConnection();
-      if (desktop !== this.desktop) throw Error("Viewer connection changed during read");
-    });
+      if (desktop !== this.desktop || desktop.identity !== identity) throw Error("Viewer connection changed during read");
+    };
+    const fallback = compact ? async ({cursor:diskCursor,beforeTurnId}) => {
+      check(); const home = this.officialDataHome();
+      if (!home) throw Error('官方读取接口未能返回历史，且无法确认官方本机历史目录；当前内容已保留');
+      const list = await desktop.call(TOOLS.listThreads,{limit:50}); check();
+      const thread = [...(list.pinnedThreads??[]),...(list.threads??[])].find(t=>t.id===id);
+      if (!thread || thread.kind !== 'codex' || thread.hostId !== OFFICIAL.discovery.hostId) throw Error('官方读取接口未能返回历史，无法确认此任务的本机来源；当前内容已保留');
+      return this.rolloutHistory.read({home,thread,cursor:diskCursor,beforeTurnId,media:this.media,check});
+    } : undefined;
+    const { data, readNotice } = await readOfficialHistory(desktop, id, cursor, compact ? 2 : 10, check, fallback);
     this.requireConnection();
     if (desktop !== this.desktop) throw Error("Viewer connection changed during read");
+    if (data.bridgeHistoryFallback) {
+      const view = compactConversation(this.media.decorate(id,data,{externalImages:true}));
+      return {source:'official-local-rollout-read-only',readNotice,reportReceipt:null,observedAt:new Date().toISOString(),data:view,
+        live:this.live.has(id)?{...this.live.get(id),status:runtimeStatus(this.live.get(id).state,this.connected)}:null};
+    }
     if (data.thread?.kind === "chatgpt") {
       // The official Chat adapter stamps historical turns 'completed' even
       // while streaming. Only its separate renderer status query is usable.
@@ -448,6 +466,8 @@ export class Bridge extends EventEmitter {
     const result = await this.pages.read(id, before, (cursor) =>
       this.read(id, cursor, { compact: true }),
     );
+    if (result.data.history?.source === 'official-rollout')
+      this.rolloutHistory.assertCurrent(id,result.data.history.revision);
     if (before) return result;
     const headHash = createHash("sha256")
       .update(

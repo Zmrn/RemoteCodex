@@ -70,6 +70,18 @@
     "queueKey": "queued-follow-ups",
     "sessionIndexFile": "session_index.jsonl",
     "source": "official-disk, read-only; not live-state proof",
+    "rolloutHistory": {
+      "directories": ["sessions", "archived_sessions"],
+      "format": "session_meta + event_msg/item_completed",
+      "consumer": "src/rollout-history.mjs",
+      "test": "test/rollout-history.test.mjs",
+      "maxDirectoryEntries": 250000,
+      "maxFileBytes": 4294967296,
+      "maxRecordBytes": 67108864,
+      "maxItems": 100000,
+      "maxScanMs": 20000,
+      "rule": "Only the current verified desktop home and a fresh local Codex list row authorize history display; offsets are ephemeral, historical completion never authorizes operations or read receipts."
+    },
     "readState": {
       "key": "electron-thread-read-state-v1",
       "version": 1,

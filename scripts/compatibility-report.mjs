@@ -51,6 +51,7 @@ export function interfaceMarkdown() {
     "- 传输：4 字节小端长度 + JSON；app-tools 使用 JSON-RPC 2.0，桌面 IPC 使用 requestId/sourceClientId/version/targetClientId 信封，两者不能混用。",
     "- 实时流只接受当前订阅任务的已发现所有者，patch 基线不匹配时标记未知并重读。",
     "- 磁盘队列：" + OFFICIAL.storage.globalStateFile + " / " + OFFICIAL.storage.queueKey + "；仅只读，不能证明实时状态。",
+    "- 大历史降级：当前官方 home 的 " + OFFICIAL.storage.rolloutHistory.directories.join(' / ') + "；核对本机任务和 session_meta 身份，只读 item_completed 并按消息分页、图片按需读取。历史结束记录不控制实时状态、写入或已读。",
     "- 全部未知写入回执不得自动重发；安全限制、原始上下文和当前任务 ID 必须保留。",
     "",
     "## 桌面 app-tools",

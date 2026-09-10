@@ -25,6 +25,14 @@ export class MessageMedia {
     this.inlineBytes = 0;
     this.attachments = new Map();
     this.recentThreads = new Map();
+    this.deferred = new Map();
+  }
+  addDeferred(threadId, key, read, name = '图片') {
+    const id = createHash('sha256').update('official-history:' + key).digest('hex');
+    const token = threadId + ':' + id;
+    this.deferred.delete(token); this.deferred.set(token, {read, name});
+    while (this.deferred.size > 4096) this.deferred.delete(this.deferred.keys().next().value);
+    return {id, name};
   }
   addFile(threadId, source, name) {
     // Only exact local paths actually present in a read message become download IDs.
@@ -134,7 +142,7 @@ export class MessageMedia {
               ? /<input>([\s\S]*?)<\/input>/.exec(output ?? "")?.[1]
               : undefined;
           let text = user ? itemText(item) : (delegated ?? item.text);
-          const images = [],
+          const images = [...(item.bridgeHistoryImages ?? [])],
             files = [];
           const add = (source, name) => {
             const ref = this.add(threadId, source, name, externalImages);
@@ -208,6 +216,14 @@ export class MessageMedia {
     };
   }
   read(threadId, id) {
+    const deferred = this.deferred.get(threadId + ':' + id);
+    if (deferred) {
+      const source = deferred.read();
+      if (typeof source !== 'string' || source.length > 36 * 1024 * 1024 || !dataImage.test(source)) throw Error('官方图片格式不受支持或超过 25 MB');
+      const bytes = Buffer.from(source.slice(source.indexOf(',') + 1), 'base64'), type = imageType(bytes);
+      if (!type || bytes.length > 25 * 1024 * 1024) throw Error('官方图片文件不可用或大于 25 MB');
+      return {bytes,type,name:deferred.name};
+    }
     const inline = this.inline.get(threadId + ":" + id);
     if (inline) {
       const bytes = Buffer.from(

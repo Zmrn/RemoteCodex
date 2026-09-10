@@ -1791,6 +1791,11 @@ async function readTask(job, older) {
       throw Error("设备返回的会话内容格式不受支持，请更新目标设备后重试");
     if (!matchesMode(r.data.thread, mode)) throw Error("会话类型与当前模式不同，请切换模式后重新选择");
     readFailures = 0;
+    const historyChanged = !older && taskData && (taskData.history?.revision || r.data.history?.revision) &&
+      taskData.history?.revision !== r.data.history?.revision;
+    if (historyChanged) {
+      turns = []; cursor = gapCursor = null; pageProtocol = null;
+    }
     const firstLoad = !turns.length;
     const resetPaging = !pageProtocol;
     const intersects = overlaps(turns, r.data.turns);

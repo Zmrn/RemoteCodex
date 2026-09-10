@@ -48,7 +48,7 @@ export class ConversationPages {
         ? turn.items
             .map((item, index) => ({
               turn,
-              item: { ...item, bridgeItemIndex: index },
+              item: { ...item, bridgeItemIndex: item.bridgeItemIndex ?? index },
             }))
             .reverse()
         : [{ turn, item: null }],
@@ -130,7 +130,7 @@ export class ConversationPages {
     for (const { turn, item } of selected) {
       if (!turns.has(turn.id))
         turns.set(turn.id, { ...turn, items: [], bridgePartial: true,
-          bridgeItemIds: (turn.items ?? []).map(i => i.id) });
+          bridgeItemIds: turn.bridgeHistoryItemIds ?? (turn.items ?? []).map(i => i.id) });
       if (item) turns.get(turn.id).items.unshift(item);
     }
     for (const turn of turns.values()) {
@@ -164,7 +164,8 @@ export function compactConversation(data) {
     turns: (data.turns ?? []).map((turn) => ({
       ...turn,
       items: (turn.items ?? []).flatMap((item) => {
-        const base = { id: item.id, type: item.type, status: item.status };
+        const base = { id: item.id, type: item.type, status: item.status,
+          ...(Number.isSafeInteger(item.bridgeItemIndex)?{bridgeItemIndex:item.bridgeItemIndex}:{}) };
         const display = item.bridgeDisplay;
         switch (item.type) {
           case "userMessage":

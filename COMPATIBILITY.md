@@ -18,6 +18,8 @@ GET /api/status 的 desktopCompatibility 提供历史已验证版本、清单 SH
 
 ## 当前范围
 
+内容页在工具通道单轮超限时，可只读当前官方本机Codex原始历史并按消息分页、图片按需加载，见HISTORY-READ.md。来源和记录格式也在中央storage.rolloutHistory中维护；不把历史文件作为实时状态或写入/已读授权，不扩大Chat/Work。官方26.903.9818.0真实问题任务32页读取及独立图片验证通过，本轮没有真实写入测试。
+
 历史行为验证覆盖 Windows x64 官方包 26.901.6511.0、26.903.8094.0，证据见 CREATE-IMAGES.md 和清单 validation。其他版本按本机当前接口证据逐功能判断；26.903.9818.0 本轮只读接口一致，未冒充完整行为实测。记录的是已验证的 Codex 核心功能，不能据此宣称每种官方功能都可用：
 
 0.10.15 支持 VS Code 先运行并持有共享 IPC 管道的情况，官方 app-tools 仍须属于 ChatGPT.exe；不能把转发 PID 当作任务 owner。当前实测组合与签名校验、失败处理、专用任务证据见 [VSCODE-COEXISTENCE.md](VSCODE-COEXISTENCE.md)。GET /api/status 的 desktopConnection 返回脱敏的两类进程身份，失联时为 null。
