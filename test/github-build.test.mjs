@@ -1,8 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateKeyPairSync } from 'node:crypto';
+import { generateKeyPairSync, sign } from 'node:crypto';
 import fs from 'node:fs';
 import { buildConfig, certificateDigest, signingMaterial } from '../scripts/github-build.mjs';
+import { verifyBuildManifest } from '../scripts/github-manifest.mjs';
+import { verifyManifest } from '../src/update-format.mjs';
+
+test('cloud artifact validation accepts original signed APK metadata, rejects substitutions, and leaves Windows updater EXE-only', () => {
+  const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const meta = { schema: 1, platform: 'android', file: 'RemoteCodex.apk', version: '0.10.27',
+    packageName: 'com.anso.remotecodex', versionCode: 10027, bytes: 240000, sha256: 'a'.repeat(64) };
+  const envelope = value => {
+    const bytes = Buffer.from(JSON.stringify(value));
+    return { payload: bytes.toString('base64'), signature: sign('sha256', bytes, keys.privateKey).toString('base64') };
+  };
+  assert.deepEqual(verifyBuildManifest(envelope(meta), meta.file, keys.publicKey), meta);
+  assert.throws(() => verifyManifest(envelope(meta), keys.publicKey));
+  for (const change of [{ packageName: 'com.wrong.app' }, { versionCode: 10028 }, { platform: 'windows-x64' },
+    { file: 'Other.apk' }, { sha256: 'bad' }, { bytes: 0 }, { version: '0.10.1000' }])
+    assert.throws(() => verifyBuildManifest(envelope({ ...meta, ...change }), meta.file, keys.publicKey));
+  assert.throws(() => verifyBuildManifest({ ...envelope(meta), payload: envelope({ ...meta, bytes: 240001 }).payload }, meta.file, keys.publicKey), /signature/);
+  const win = { schema: 1, platform: 'windows-x64', file: 'RemoteCodex.exe', version: meta.version, bytes: 50000000, sha256: meta.sha256 };
+  assert.deepEqual(verifyBuildManifest(envelope(win), win.file, keys.publicKey), win);
+  assert.throws(() => verifyBuildManifest(envelope(meta), win.file, keys.publicKey));
+});
 
 test('cloud builds require explicit update URL and original APK certificate without importing deployment credentials', () => {
   const env = { REMOTE_CODEX_UPDATE_BASE_URL: 'https://updates.example.test/resources',

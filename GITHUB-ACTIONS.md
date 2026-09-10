@@ -47,6 +47,15 @@ node scripts/github-actions.mjs download <runId>
 
 这些值不得粘贴进对话，不得提交 Git。向 GitHub 保存原签名材料属于独立的敏感配置动作，应取得用户授权；Secret 通过 GitHub 提供的公钥在本机加密后提交。缺少任何一项时正式构建明确失败，不生成替代身份。环境可按团队需要增加审核人；启用审核后，等待审批不属于构建错误。
 
+在仍可解密原签名的 Windows 用户下，使用 Python 的 `cryptography` 和 `PyNaCl` 依赖运行一次配置工具；普通构建和下载不需要这两个依赖。工具默认只读，`--apply` 仅在用户已授权存储签名材料后运行：
+
+```powershell
+python -X utf8 scripts/configure-github-signing.py
+python -X utf8 scripts/configure-github-signing.py --apply
+```
+
+工具校验原更新公钥与 APK 证书，在内存中解密并使用 GitHub 公钥加密后上传；不生成明文签名文件，不上传 SSH 或登录凭据。遇到已有不同的环境分支策略时停止，不放宽策略。2026-09-10 用户已授权并完成本仓库的三项 Secrets、两项 Variables 配置，`signing` 环境仅允许 main 分支。
+
 云端仍内嵌现有 baseUrl，因此不会改变已安装客户端的更新入口。本轮只接入构建与产物下载；需要把发布服务器也接入云端时，另行配置部署权限与网络访问，不能直接复制现有 SSH 凭据或修改 Tailscale。尚未正式发布的同版本重建产物，也不能直接覆盖已经发布的同版本资源。
 
 ## 免费范围

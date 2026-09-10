@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { verifyManifest } from '../src/update-format.mjs';
+import { verifyBuildManifest } from './github-manifest.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repository = 'Zmrn/RemoteCodex';
 const workflow = 'build.yml';
@@ -86,10 +86,12 @@ async function main() {
     const provenance = JSON.parse(fs.readFileSync(path.join(folder, 'GITHUB-BUILD.json')));
     if (provenance.commit !== run.head_sha || String(provenance.runId) !== runId) throw Error('Downloaded build provenance mismatch');
     for (const [file, manifest] of [['RemoteCodex.exe','latest.json'],['RemoteCodex.apk','android-latest.json']]) {
-      const meta = verifyManifest(JSON.parse(fs.readFileSync(path.join(folder, manifest))), fs.readFileSync(path.join(root, 'src/update-public-key.pem')));
+      const meta = verifyBuildManifest(JSON.parse(fs.readFileSync(path.join(folder, manifest))), file, fs.readFileSync(path.join(root, 'src/update-public-key.pem')));
       const crypto = await import('node:crypto'), bytes = fs.readFileSync(path.join(folder, file));
       if (meta.bytes !== bytes.length || meta.version !== provenance.version || meta.sha256 !== crypto.createHash('sha256').update(bytes).digest('hex'))
         throw Error('Downloaded signed artifact hash mismatch');
+      if (meta.releaseNotesSha256 !== crypto.createHash('sha256').update(fs.readFileSync(path.join(folder, 'RELEASE-NOTES.md'))).digest('hex'))
+        throw Error('Downloaded release notes hash mismatch');
     }
     console.log(JSON.stringify({ ...describe(run), version: provenance.version, files: ['RemoteCodex.exe','RemoteCodex.apk'].map(f=>path.join(folder,f)), verified: true }, null, 2));
   } else throw Error('Usage: node scripts/github-actions.mjs build | status [runId] | watch runId | download runId');

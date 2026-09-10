@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createPrivateKey, createPublicKey, createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { verifyManifest } from '../src/update-format.mjs';
+import { verifyBuildManifest } from './github-manifest.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ownedFiles = ['release.local.json', 'data/android-signing.p12',
   'data/android-signing-password.json', 'data/release-signing-key.json'];
@@ -93,7 +93,7 @@ async function main(action) {
     const publicKey = fs.readFileSync(path.join(ROOT, 'src/update-public-key.pem'));
     for (const [file, manifest] of [['RemoteCodex.exe', 'latest.json'], ['RemoteCodex.apk', 'android-latest.json']]) {
       run('node', ['scripts/sign-release.mjs', 'dist/' + file, version, 'dist/' + manifest]);
-      const meta = verifyManifest(JSON.parse(fs.readFileSync(path.join(ROOT, 'dist', manifest))), publicKey);
+      const meta = verifyBuildManifest(JSON.parse(fs.readFileSync(path.join(ROOT, 'dist', manifest))), file, publicKey);
       const data = fs.readFileSync(path.join(ROOT, 'dist', file));
       if (meta.version !== version || meta.bytes !== data.length || meta.sha256 !== createHash('sha256').update(data).digest('hex'))
         throw Error('Signed artifact verification failed');
