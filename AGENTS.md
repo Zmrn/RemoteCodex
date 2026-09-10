@@ -4,7 +4,7 @@
 
 ## 新会话接手
 
-- 先确认实际操作系统、主机、工作目录、Git 远端/分支及工作区状态，不能把云端/沙箱测试说成本机验证。本机原工作区中的仓库位于 `outputs/remote-codex/`；直接克隆时以包含本文件与 package.json 的 Git 根目录为准。正式仓库为 `https://github.com/Zmrn/RemoteCodex.git`，默认 origin 与 main 上游指向 GitHub。原 Gitee 仅保留为本地 gitee-archive 历史参考，不再双推；其他克隆必须重新核对实际 URL，不按远端名字猜测。
+- 先确认实际操作系统、主机、工作目录、Git 远端/分支及工作区状态，不能把云端/沙箱测试说成本机验证。本机原工作区中的仓库位于 `outputs/remote-codex/`；直接克隆时以包含本文件与 package.json 的 Git 根目录为准。正式仓库为 `https://github.com/Zmrn/RemoteCodex.git`，默认 origin 与 main 上游指向 GitHub。2026-09-10 用户明确停用 Gitee，并将自行删除其仓库：GitHub 是唯一远端主仓库，本地不保留 gitee-archive，不再访问、同步或维护 Gitee。其他克隆也以 GitHub 为唯一目标，先核对实际 URL，不按远端名字猜测；历史记录中的 Gitee 地址不再是操作目标。
 - 当前源码基线（2026-09-09）：Remote Codex **0.10.16**，部分历史优先显示可读内容，双端发布、笔记本内置更新和 Android 隔离横竖屏通过，见 [HISTORY-READ.md](HISTORY-READ.md)。0.10.15 新增 VS Code 持有共享 IPC 管道时的官方 ChatGPT 桥接，真实专用任务的 12 项检查通过，见 [VSCODE-COEXISTENCE.md](VSCODE-COEXISTENCE.md)。Windows x64 官方包 **26.901.6511.0、26.903.8094.0** 的 Codex 核心读写已验证。软件版本以 package.json 为准，官方支持范围以 src/official-desktop.json 的 validation 为准；交接快照不是实时状态，也不代表所有功能均已验证。
 - 2026-09-09 接手笔记本已重建并发布最终合并 0.10.15 EXE/APK，包含 VS Code 共存和设备保护；笔记本内置更新及配置保留验收通过。130 项 Node、13 项窗口、最终 EXE 自检和包内旧版→新版强制重启测试通过。最终哈希及两台机器各自的验证范围见 VSCODE-COEXISTENCE.md、DEVICE-STORAGE.md；本机没有做最终合并 APK 的模拟器/真机行为测试。
 - 最近修复及证据见 [CREATE-IMAGES.md](CREATE-IMAGES.md)：新建文字/多图、失败草稿保留、正式控制端跨设备发送；115 项 Node 回归、13 项窗口检查、Android API 35 横竖屏及真实官方 owner 测试已通过。新官方版本、Chat 写入、原生生图等不能由这些结果推定成功。
