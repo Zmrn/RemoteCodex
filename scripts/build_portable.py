@@ -69,7 +69,7 @@ def main():
         for file in (ROOT / folder).rglob("*"):
             if file.is_file() and "__pycache__" not in file.parts:
                 files[file.relative_to(ROOT).as_posix()] = file.read_bytes()
-    for name in ("package.json", "README.md", "PORTABLE.md", "THIRD_PARTY_NOTICES.md", "FARFIELD-LICENSE.txt"):
+    for name in ("package.json", "README.md", "PORTABLE.md", "THIRD_PARTY_NOTICES.md", "FARFIELD-LICENSE.txt", "LICENSE"):
         files[name] = (ROOT / name).read_bytes()
     package["version"] = version
     files["RELEASE-NOTES.md"] = release_notes(version)

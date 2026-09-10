@@ -47,6 +47,7 @@ def main():
     (assets / 'release.json').write_text(json.dumps({'baseUrl': settings['baseUrl']}))
     (assets / 'desktop-compatibility.json').write_text(json.dumps(desktop_support), encoding='utf-8')
     (assets / 'RELEASE-NOTES.md').write_bytes(release_notes(version))
+    (assets / 'LICENSE').write_bytes((ROOT / 'LICENSE').read_bytes())
     (assets / 'update-public-key.pem').write_bytes((ROOT / 'src/update-public-key.pem').read_bytes())
     (resource / 'app_icon.png').write_bytes((ROOT / 'public/app-icon-192.png').read_bytes())
     manifest = work / 'AndroidManifest.xml'
