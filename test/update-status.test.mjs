@@ -51,7 +51,7 @@ test('missing, forged, mismatched and damaged cached candidates never report a v
   assert.equal(f.updater.status().packageState, 'unverified');
   f.save(c); fs.writeFileSync(f.metadata, JSON.stringify({ ...c.envelope, signature: 'forged' }));
   assert.equal(f.updater.status().downloadedVersion, null);
-  const count = f.count(); f.updater.status(); assert.equal(f.count(), count, 'failed verification is cached');
+  const count = f.count(); f.updater.status(); assert.ok(f.count() > count, 'failed verification must not prevent a repair being rechecked');
   f.save(c); fs.writeFileSync(f.file, candidate('0.10.31', 1).raw);
   assert.equal(f.updater.status().downloadedVersion, null);
   f.save(c); assert.equal(f.updater.status().downloadedVersion, '0.10.30');
