@@ -392,14 +392,13 @@ export class Bridge extends EventEmitter {
     });
     this.requireConnection();
     if (desktop !== this.desktop) throw Error("Viewer connection changed during read");
-    const reportReceipt = cursor ? null : this.taskReports.observe(data);
     if (data.thread?.kind === "chatgpt") {
       // The official Chat adapter stamps historical turns 'completed' even
       // while streaming. Only its separate renderer status query is usable.
       return {
         source: "official-desktop-chat-history + renderer-status-poll (may be cached)",
         readNotice,
-        reportReceipt,
+        reportReceipt: cursor ? null : this.taskReports.observe(data),
         observedAt: new Date().toISOString(),
         data: {
           ...data,
@@ -416,13 +415,13 @@ export class Bridge extends EventEmitter {
       this.live.delete(id);
       this.owners?.delete(id);
     }
-    const decorated = this.media.decorate(
-      id,
-      mergeLiveTurnItems(data, this.live.get(id)?.state, {
-        includeNewTurns: !cursor,
-      }),
-      { externalImages: compact },
-    );
+    const merged = mergeLiveTurnItems(data, this.live.get(id)?.state, {
+      includeNewTurns: !cursor,
+    });
+    // Validate the very same official items that are displayed. The history
+    // adapter can omit a report which is present in the current owner stream.
+    const reportReceipt = cursor ? null : this.taskReports.observe(merged);
+    const decorated = this.media.decorate(id, merged, { externalImages: compact });
     return {
       source: this.live.has(id) ? "official-desktop-tool-read + verified-owner-live-items" : "official-desktop-tool-read",
       readNotice,

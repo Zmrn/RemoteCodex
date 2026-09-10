@@ -408,29 +408,41 @@ function updateHistoryNotice() {
     : historyReadNotice ?? "";
   $("history-notice").hidden = !$("history-notice").textContent;
 }
-const acknowledgedReports = new Map();
+// Request deduplication for the current viewing episode, never an unread state.
+const reportReadAttempts = new Map();
+function reportIsVisible(report) {
+  if (mode !== "codex" || report.a !== agentId || report.g !== generation || report.id !== selected ||
+      !status.connected || document.hidden || !document.hasFocus() || document.querySelector(".conversation").inert) return false;
+  const item = $("messages").querySelector('[data-item-id="' + CSS.escape(report.itemId) + '"] .message-body');
+  if (!item) return false;
+  const rect = item.getBoundingClientRect(), viewport = $("message-scroll").getBoundingClientRect();
+  // Read the end of the actual reply; following file/command cards are optional.
+  return rect.height > 0 && rect.bottom > viewport.top && rect.bottom <= viewport.bottom + 1 &&
+    rect.right > viewport.left && rect.left < viewport.right;
+}
 function checkVisibleReport() {
   clearTimeout(receiptTimer);
   const report = visibleReport;
-  if (mode !== "codex" || !report || !status.connected || document.hidden || !document.hasFocus() || document.querySelector(".conversation").inert || !status.taskSummary?.readReceipts) return;
-  const key = report.a + ":" + report.id + ":" + viewEpoch;
-  if (acknowledgedReports.get(key) === report.token) return;
+  if (!report || !status.taskSummary?.readReceipts || !reportIsVisible(report)) return;
+  const epoch = viewEpoch, key = report.a + ":" + report.id + ":" + epoch + ":" + report.token;
+  const attempt = reportReadAttempts.get(key) ?? { count: 0, stopped: false, nextAt: 0 };
+  if (attempt.stopped || attempt.count >= 3) return;
   receiptTimer = setTimeout(async () => {
-    if (visibleReport !== report || report.g !== generation || report.id !== selected || !status.connected || document.hidden || !document.hasFocus() || document.querySelector(".conversation").inert) return;
-    const scroll = $("message-scroll"), item = $("messages").querySelector('[data-item-id="' + CSS.escape(report.itemId) + '"]');
-    if (!item || scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 80) return;
-    const rect = item.getBoundingClientRect(), viewport = scroll.getBoundingClientRect();
-    if (rect.bottom < viewport.top || rect.top > viewport.bottom) return;
-    // Suppress duplicate attempts in this viewing episode, including lost
-    // acknowledgements. This does not decide or persist an unread state.
-    acknowledgedReports.set(key, report.token);
+    if (viewEpoch !== epoch || visibleReport?.token !== report.token || !reportIsVisible(report)) return;
+    attempt.count++; attempt.stopped = true;
+    reportReadAttempts.set(key, attempt);
     try {
       const result = await agentApi(report.a, "/threads/" + report.id + "/read-receipt", { token: report.token });
       if (report.a === agentId && report.g === generation) refreshSidebarReports(true);
-      if (!result.accepted && visibleReport === report)
+      // Only an explicit pre-dispatch failure permits bounded revalidation.
+      // Old servers, lost HTTP responses and uncertain sends remain suppressed.
+      if (!result.accepted && result.officialReadSync?.retryable === true && attempt.count < 3) {
+        attempt.stopped = false; attempt.nextAt = Date.now() + attempt.count * 2000;
+        if (viewEpoch === epoch && visibleReport?.token === report.token) checkVisibleReport();
+      } else if (!result.accepted && viewEpoch === epoch && visibleReport?.token === report.token)
         toast("官方已读状态尚未确认，统计以官方为准");
     } catch { /* Do not replay an uncertain notification or infer local read. */ }
-  }, 800);
+  }, Math.max(800, attempt.nextAt - Date.now()));
 }
 function toast(text) {
   $("toast").textContent = text;
@@ -504,6 +516,7 @@ function resetTaskReads() {
   headHash = null;
   historyReadNotice = historyFailure = null;
   visibleReport = null;
+  reportReadAttempts.clear();
   clearTimeout(receiptTimer);
   updateHistoryNotice();
 }
@@ -2440,6 +2453,8 @@ $("older").onclick = () => read(historyFailure?.kind === "gap" ? "gap" : true);
 $("message-scroll").addEventListener("scroll", checkVisibleReport, { passive: true });
 document.addEventListener("visibilitychange", checkVisibleReport);
 window.addEventListener("focus", checkVisibleReport);
+window.addEventListener("resize", checkVisibleReport);
+new ResizeObserver(checkVisibleReport).observe($("messages"));
 $("message-scroll").addEventListener(
   "scroll",
   () => {

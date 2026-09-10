@@ -37,6 +37,12 @@ jobs:
         run: npm test
       - name: Official compatibility inventory
         run: npm run compatibility
+      - name: Visible report and official read notification regression
+        shell: pwsh
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts playwright-core@1.62.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/verify-report-read-ui.mjs
       - name: Windows placement and notification regressions
         shell: pwsh
         run: |

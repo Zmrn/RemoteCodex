@@ -59,3 +59,31 @@ test('a new turn arriving during the confirmation read cannot be reported as suc
   const result = await markOfficialReportRead(f.bridge, id, f.token, f.options);
   assert.equal(result.status, 'unconfirmed'); assert.equal(f.sent.length, 1);
 });
+
+test('empty or stale history items use the same authoritative owner report as the displayed page', async () => {
+  for (const items of [[], [{ id: 'item', type: 'agentMessage', text: 'stale history' }]]) {
+    const f = fixture(); f.data.turns[0].items = items;
+    const result = await markOfficialReportRead(f.bridge, id, f.token, f.options);
+    assert.equal(result.status, 'synced'); assert.equal(result.retryable, false); assert.equal(f.sent.length, 1);
+  }
+});
+
+test('an owner-deleted report or newer history turn cannot clear the viewed older report', async () => {
+  for (const change of [f => { f.state.turnHistory.history.entitiesByKey.turn.items = []; },
+    f => { f.data.turns.unshift({ id: 'newer', startedAt: 2, status: 'completed', items: [{ id: 'new', type: 'agentMessage', text: 'new return' }] }); }]) {
+    const f = fixture(); change(f);
+    const result = await markOfficialReportRead(f.bridge, id, f.token, f.options);
+    assert.equal(result.status, 'unavailable'); assert.equal(result.retryable, true); assert.equal(f.sent.length, 0);
+  }
+});
+
+test('only failures known to precede dispatch may retry, including identity changes and throwing transports', async () => {
+  const before = fixture(); before.bridge.desktop.owner = async () => { throw Error('owner unavailable'); };
+  assert.equal((await markOfficialReportRead(before.bridge, id, before.token, before.options)).retryable, true);
+  const changed = fixture(); changed.bridge.desktop.call = async () => { changed.bridge.desktop.identity = {}; return changed.data; };
+  assert.equal((await markOfficialReportRead(changed.bridge, id, changed.token, changed.options)).retryable, true);
+  assert.equal(changed.sent.length, 0);
+  const during = fixture(); during.bridge.desktop.ipc.broadcast = () => { throw Error('write outcome unknown'); };
+  const result = await markOfficialReportRead(during.bridge, id, during.token, during.options);
+  assert.equal(result.status, 'unconfirmed'); assert.equal(result.retryable, false);
+});

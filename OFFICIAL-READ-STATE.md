@@ -1,5 +1,17 @@
 # 官方与 Remote Codex 已读同步
 
+## 2026-09-10：可见回复与官方已读通知使用同一份内容（源码修复，待构建）
+
+本次真实只读排查确认：一个 idle 且 hasUnreadTurn=true 的任务，官方历史工具最新一轮的 items 为空，官方 owner 同轮仍有完整回复。旧 Bridge.read 在合并 owner 之前生成 reportReceipt，因此正文可见但回执为空，界面没有发出官方已读通知；同步函数又要求原始历史必须含同一回复，单改界面仍会被挡住。问题是两条官方数据接入路径不一致，不是本地未读缓存。
+
+现在回执从与正文完全相同的官方合并内容生成，随后才做媒体展示和分页；同步前也按同一合并规则核对最新回报。owner 中已删除的消息不会从历史恢复为回执，新轮次、非 idle、owner/连接/身份变化仍不能清除旧回报。没有直接改写官方文件，也没有用本地选中、completed 或回执代替官方 hasUnreadTurn。
+
+用户前台、有焦点且正文未被侧栏遮挡时，最新回复的正文末尾可见至少 800ms 即可请求官方标记已读；后面的文件/命令记录卡片无需滚完。只看旧内容或长回复开头不发送。页面滚动、尺寸/内容布局变化、唤醒和最新内容刷新都会重新检查。官方确认后重新采集官方统计，只有新的官方已读观察能消除蓝点。
+
+`officialReadSync.retryable=true` 只表示这次确定尚未进入通知发送，允许当前可见阅读中最多 3 次校验尝试（失败后间隔 2/4 秒）。离开页面、失焦或回报变化时重新检查可见性；HTTP 结果丢失、旧端未提供该字段、发送时异常和发送后未确认均不自动重发。浏览器内仅保存本次查看的请求去重信息，不落盘、不参与未读统计。
+
+回归入口：`test/conversation-pages.test.mjs`、`test/official-report-read.test.mjs`、`scripts/verify-report-read-ui.mjs`；覆盖历史空内容/滞后、owner 编辑/删除、新轮次、分页、实际回复后有长记录卡片、可见性、暂未就绪、未知发送、有限重试和草稿保留。后者贯穿共享页面、HTTP、生产同步函数和隔离官方 IPC 替身，不是实际官方写入或 APK 实测。当前真实只读检查为 Windows x64 官方 26.903.8094.0，本次不扩大官方版本、Chat/Work 或 VS Code 共存验证范围。
+
 ## 0.10.23：官方状态是唯一依据
 
 2026-09-10用户明确要求未读/运行状态完全以官方软件为准。此要求覆盖0.10.17～0.10.22中Remote自己定义已读、保存回执、用历史推断未读及安卓保留旧计数的约定。旧回执文件和旧安卓统计偏好不再读取或写入，也不用于迁移新的状态；设备、密钥、草稿及其他数据不受影响。
@@ -15,7 +27,9 @@
 复测：node --test test/official-task-state.test.mjs test/task-reports.test.mjs test/official-report-read.test.mjs；node scripts/verify-official-read-live.mjs（只读）；node scripts/verify-widget-ui.mjs；node scripts/verify-sidebar-navigation-ui.mjs；python scripts/verify-device-connections.py。旧版以下“持久化Remote回执/沿用缓存”的说明仅供历史追溯。
 
 
-0.10.21 对 Windows x64 官方 OpenAI.Codex **26.903.8094.0 的本机 Codex 任务**接入双向已读。手机和 Windows 控制端均通过目标电脑的桥接器同步；每台目标电脑需升级。26.901.6511.0 保留原有核心支持，已读仍只使用 Remote Codex 自有回执。普通 Chat、Work 和官方远程执行主机不在本次已读同步范围。
+## 0.10.21 历史实现（以下自有回执/缓存规则已被 0.10.23 替代）
+
+0.10.21 对 Windows x64 官方 OpenAI.Codex **26.903.8094.0 的本机 Codex 任务**接入双向已读。手机和 Windows 控制端均通过目标电脑的桥接器同步；每台目标电脑需升级。此节保留当时流程用于追溯；现行行为以上方最新说明为准。普通 Chat、Work 和官方远程执行主机不在该次已读同步范围。
 
 ## 官方读过 → 小组件
 

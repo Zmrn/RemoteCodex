@@ -10,6 +10,8 @@ import { mergeTurns, overlaps } from "../public/conversation-history.mjs";
 import { Bridge, ROOT } from "../src/bridge.mjs";
 import path from "node:path";
 import { mergeLiveTurnItems } from "../src/state.mjs";
+import { reportReceipt } from "../src/task-reports.mjs";
+fs.mkdirSync(path.join(ROOT, 'test/scratch'), { recursive: true });
 const turn = (id, count) => ({
   id,
   startedAt: Number(id.slice(1)),
@@ -187,6 +189,34 @@ test("paged reads request two official turns; identical head uses tiny response 
       .data.thread.status.type,
     "idle",
   );
+});
+
+test('read receipts follow displayed owner items through paging, missing history, edits and deletions', async () => {
+  const dir = fs.mkdtempSync(path.join(ROOT, 'test/scratch/receipt-page-'));
+  const b = new Bridge(dir); b.connected = true;
+  const id = '11111111-1111-4111-8111-111111111111';
+  const data = { thread: { id, kind: 'codex', status: { type: 'idle' } }, turns: [turn('t1', 0)] };
+  const live = { id, threadRuntimeStatus: { type: 'idle' }, turnHistory: { history: { entitiesByKey: {
+    t1: { turnId: 't1', turnStartedAtMs: 1000, status: 'completed', items: turn('t1', 91).items },
+  } } } };
+  b.desktop = { call: async () => structuredClone(data) }; b.live.set(id, { state: live });
+  const first = await b.readPage(id);
+  assert.equal(first.data.turns[0].items.length, 40);
+  assert.equal(first.reportReceipt.itemId, 't1i90');
+  assert.deepEqual(first.reportReceipt, reportReceipt(mergeLiveTurnItems(data, live)));
+  assert.ok(b.taskReports.issued.has(id + ':' + first.reportReceipt.token));
+  const same = await b.readPage(id, null, first.data.page.nextCursor, first.headHash);
+  assert.equal(same.notModified, true); assert.deepEqual(same.reportReceipt, first.reportReceipt);
+  const older = await b.readPage(id, first.data.page.nextCursor);
+  assert.deepEqual(older.reportReceipt, first.reportReceipt, 'a cached older page must not replace the head receipt with an older report');
+  assert.ok(!older.data.turns[0].items.some(i => i.id === first.reportReceipt.itemId));
+  live.turnHistory.history.entitiesByKey.t1.items.at(-1).text = 'edited owner return';
+  const edited = await b.readPage(id);
+  assert.notEqual(edited.reportReceipt.token, first.reportReceipt.token);
+  data.turns[0].items = turn('t1', 91).items;
+  live.turnHistory.history.entitiesByKey.t1.items = [];
+  const deleted = await b.readPage(id);
+  assert.equal(deleted.reportReceipt, null); assert.equal(deleted.data.turns[0].items.length, 0);
 });
 
 test("owner-only turns survive head paging when official history is seven turns behind", async () => {
