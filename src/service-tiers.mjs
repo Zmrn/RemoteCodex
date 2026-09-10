@@ -1,14 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
 // Availability metadata only. Current selection always comes from the owner stream.
-export function withServiceTiers(models) {
+export function withServiceTiers(models, officialHome = null) {
   let cache;
   try {
+    if (!officialHome || !path.isAbsolute(officialHome)) throw Error("Official catalog directory unavailable");
     cache = JSON.parse(
       fs.readFileSync(
         path.join(
-          process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex"),
+          officialHome,
           "models_cache.json",
         ),
         "utf8",
@@ -18,6 +18,7 @@ export function withServiceTiers(models) {
   const fresh =
     cache &&
     Number.isFinite(Date.parse(cache.fetched_at)) &&
+    Date.now() >= Date.parse(cache.fetched_at) &&
     Date.now() - Date.parse(cache.fetched_at) < 86400000;
   return models.map((model) => ({
     ...model,

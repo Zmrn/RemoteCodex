@@ -63,6 +63,7 @@ try {
   assert.equal(await page.locator("#project-name").textContent(), "无项目");
   await choose("laptop-project");
   await selectDevice("测试电脑");
+  await page.waitForFunction(() => document.querySelector('#project-name').textContent === 'N3');
   assert.equal(await page.locator("#project-name").textContent(), "N3");
   available = false; await page.locator("#refresh").click();
   await page.waitForFunction(() => document.querySelector("#project-name").textContent === "所选项目不可用");

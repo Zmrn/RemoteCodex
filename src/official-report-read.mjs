@@ -1,7 +1,7 @@
 import { OFFICIAL, TOOLS, protocolBroadcast } from './official-protocol.mjs';
 import { OfficialReadState } from './official-read-state.mjs';
 import { reportReceipt } from './task-reports.mjs';
-import { mergeLiveTurnItems, runtimeStatus } from './state.mjs';
+import { mergeLiveTurnItems, liveTurns } from './state.mjs';
 
 // User-triggered receipt synchronization only. No disk writes, task messages,
 // UI automation, automatic reconnection or replay of an uncertain notification.
@@ -28,7 +28,8 @@ export async function markOfficialReportRead(bridge, id, token, { reader = new O
       current();
       const live = bridge.live?.get(id);
       return live?.owner === owner.handledByClientId && live.state?.id === id &&
-        runtimeStatus(live.state).type === 'completed' && reportReceipt(mergeLiveTurnItems(data, live.state))?.token === token;
+        live.state.threadRuntimeStatus?.type === 'idle' && liveTurns(live.state).at(-1)?.status === 'completed' &&
+        reportReceipt(mergeLiveTurnItems(data, live.state))?.token === token;
     };
     // Check the current stream immediately before dispatch. There is no await
     // between this guard and the notification. The official receiver separately

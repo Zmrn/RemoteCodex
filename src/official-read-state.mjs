@@ -46,6 +46,7 @@ export function parseOfficialReadState(global) {
 }
 
 function processMetadata(identity, includeIdentity = false) {
+  if (!identity?.officialPid || !identity.appToolsPipe?.image) return Promise.resolve(null);
   return new Promise(resolve => {
     const child = execFile(PYTHON, [fileURLToPath(new URL('./official_home.py', import.meta.url))],
       { windowsHide: true, timeout: 2500, maxBuffer: 65536 }, (error, stdout) => {
@@ -57,10 +58,10 @@ function processMetadata(identity, includeIdentity = false) {
     child.stdin.end(JSON.stringify({ pid: identity.officialPid, image: identity.appToolsPipe.image, identity: includeIdentity }));
   });
 }
-const resolveHome = async identity => (await processMetadata(identity))?.home ?? null;
+export const resolveOfficialHome = async identity => (await processMetadata(identity))?.home ?? null;
 
 export class OfficialReadState {
-  constructor(desktop, { homeResolver = resolveHome, now = Date.now } = {}) {
+  constructor(desktop, { homeResolver = resolveOfficialHome, now = Date.now } = {}) {
     this.desktop = desktop; this.homeResolver = homeResolver; this.now = now;
   }
   supported() {

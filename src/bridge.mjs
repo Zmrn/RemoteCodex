@@ -16,6 +16,7 @@ import { readOfficialHistory } from "./history-read.mjs";
 import { TaskReports } from "./task-reports.mjs";
 import { DurableJson } from "./durable-json.mjs";
 import { markOfficialReportRead } from "./official-report-read.mjs";
+import { resolveOfficialHome } from "./official-read-state.mjs";
 import { SubscriptionLeases } from "./subscriptions.mjs";
 import { Reconnector } from "../public/reconnect.mjs";
 import {
@@ -41,7 +42,7 @@ export const ROOT = path.resolve(
 export class Bridge extends EventEmitter {
   constructor(
     dataDir = DATA_DIR,
-    { desktopFactory = (context) => new Desktop(context), retryDelays } = {},
+    { desktopFactory = (context) => new Desktop(context), retryDelays, homeResolver = resolveOfficialHome } = {},
   ) {
     super();
     this.dataDir = dataDir;
@@ -62,6 +63,7 @@ export class Bridge extends EventEmitter {
     this.pages = new ConversationPages();
     this.taskReports = new TaskReports(this);
     this.desktopFactory = desktopFactory;
+    this.homeResolver = homeResolver;
     this.retryDelays = retryDelays;
     this.connectionGeneration = 0;
     this.subscriptions = new SubscriptionLeases(id => this.releaseSubscription(id));
@@ -114,8 +116,11 @@ export class Bridge extends EventEmitter {
     this.desktop = desktop;
     try {
       await desktop.connect();
+      const identity = desktop.identity;
+      const home = await this.homeResolver(identity).catch(() => null);
       if (generation !== this.connectionGeneration || this.desktop !== desktop)
         throw Error("Viewer connection cancelled");
+      this.officialStorage = { desktop, identity, home };
     } catch (e) {
       desktop.close();
       throw e;
@@ -161,6 +166,11 @@ export class Bridge extends EventEmitter {
         "connection-interrupted: reconnect before reading or sending",
       );
   }
+  officialDataHome() {
+    const source = this.officialStorage;
+    return this.connected && source?.desktop === this.desktop && source?.identity === this.desktop?.identity &&
+      typeof source?.home === "string" && path.isAbsolute(source.home) ? source.home : null;
+  }
   markOfficialReportRead(id, token) { return markOfficialReportRead(this, id, token); }
   requireSupportedBuild() {
     assertSupportedBuild(this.desktop?.identity?.appToolsPipe?.image);
@@ -194,6 +204,7 @@ export class Bridge extends EventEmitter {
       observedAt: new Date().toISOString(),
       models: withServiceTiers(
         parseModels(await this.desktop.refreshCatalog()),
+        this.officialDataHome(),
       ),
     };
   }
@@ -243,7 +254,7 @@ export class Bridge extends EventEmitter {
       ...tierOverride(
         input.serviceTier,
         input.model ?? current.model,
-        withServiceTiers(parseModels(this.desktop.catalog)),
+        withServiceTiers(parseModels(this.desktop.catalog), this.officialDataHome()),
       ),
     };
     if (!Object.keys(settings).length) throw Error("没有选择需要修改的设置");

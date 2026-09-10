@@ -50,11 +50,15 @@ test("reject arbitrary paths and unsupported environments before dispatch", () =
     assert.throws(() => projectSelection(input), /无效/);
   assert.throws(() => savedProjectTarget(selection, { projects: [project, project] }), /无法确认/);
 });
-test("projectless creation stays compatible; project-backed fallback rows stay in their project", async t => {
+test("projectless creation stays compatible; local creation records never resurrect absent official tasks", async t => {
   const { bridge, calls } = fixture(t);
   await bridge.create("projectless-001", "probe");
   assert.equal(calls.length, 1); assert.equal(calls[0].args.target.type, "projectless");
-  assert.equal(modeCatalog({}, "codex", { [id]: { projectId: project.projectId } })[0].projectId, project.projectId);
+  const records = { [id]: { projectId: project.projectId, title: "old title" } };
+  assert.deepEqual(modeCatalog({}, "codex", records), []);
+  const official = { id, kind: "codex", title: "official title", projectId: "moved" };
+  assert.deepEqual(modeCatalog({ threads: [official] }, "codex", records), [official]);
+  assert.equal(records[id].title, "old title", "creation safety metadata is retained");
 });
 test("unknown creation acknowledgement never dispatches a second task after restart", async t => {
   const { bridge, calls } = fixture(t), original = bridge.desktop.call;

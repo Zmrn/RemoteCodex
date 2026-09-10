@@ -40,7 +40,9 @@ let current = {
   },
   answer = null,
   runtime = "idle",
-  connected = true;
+  connected = true,
+  confirmAnswer = false,
+  confirmSettings = true;
 const items = [
   {
     id: "citation-fixture",
@@ -125,7 +127,7 @@ await page.route(address + "/api/**", async (route) => {
   if (p.endsWith("/settings")) {
     const body = req.postDataJSON();
     writes.push({ route: p, ...body });
-    current = {
+    if (confirmSettings) current = {
       ...current,
       ...body.settings,
       ...(body.settings.permissionMode
@@ -154,7 +156,7 @@ await page.route(address + "/api/**", async (route) => {
     });
   }
   if (p.endsWith("/threads/" + id)) {
-    const replies = answer
+    const replies = answer && confirmAnswer
       ? [
           {
             id: "answer",
@@ -246,6 +248,30 @@ try {
     writes.find((w) => w.route.endsWith("/questions")).answers[0].answer,
     "蓝色",
   );
+  await page.locator('#refresh').click();
+  assert.equal(await page.locator('.question-submit').count(), 1, 'receipt is not an official answer');
+  assert.equal(await page.locator('.question-answer').count(), 0);
+  assert.equal(await page.locator('.question-input').inputValue(), '蓝色', 'answer draft survives refresh');
+  await page.locator('.question-submit').click();
+  await page.waitForFunction(() => document.querySelector('.question-state')?.textContent.includes('已提交'));
+  const answers = writes.filter(w => w.route.endsWith('/questions'));
+  assert.equal(answers[0].requestId, answers[1].requestId, 'explicit retry retains same request ID');
+  confirmAnswer = true;
+  await page.locator('#refresh').click();
+  await page.locator('.question-answer').waitFor();
+  assert.equal(await page.locator('.question-answer').textContent(), '蓝色');
+  const legacy = await page.evaluate(async () => {
+    const { QuestionsUI } = await import('/questions-ui.mjs');
+    const ui = new QuestionsUI(async () => {});
+    const context = { agent: 'device', id: 'task', connected: true };
+    ui.restore({ drafts: [['device:task:request', { q: '本地回答草稿' }]], done: ['device:task:request'] });
+    ui.index([]);
+    const card = ui.render({ type: 'userInputResponse', requestId: 'request', completed: false,
+      questions: [{ id: 'q', question: '官方仍在提问' }] }, context);
+    return { answered: !!card.querySelector('.question-answer'), draft: card.querySelector('textarea').value,
+      hasDrafts: ui.hasDrafts(), durableFields: Object.keys(ui.snapshot()) };
+  });
+  assert.deepEqual(legacy, { answered: false, draft: '本地回答草稿', hasDrafts: true, durableFields: ['drafts'] });
   assert.ok(
     !(await page.locator("#messages").innerText()).includes(
       "send_user_message_question_reply",
@@ -260,6 +286,16 @@ try {
       "true",
   );
   assert.equal(writes.at(-1).settings.serviceTier, "priority");
+  confirmSettings = false;
+  await page.locator('#speed-toggle').click();
+  await page.waitForFunction(() => !document.querySelector('#speed-toggle')?.disabled);
+  assert.equal(writes.at(-1).settings.serviceTier, 'default');
+  assert.equal(await page.locator('#speed-toggle').getAttribute('aria-pressed'), 'true', 'menu follows official readback even after accepted receipt');
+  confirmSettings = true;
+  current = { ...current, serviceTier: 'default' };
+  await page.locator('#refresh').evaluate(button => button.click());
+  await page.waitForFunction(() => document.querySelector('#speed-toggle')?.getAttribute('aria-pressed') === 'false');
+  current = { ...current, serviceTier: 'priority' };
   await page.screenshot({
     path: path.join(ROOT, "evidence/features-ui-desktop.png"),
   });
@@ -366,6 +402,9 @@ try {
         result: "passed",
         checks: [
           "async-answer-controls",
+          "receipt-never-becomes-answered-and-retry-is-idempotent",
+          "legacy-done-ignored-local-answer-draft-preserved",
+          "settings-ack-does-not-override-official-readback",
           "wrapped-history-answer",
           "image-preview-and-download",
           "fast-toggle",

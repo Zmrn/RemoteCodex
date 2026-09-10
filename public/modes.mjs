@@ -6,16 +6,9 @@ export const matchesMode = (thread, mode) => thread?.kind === (mode === "chat" ?
 export const modeTaskKey = (agent, thread, mode) =>
   thread == null && mode === "chat" ? agent + ":chat:null" : agent + ":" + thread;
 
-export function modeCatalog(data, mode, testThreads = {}) {
+export function modeCatalog(data, mode) {
   const rows = [...(data.pinnedThreads ?? []), ...(data.threads ?? [])];
   const result = [...new Map(rows.filter(t => matchesMode(t, mode)).map(t => [t.id, t])).values()];
-  if (mode !== "chat") for (const [id, t] of Object.entries(testThreads)) {
-    if (!result.some(row => row.id === id)) result.unshift({
-      id, title: t.title, kind: "codex", status: "unknown",
-      updatedAt: Date.parse(t.createdAt) / 1000,
-      ...(t.projectId ? { projectId: t.projectId } : {}),
-    });
-  }
   return result;
 }
 

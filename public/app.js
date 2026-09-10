@@ -518,8 +518,9 @@ const questionUI = new QuestionsUI(async (context, payload) => {
   const j = await journal(
     context.agent,
     context.id,
-    "question-answer",
+    "question-answer:" + (payload.questionRequestId ?? payload.answers[0]?.questionItemId),
     payload,
+    "question-answer",
   );
   const result = await agentApi(
     context.agent,
@@ -528,7 +529,8 @@ const questionUI = new QuestionsUI(async (context, payload) => {
   );
   if (result.status !== "accepted")
     throw Error("回答结果未知，请刷新核对，不要重复发送");
-  j.clear();
+  // Retain the per-question request ID: acknowledgement is not an answer.
+  // An explicit retry of the same answer must not dispatch it twice.
   if (context.agent === agentId && context.id === selected)
     setTimeout(() => read(), 250);
 }, scheduleDraftBackup);
@@ -626,14 +628,11 @@ function permissions() {
     status.readOnlyThreadIds ??
     status.protectedThreadIds ?? [status.protectedThreadId]
   ).includes(selected);
-  const probe = mode === "codex" && Object.hasOwn(status.testThreads ?? {}, selected);
   const chat = mode === "chat";
   const chatAccess = chatComposer(status, taskData?.thread);
   const writable = chat ? !readOnlyTask && chatAccess.writable :
     (fresh && !!currentAgent() && status.existingCodexWritable === true) ||
-    (!readOnlyTask &&
-      (probe ||
-        (status.existingCodexWritable && taskData?.thread?.kind === "codex")));
+    (!readOnlyTask && status.existingCodexWritable === true && taskData?.thread?.kind === "codex");
   const inFlight = busy.has(fresh ? agentId + ":create" : taskKey());
   projectPicker.update({ agentId, mode, fresh, projects, status, busy: inFlight, booting });
   const settingsAvailable =
@@ -684,8 +683,7 @@ function permissions() {
     $("permission-display").disabled =
     $("settings-nav").disabled =
       !settingsAvailable || inFlight;
-  const stopSupported = status.interrupt?.supported === true ||
-    (status.interrupt === undefined && probe && !(status.testExcludedThreadIds ?? []).includes(selected));
+  const stopSupported = status.interrupt?.supported === true;
   const stopRunning = taskData?.live?.status?.confirmed
     ? ["running", "waiting-approval", "waiting-user-input"].includes(taskData.live.status.type)
     : taskData?.thread?.status?.type === "active";
@@ -737,13 +735,15 @@ function modelSettings(state) {
   const pending = pendingSettings.get(taskKey());
   const settings = { ...state?.latestThreadSettings, ...pending };
   const model = settings?.model ?? state?.latestModel;
+  const loaded = ["idle", "active"].includes(taskData?.thread?.status?.type);
+  const displayedModel = loaded && !model ? "模型未确认" : modelName(model);
   $("model-display").replaceChildren(
     icon("bolt"),
-    node("span", "model-name", modelName(model)),
+    node("span", "model-name", displayedModel),
   );
   $("model-display").setAttribute(
     "aria-label",
-    "选择模型 · " + modelName(model),
+    "选择模型 · " + displayedModel,
   );
   $("effort-display").replaceChildren(
     node(
@@ -753,7 +753,7 @@ function modelSettings(state) {
         pending
           ? pending.effort
           : (settings?.effort ?? state?.latestReasoningEffort)
-      ] ?? "默认",
+      ] ?? (loaded && !pending ? "未确认" : "默认"),
     ),
     icon("chevron"),
   );
@@ -778,7 +778,7 @@ function modelSettings(state) {
         ? "工作区权限"
         : policy === "readOnly"
           ? "只读权限"
-          : "桌面默认权限";
+          : loaded && !pending ? "权限未确认" : "桌面默认权限";
   $("permission-display").classList.toggle(
     "full-access",
     policy === "dangerFullAccess",
@@ -788,6 +788,16 @@ function modelSettings(state) {
     ? "下次发送时应用所选模型"
     : "更换模型与推理强度";
   $("effort-display").title = "调整推理强度";
+  const target = settingsTarget;
+  if (settingsContextMatches(target) && target.loaded && !pending) {
+    const choice = { ...state?.latestThreadSettings,
+      model: state?.latestThreadSettings?.model ?? state?.latestModel,
+      effort: state?.latestThreadSettings?.effort ?? state?.latestReasoningEffort };
+    const changed = JSON.stringify(target.choice) !== JSON.stringify(choice);
+    target.current = state?.latestThreadSettings;
+    target.choice = choice;
+    if (changed) renderSettingsMenu();
+  }
 }
 function setConnection(connected, text) {
   if (!connected) {
@@ -1100,7 +1110,7 @@ async function refresh(g = generation, options = {}) {
   ]);
   if (g !== generation) return;
   status = s;
-  threads = modeCatalog(t.data, mode, status.testThreads);
+  threads = modeCatalog(t.data, mode);
   projects = (p.data.projects ?? []).filter(p => mode === "chat" ? (p.projectKind ?? p.kind) === "chatgpt" || threads.some(t => t.projectId === p.projectId) : (p.projectKind ?? p.kind) !== "chatgpt");
   for (const thread of threads)
     rememberSidebarStatus(
@@ -1141,7 +1151,7 @@ async function pollSidebar() {
       return;
     }
     status = { ...status, ...snapshot };
-    threads = modeCatalog(list.data, mode, snapshot.testThreads);
+    threads = modeCatalog(list.data, mode);
     for (const t of threads)
       rememberSidebarStatus(
         t.id,
@@ -1333,7 +1343,10 @@ async function selectThread(id, record = true, { preserveDrawer = false } = {}) 
   });
   await read();
 }
-function renderItem(item) {
+function renderItem(item, turnId) {
+  const pending = item.type === "userInputResponse" && liveSettingsState?.requests?.find(r =>
+    r.method === USER_INPUT_REQUEST && r.params?.turnId === turnId && String(r.id) === String(item.requestId));
+  if (pending) item = { ...item, completed: false, answers: undefined, questions: pending.params.questions ?? item.questions };
   const question = mode === "codex" && questionUI.render(item, {
     agent: agentId,
     id: selected,
@@ -1454,7 +1467,7 @@ function displayTurns() {
       ),
     );
     for (const item of t.items ?? []) {
-      const n = renderItem(item);
+      const n = renderItem(item, t.id);
       if (n) {
         n.dataset.itemId = item.id;
         wrapper.append(n);
@@ -1474,7 +1487,7 @@ function displayTurns() {
         title = node("span", "card-label");
       symbol.append(icon("files"));
       title.append(
-        node("strong", "", `已编辑 ${changed.size} 个文件`),
+        node("strong", "", `${changed.size} 个文件变更记录`),
         node("small", "", "查看这轮对话中的文件变更"),
       );
       summary.append(symbol, title, icon("chevron"));
@@ -1500,7 +1513,7 @@ function displayTurns() {
         title = node("span", "card-label");
       symbol.append(icon("device"));
       title.append(
-        node("strong", "", `执行了 ${commands.length} 条命令`),
+        node("strong", "", `${commands.length} 条命令记录`),
         node(
           "small",
           "",
@@ -1718,12 +1731,7 @@ async function readTask(job, older) {
     if (entry) {
       entry.title = taskData.thread.title;
       entry.status = taskData.thread.status.type;
-    } else
-      threads.unshift({
-        ...taskData.thread,
-        id,
-        status: taskData.thread.status.type,
-      });
+    }
     rememberSidebarStatus(
       id,
       sidebarStatus(taskData.thread.status, r.live?.status),
@@ -1931,7 +1939,7 @@ function editAgent(id) {
   $("agent-dialog").showModal();
   deviceSettings.open(a);
 }
-function journal(a, t, operation, payload) {
+function journal(a, t, operation, payload, legacyOperation) {
   const key = "remote-bridge-request:" + a + ":" + t + ":" + operation,
     content = JSON.stringify(payload);
   return crypto.subtle
@@ -1943,6 +1951,8 @@ function journal(a, t, operation, payload) {
       let old;
       try {
         old = JSON.parse(localStorage.getItem(key));
+        if (!old && legacyOperation)
+          old = JSON.parse(localStorage.getItem("remote-bridge-request:" + a + ":" + t + ":" + legacyOperation));
       } catch {}
       const value =
         old?.hash === hash ? old : { hash, id: crypto.randomUUID() };
@@ -2684,13 +2694,7 @@ function renderSettingsMenu(focus = false) {
         model.id,
         choice.model,
         () => {
-          const effort = model.efforts.includes(choice.effort)
-            ? choice.effort
-            : choice.effort
-              ? model.efforts.includes("medium")
-                ? "medium"
-                : model.efforts[0]
-              : undefined;
+          const effort = model.efforts.includes(choice.effort) ? choice.effort : undefined;
           applySetting({ model: model.id, ...(effort ? { effort } : {}) });
         },
       );
@@ -2762,17 +2766,15 @@ function renderSettingsMenu(focus = false) {
     const fast = model?.serviceTiers?.find((t) =>
       ["priority", "fast"].includes(t.id),
     );
-    const active = ["priority", "fast"].includes(
-      choice.serviceTier ?? t.current?.serviceTier,
-    );
+    const tier = choice.serviceTier ?? t.current?.serviceTier;
+    const active = ["priority", "fast"].includes(tier);
     speed.append(icon("bolt"));
-    speed.setAttribute("aria-pressed", String(active));
+    speed.setAttribute("aria-pressed", t.loaded && tier === undefined ? "mixed" : String(active));
     speed.title = !t.id
       ? "官方新建接口尚未提供首轮加速参数，创建后可切换"
       : !fast
         ? "此模型暂未提供加速档位"
-        : (choice.model === "gpt-6-astra" ? "2× speed" : "1.5× speed") +
-          " · 用量更多";
+        : [tier === undefined ? "当前加速状态未确认" : null, fast.name ?? "加速", fast.description].filter(Boolean).join(" · ");
     speed.setAttribute("aria-label", speed.title);
     speed.disabled = !t.loaded || (!fast && !active);
     speed.onclick = () =>
@@ -2921,6 +2923,8 @@ async function applySetting(choice, keepOpen = false) {
   try {
     if (!loaded || choice.model === "") {
       const next = { ...(pendingSettings.get(key) ?? {}), ...choice };
+      if (choice.model && choice.effort === undefined && !t.models.find(m => m.id === choice.model)?.efforts.includes(next.effort))
+        delete next.effort;
       if (choice.model === "") {
         delete next.model;
         delete next.effort;
@@ -2950,9 +2954,13 @@ async function applySetting(choice, keepOpen = false) {
       await read();
       if (!settingsContextMatches(t)) return;
       t.current = liveSettingsState?.latestThreadSettings;
-      t.choice = { ...t.choice, ...choice };
+      t.choice = {
+        ...t.current,
+        model: t.current?.model ?? liveSettingsState?.latestModel,
+        effort: t.current?.effort ?? liveSettingsState?.latestReasoningEffort,
+      };
       if (!keepOpen && settingsTarget === t) closeSettingsMenu();
-      toast("官方会话已接受，下一轮生效");
+      toast("设置已提交，当前显示以官方返回为准");
     }
   } catch (e) {
     if (settingsTarget === t) {

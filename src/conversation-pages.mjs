@@ -129,7 +129,8 @@ export class ConversationPages {
     const turns = new Map();
     for (const { turn, item } of selected) {
       if (!turns.has(turn.id))
-        turns.set(turn.id, { ...turn, items: [], bridgePartial: true });
+        turns.set(turn.id, { ...turn, items: [], bridgePartial: true,
+          bridgeItemIds: (turn.items ?? []).map(i => i.id) });
       if (item) turns.get(turn.id).items.unshift(item);
     }
     for (const turn of turns.values()) {

@@ -2,7 +2,6 @@ import { OFFICIAL, EVENTS, protocolRequest } from "./official-protocol.mjs";
 import { validateImageUrls, imagesFromBody } from "../public/image-input.mjs";
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import { createHash } from "node:crypto";
 export const queueRevision = (messages) =>
   createHash("sha256").update(JSON.stringify(messages)).digest("hex");
@@ -78,10 +77,7 @@ export function publicQueueMessage(m, multiImageInput = true) {
 export class OfficialQueue {
   constructor(
     bridge,
-    file = path.join(
-      process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex"),
-      OFFICIAL.storage.globalStateFile,
-    ),
+    file = null,
   ) {
     this.bridge = bridge;
     this.file = file;
@@ -117,7 +113,10 @@ export class OfficialQueue {
   }
   disk(id) {
     // Official storage is read-only. All mutations go to its live owner by IPC.
-    const state = JSON.parse(fs.readFileSync(this.file, "utf8"))[
+    const home = this.bridge.officialDataHome?.();
+    const file = this.file ?? (home ? path.join(home, OFFICIAL.storage.globalStateFile) : null);
+    if (!file) throw Error("官方队列目录尚未确认，请重新连接后重试");
+    const state = JSON.parse(fs.readFileSync(file, "utf8"))[
       OFFICIAL.storage.queueKey
     ];
     if (

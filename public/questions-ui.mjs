@@ -11,15 +11,17 @@ export class QuestionsUI {
     this.onChange = onChange;
     this.drafts = new Map();
     this.sending = new Set();
-    this.done = new Set();
+    this.confirmed = new Set();
   }
-  snapshot() { return { drafts: [...this.drafts], done: [...this.done] }; }
+  snapshot() { return { drafts: [...this.drafts] }; }
   restore(saved) {
     this.drafts = new Map(saved?.drafts ?? []);
-    this.done = new Set(saved?.done ?? []);
+    // Legacy done flags were inferred from receipts. Never restore them as facts.
+    this.confirmed.clear();
   }
-  hasDrafts() { return [...this.drafts].some(([key, answers]) => !this.done.has(key) && Object.values(answers).some(Boolean)); }
+  hasDrafts() { return [...this.drafts].some(([key, answers]) => !this.confirmed.has(key) && Object.values(answers).some(Boolean)); }
   index(turns) {
+    this.confirmed.clear();
     this.answers = new Map();
     this.known = new Set(
       turns
@@ -49,10 +51,8 @@ export class QuestionsUI {
           .filter((q) => this.answers.has(q.id))
           .map((q) => [q.id, this.answers.get(q.id)]),
       );
-    const completed =
-      questions.every((q) => Object.hasOwn(answers, q.id)) ||
-      this.done.has(key);
-    if (completed && !this.done.has(key)) { this.done.add(key); this.onChange(); }
+    const completed = questions.every((q) => Object.hasOwn(answers, q.id));
+    if (completed) this.confirmed.add(key);
     card.questionKey = key;
     card.questionSignature = JSON.stringify({ questions, answers, completed, connected: context.connected, sending: this.sending.has(key) });
     let draft = this.drafts.get(key);
@@ -64,7 +64,7 @@ export class QuestionsUI {
     for (const q of questions) {
       card.append(node("p", "question-title", q.title));
       if (completed) {
-        card.append(node("p", "question-answer", answers[q.id] ?? draft[q.id]));
+        card.append(node("p", "question-answer", answers[q.id]));
         continue;
       }
       const input = node("textarea", "question-input");
@@ -133,14 +133,12 @@ export class QuestionsUI {
                   })),
                 },
           );
-          this.done.add(key);
-          this.onChange();
-          status.textContent = "已提交到官方会话";
+          status.textContent = "已提交，等待官方回答记录确认";
         } catch (e) {
           status.textContent = e.message;
         } finally {
           this.sending.delete(key);
-          if (!this.done.has(key)) button.disabled = !context.connected;
+          button.disabled = !context.connected;
         }
       };
       card.append(button, status);
@@ -161,7 +159,7 @@ export class QuestionsUI {
       ? Object.fromEntries(
           qs.map((q) => [q.id, (item.answers?.[q.id] ?? []).join("\n")]),
         )
-      : undefined;
+      : {};
     return this.card(context, "request", qs, item.requestId, answers);
   }
 }

@@ -10,7 +10,7 @@ Windows 与 Android 共用项目下拉。各设备分别保存选择，并随草
 2. 用户提交 `/threads`，携带 `project: { projectId, environment: "local" }`。后端发送前重新查询当前设备官方项目列表；只接受这份列表里的 ID。
 3. 官方 `create_thread` 收到 `target: { type: "project", projectId, environment: { type: "local" } }`。没有启动另一个 Codex 后端，没有改写官方配置/数据库。
 4. 创建前持久化请求标识；同一请求重试不会创建第二个任务。项目失效、设备断开、桌面连接更换时保留草稿并报错；不回退到无项目。
-5. 真实 `threadId` 沿用官方读取、owner 发现与后续发送。官方列表若暂未返回新任务，界面以桥接器创建记录补入正确项目，状态显示未知，直到读到实时状态。
+5. 真实 `threadId` 沿用官方读取、owner 发现与后续发送。0.10.26 起列表不再按桥接器创建记录补行，避免已归档/移除的任务复活；新任务可立即按官方返回 ID 打开，侧栏等待官方列表更新。旧创建记录仍用于请求保护，见 OFFICIAL-DATA.md。
 
 ## 复测
 

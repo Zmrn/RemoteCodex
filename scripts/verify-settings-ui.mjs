@@ -3,12 +3,19 @@ import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { startServer } from "../src/server.mjs";
 const { chromium } = await import(
   process.env.REMOTE_BRIDGE_PLAYWRIGHT || "playwright-core"
 );
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const base = "http://127.0.0.1:43127",
-  id = "77777777-7777-4777-8777-777777777777",
+fs.mkdirSync(path.join(root, "work"), { recursive: true });
+fs.mkdirSync(path.join(root, "evidence"), { recursive: true });
+const dataDir = fs.mkdtempSync(path.join(root, "work/settings-ui-"));
+fs.writeFileSync(path.join(dataDir, "update-settings.json"), '{"automatic":false}');
+const { server, address: base } = await startServer({ port: 0, bridge: {
+  dataDir, on() {}, off() {}, connect: async () => {}, disconnect() {},
+} });
+const id = "77777777-7777-4777-8777-777777777777",
   unloaded = "88888888-8888-4888-8888-888888888888";
 const models = [
   "gpt-6-astra",
@@ -66,6 +73,9 @@ await page.route(base + "/api/**", async (route) => {
       ],
     });
   if (p === "/api/agents/select") return json({});
+  if (p.endsWith("/updates")) return json({ supported: false, automatic: false });
+  if (p.endsWith("/updates/activity")) return json({ accepted: true });
+  if (p.endsWith("/task-summary")) return json({ schemaVersion: 2, statePolicy: 'official-only', threads: [] });
   if (p.endsWith("/status"))
     return json({ connected: true, existingCodexWritable: true });
   if (p.endsWith("/projects")) return json({ data: { projects: [] } });
@@ -396,7 +406,6 @@ try {
   await closed();
   assert.deepEqual(requests.at(-1).settings, {
     model: "gpt-5.3-codex-spark",
-    effort: "medium",
   });
   report.checks.modelSwitchNeverCarriesUnsupportedEffort = true;
   assert.deepEqual(report.errors, []);
@@ -413,5 +422,7 @@ try {
     JSON.stringify(report, null, 2),
   );
   await browser.close();
+  server.closeAllConnections();
+  await new Promise(resolve => server.close(resolve));
   console.log(JSON.stringify(report, null, 2));
 }

@@ -7,15 +7,19 @@ export function mergeTurns(current, incoming, older = false) {
       if (!older || !previous) map.set(turn.id, turn);
       continue;
     }
-    const items = new Map(
-      (previous.items ?? []).map((item) => [item.id, item]),
-    );
+    // The newest official snapshot owns membership and order, including removals.
+    // A page from an older cursor can fill gaps but cannot resurrect deleted IDs.
+    const ids = older ? previous.bridgeItemIds : turn.bridgeItemIds;
+    const positions = Array.isArray(ids) ? new Map(ids.map((id, n) => [id, n])) : null;
+    const items = new Map((previous.items ?? [])
+      .filter(item => !positions || positions.has(item.id)).map(item => [item.id, item]));
     for (const item of turn.items ?? []) {
+      if (positions && !positions.has(item.id)) continue;
       if (!older || !items.has(item.id)) items.set(item.id, item);
     }
     map.set(turn.id, {
       ...(older ? { ...turn, ...previous } : { ...previous, ...turn }),
-      items: [...items.values()].sort(
+      items: [...items.values()].map(item => positions ? { ...item, bridgeItemIndex: positions.get(item.id) } : item).sort(
         (a, b) => a.bridgeItemIndex - b.bridgeItemIndex,
       ),
     });

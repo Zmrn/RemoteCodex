@@ -46,13 +46,13 @@ export function mergeLiveTurnItems(
   const turns = data.turns.map((t) => {
     const current = live.get(t.id);
     if (!current) return t;
-    const merged = new Map((t.items ?? []).map((item) => [item.id, item]));
-    for (const item of current.items ?? []) merged.set(item.id, item);
     return {
       ...t,
       ...liveFields(current),
-      items: [...merged.values()],
-      itemsSource: "official-desktop-IPC-live + tool-read",
+      // An owner turn contains its current item array, including removals.
+      // Only a missing array falls back to the official history tool.
+      items: Array.isArray(current.items) ? current.items : (t.items ?? []),
+      itemsSource: Array.isArray(current.items) ? "official-desktop-IPC-live" : "official-tool-read",
     };
   });
   // The official history tool can lag behind its own running conversation
@@ -129,36 +129,20 @@ export function activeTurnId(state) {
 export function runtimeStatus(state, connected = true) {
   if (!connected) return { type: "connection-interrupted", confirmed: false };
   if (!state) return { type: "unknown", confirmed: false };
-  const last = liveTurns(state).at(-1),
-    pending = state.requests ?? [],
-    runtime = state.threadRuntimeStatus;
+  const runtime = state.threadRuntimeStatus;
   // Old history cannot confirm current state when the owner has not loaded it.
   if (!["active", "idle"].includes(runtime?.type))
     return { type: "unknown", confirmed: false };
-  const requestTypes = pending.map((r) => r.method ?? r.type ?? "unknown");
-  if (
-    runtime?.activeFlags?.includes("waitingOnApproval") ||
-    pending.some((r) =>
-      /Approval|approval|permissions|elicitation/.test(r.method ?? ""),
-    )
-  )
-    return { type: "waiting-approval", confirmed: true, requestTypes };
-  if (runtime?.activeFlags?.includes("waitingOnUserInput") || pending.length)
-    return { type: "waiting-user-input", confirmed: true, requestTypes };
+  if (runtime.type === "idle") return { type: "idle", confirmed: true };
+  if (runtime.activeFlags?.includes("waitingOnApproval"))
+    return { type: "waiting-approval", confirmed: true };
+  if (runtime.activeFlags?.includes("waitingOnUserInput"))
+    return { type: "waiting-user-input", confirmed: true };
   if (runtime?.type === "active")
     return {
       type: "running",
       confirmed: true,
       activeFlags: runtime.activeFlags ?? [],
     };
-  if (last?.status === "inProgress" && runtime?.type !== "idle")
-    return { type: "running", confirmed: true };
-  if (last?.status === "completed")
-    return { type: "completed", confirmed: true };
-  if (last?.status === "interrupted")
-    return { type: "interrupted", confirmed: true };
-  if (last?.status === "failed" || last?.error)
-    return { type: "error", confirmed: true };
-  if (runtime?.type === "idle") return { type: "idle", confirmed: true };
   return { type: "unknown", confirmed: false };
 }

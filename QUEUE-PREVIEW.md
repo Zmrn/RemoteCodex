@@ -61,3 +61,6 @@ Android 使用项目隔离模拟器，安装 dist/RemoteCodex.apk 和 work/Remot
     adb -s emulator-5580 shell am instrument -w -e stage queue-preview com.anso.remotecodex.tests/.Probe
 
 测试 APK 和其 fixtures 不属于正式 APK。正式双端仍按 AGENTS.md 同步构建和签名发布。
+# 0.10.26 数据来源补充
+
+队列与加速目录的磁盘备用源按实际连接的官方进程目录核对，无法确认时不从 Remote Codex 默认目录猜测。用户未发送/取回的文字图片仍是本地草稿；不把提交回执当官方消息状态。详见 [OFFICIAL-DATA.md](OFFICIAL-DATA.md)。

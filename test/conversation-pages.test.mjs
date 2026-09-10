@@ -309,7 +309,7 @@ test("historical cursors stay historical, matching live status updates, and unre
     ["t2"],
   );
   assert.equal(history.turns[0].status, "interrupted");
-  assert.equal(history.turns[0].items.length, 2);
+  assert.equal(history.turns[0].items.length, 0, "current official empty item array replaces stale tool items");
   assert.deepEqual(history.page, data.page);
   assert.equal(mergeLiveTurnItems(data, { ...state, id: "two" }), data);
   assert.equal(data.turns[0].status, "completed");

@@ -91,7 +91,7 @@ test("canonical runtime and disconnect states; patches reject prototype mutation
     confirmed: false,
   });
   state.threadRuntimeStatus.type = "idle";
-  assert.equal(runtimeStatus(state).type, "completed");
+  assert.equal(runtimeStatus(state).type, "idle");
   for (const type of ["notLoaded", "unrecognized"]) {
     state.threadRuntimeStatus.type = type;
     assert.deepEqual(runtimeStatus(state), {
@@ -109,9 +109,14 @@ test("canonical runtime and disconnect states; patches reject prototype mutation
   assert.equal(runtimeStatus(state).type, "waiting-user-input");
   state.threadRuntimeStatus = { type: "idle" };
   state.turnHistory.history.entitiesByKey.one.status = "failed";
-  assert.equal(runtimeStatus(state).type, "error");
+  assert.equal(runtimeStatus(state).type, "idle");
   state.turnHistory.history.entitiesByKey.one.status = "interrupted";
-  assert.equal(runtimeStatus(state).type, "interrupted");
+  assert.equal(runtimeStatus(state).type, "idle");
+  state.requests = [{ method: "requestApproval" }, { method: "requestUserInput" }];
+  state.threadRuntimeStatus.activeFlags = ["waitingOnApproval"];
+  assert.equal(runtimeStatus(state).type, "idle", "pending records and stale flags cannot override idle");
+  state.threadRuntimeStatus = { type: "active", activeFlags: [] };
+  assert.equal(runtimeStatus(state).type, "running", "request method guesses cannot override runtime flags");
   assert.throws(
     () => applyPatches({}, [{ op: "add", path: ["__proto__", "x"], value: 1 }]),
     /Invalid/,
