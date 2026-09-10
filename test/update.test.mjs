@@ -43,6 +43,7 @@ test("release signature and executable digest fail closed", () => {
       ),
     /签名/,
   );
+  fs.mkdirSync(path.join(ROOT, "test/scratch"), { recursive: true });
   const folder = fs.mkdtempSync(path.join(ROOT, "test/scratch/update-")),
     file = path.join(folder, "fixture.bin");
   fs.writeFileSync(file, raw);

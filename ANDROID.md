@@ -38,7 +38,7 @@ Codex 的消息、项目、任务、队列、问答、模型和权限界面共�
 
 左下角问号直接显示当前版本、检查更新、安装更新和自动更新开关。默认前台每小时检查，Android 后台任务约每六小时检查（执行时机由系统省电与网络条件决定）。有新版时自动下载，进度显示在问号及更新面板，下载完成后通知用户安装。
 
-**普通 APK 不能静默安装。** 首次更新时允许 Remote Codex 安装应用，此后每次仍需在 Android 系统安装器确认。必须能访问构建时配置的 Tailscale 更新资源地址；网络不可用时显示错误，后续检查会重试。
+**普通 APK 不能静默安装。** 首次更新时允许 Remote Codex 安装应用，此后每次仍需在 Android 系统安装器确认。0.10.29 更新源改为 GitHub Releases，清单验签后按版本下载 APK，当前网络需能访问 GitHub，不需要 GitHub 登录或 Tailscale。网络不可用时显示错误，不回退旧服务器。旧版需首次手动覆盖安装迁移版，保留数据和安装证书；本次未构建发布，见 GITHUB-UPDATES.md。
 
 更新验证独立 RSA 签名清单、APK 大小与 SHA-256、包名、versionCode 和当前安装证书，拒绝篡改、降级和其他签名的 APK。设备列表与加密访问密钥留在应用数据中，正常覆盖安装不清除。不要先卸载旧版：卸载会删除设备、密钥和草稿。
 
@@ -54,7 +54,7 @@ node scripts/github-actions.mjs watch <runId>
 node scripts/github-actions.mjs download <runId>
 ```
 
-`release.local.json` 被 Git 忽略；实际 SSH 配置不写入应用，只有公共更新资源 URL 会注入构建产物。服务端使用 `scripts/serve-updates.py`，仅提供四个固定资源，不接收用户对话或账号信息。第一次从仅支持 EXE 的资源服务升级时，需要替换此脚本并重启资源服务。发布器在两个构建的版本、大小、哈希全部一致后才上传，服务端再验签并覆盖；远端每个平台只保留一份正式程序。
+`release.local.json` 被 Git 忽略，仅用于开发工具配置；更新入口由 `src/update-source.json` 统一声明，旧配置不能覆盖。正式发布使用同次已验签的云端产物，通过 `node scripts/github-actions.mjs publish <runId>` 建立完整 GitHub Release，不再上传原远端资源服务器。
 
 已有 RSA 发布身份和 Android 安装证书不能重新生成。GitHub signing 环境已安全配置原身份；本地 `data/android-signing.p12` 与 DPAPI 加密副本继续保留，不入 Git、不打包。正式发布使用同次云构建的 APK/EXE 并核对签名、版本、哈希及兼容清单，不在本地重建替代。
 

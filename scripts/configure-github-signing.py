@@ -41,13 +41,6 @@ def main():
     android_key, certificate, _ = pkcs12.load_key_and_certificates(container, password.encode())
     if android_key is None or certificate is None: raise RuntimeError('Original Android signing identity incomplete')
     fingerprint = certificate.fingerprint(hashes.SHA256()).hex()
-    config = json.loads((ROOT/'release.local.json').read_text(encoding='utf-8-sig'))
-    base_url = config['baseUrl'].rstrip('/')+'/'
-    # Use the same validator as the cloud build; no unrelated local configuration is uploaded.
-    from urllib.parse import urlsplit
-    url = urlsplit(base_url)
-    if url.scheme not in ('http','https') or not url.hostname or url.username or url.password or url.query or url.fragment:
-        raise RuntimeError('Invalid public update base URL')
     auth = token()
     def api(route, method='GET', body=None, allow404=False):
         request = urllib.request.Request('https://api.github.com/repos/'+REPO+'/'+route, method=method,
@@ -82,7 +75,7 @@ def main():
     for name, value in zip(names, [base64.b64encode(container).decode(), password, pem]):
         encrypted = base64.b64encode(box.encrypt(value.encode())).decode()
         api(env_path+'/secrets/'+name,'PUT',{'key_id':public_key['key_id'],'encrypted_value':encrypted})
-    variables = {'REMOTE_CODEX_ANDROID_CERT_SHA256':fingerprint, 'REMOTE_CODEX_UPDATE_BASE_URL':base_url}
+    variables = {'REMOTE_CODEX_ANDROID_CERT_SHA256':fingerprint}
     for name, value in variables.items():
         current = api(env_path+'/variables/'+name, allow404=True)
         api(env_path+'/variables'+('/'+name if current else ''), 'PATCH' if current else 'POST', {'name':name,'value':value})

@@ -14,6 +14,8 @@
 
 ## 产品行为约定
 
+- 2026-09-10 用户要求应用直接从 GitHub 下载更新，停止远端服务器中转。0.10.29 更新入口/版本固定下载/受限HTTPS重定向与GitHub草稿Release发布器已实装待构建，见 GITHUB-UPDATES.md。未构建、未发布或安装，不能称为已上线；只有明确构建指令才构建。旧版入口嵌在包内，迁移版需首次从GitHub手动覆盖安装，保留数据，不改旧服务器做跳转。原SSH发布器和本地--publish已拒绝运行。
+
 - 2026-09-10：0.10.28 通知排版/5 秒自动收起已双端发布、笔记本内置升级通过，设备与通知草稿保留、官方 PID 未变。198 Node、41 原生通知、13 窗口、最终包自检/强制重启及线上签名通过；未执行 APK、未进行真实两设备通知回复测试。最终哈希与范围见 NOTIFICATIONS.md。已合并另一设备 GitHub 构建提交并保留双远端；本机经 Git Credential Manager 浏览器授权完成登录，源码已同步 GitHub/Gitee，登录凭据不导出。
 
 - 0.10.28 通知默认 5 秒无操作收起，输入/键盘/点击重新计时；草稿先保存再关闭，输入后清空和仅焦点不应永久保留窗口。发送中/保存失败保持输入保护。卡片按统一缩放和字体测量布局、回复按需展开；关闭回执失败不能重新弹出，只允许显式恢复指定草稿。见 NOTIFICATIONS.md；本轮继续不执行 APK。
@@ -94,7 +96,7 @@
 
 - **只有用户明确要求构建/打包时才生成 APK/EXE，统一使用 GitHub Actions，不在本地构建。** 普通需求、修复、review、源码提交或“确认能否构建”只做相关开发/测试/提交，不自动构建、发布或升级客户端。这条覆盖旧文档中“每次迭代必须构建发布”和本地构建流程。明确要求发布但没有可用云端产物时，先说明需要构建，不能把发布或测试需求自动当作构建指令。
 - GitHub Actions 和对话式构建入口见 [GITHUB-ACTIONS.md](GITHUB-ACTIONS.md)。收到明确构建指令后，先将本次完成的源码提交到 GitHub main，并从与远端一致的干净工作树执行 `node scripts/github-actions.mjs build`，使用返回的 runId watch/download。未完成修改保留在原工作区；不能混入构建或因其未提交就覆盖/丢弃。派发结果未知不能重复提交，云端失败也不能擅自回退本地构建。源码只推 GitHub，合并保留其他设备提交，不能强推。
-- push/PR 的 Checks 自动回归继续保留，但不生成正式 APK/EXE 或发布资源。Build EXE and APK 仅 workflow_dispatch。已核对 GitHub 读写权限、active 工作流、signing 三项 Secrets/两项变量，以及成功双端构建 34437906384；本次远端切换没有触发新构建。
+- push/PR 的 Checks 自动回归继续保留，但不生成正式 APK/EXE 或发布资源。Build EXE and APK 仅 workflow_dispatch。已核对 GitHub 读写权限、active 工作流、signing 三项 Secrets 和原APK证书变量，以及成功双端构建 34437906384；更新入口改由源码配置声明。本次更新渠道改动没有触发新构建。
 - CI Checks 无正式密钥；正式双端 build 只用 main 的 signing 环境和原签名身份。不得上传本地 DPAPI 登录凭据、SSH 凭据、用户数据或整个 work/data；签名材料只通过获授权的 GitHub 加密 Secrets 配置，缺失时报错，不生成替代证书。产物仅白名单文件，保留 3 天，固定标准 windows-2022，不启用付费规格。云端构建不代表真实官方桥接验证，不登录 ChatGPT/执行 APK，不自动改现有更新入口或部署资源；构建与正式发布是两个操作。
 - 2026-09-10 用户已授权并完成 signing 环境原签名配置，通常无需再次迁移或上传。首次双端云端构建 `34437906384`（源码 `20d782f`、0.10.27）及对话式下载验签通过：198 Node、49 主机 JVM、原 APK 证书和双端清单/哈希；详情、产物哈希及官方支持范围见 GITHUB-ACTIONS.md。本轮未安装/运行 APK、更新现有客户端或发布更新资源。同版本云端重建不能覆盖已发布的正式资源。
 
@@ -102,20 +104,19 @@
 - 官方接口和已验证版本统一在 src/official-desktop.json 管理；运行代码使用 src/official-protocol.mjs，不得重新散落硬编码版本、IPC 方法及版本号。升级处理遵循 COMPATIBILITY.md；接口字段/适配位置和回归入口见自动生成的 COMPATIBILITY-INTERFACES.md。
 - `codex-ipc` 是共享转发管道，其 PID 可能属于已验证的 Microsoft VS Code；不能再要求它与官方 app-tools 同一 PID。官方 app-tools 身份、转发进程签名/产品、任务 owner 是三个不同检查，不能只按 Code.exe 文件名放行，也不能把 supportsUntrustedAppInput 当作 ChatGPT 身份证明。规则与已测组合集中在 discovery.sharedBroker；维护/复测见 VSCODE-COEXISTENCE.md。
 - 新官方版本必须先取得实际验证证据，再更新清单中的 verifiedVersions 和 validation；不得仅扩大版本范围、删除校验或自动放行。更新清单后执行 node scripts/compatibility-report.mjs --write 和 npm run compatibility。
-- 双端构建报告、签名更新清单及 release-notes.md 必须来自同一份兼容性清单。发布器必须拒绝缺失/过期元数据和混用旧产物；发布时同时覆盖固定 release-notes.md，其哈希受更新签名保护。
+- 双端构建报告、签名更新清单及 RELEASE-NOTES.md 必须来自同一份兼容性清单。发布器必须拒绝缺失/过期元数据和混用旧产物；GitHub Release 内的说明哈希受更新签名保护。
 
 1. `package.json` 是唯一正式版本来源。APK versionCode 为 `major*1000000 + minor*1000 + patch`；minor、patch 必须小于 1000。
 2. **明确构建时由同一次 GitHub Actions 生成 Android APK 和 Windows EXE。** 正式发布继续由本会话负责，使用该次云端产物完成双端验证与发布，不允许只发布一端或用本地重建替代。下载后的源码、版本、提交、兼容清单、双端签名与哈希必须相符；已有同版本正式资源不能被同版重建覆盖。
 3. 固定文件名为 `RemoteCodex.exe`、`RemoteCodex.apk`，版本显示在程序左下角；不要在文件名中加版本。
-4. 实际远端 SSH 地址、目标目录和更新资源 URL 统一配置在 **被 Git 忽略的 `release.local.json`**。从 `release.example.json` 复制；禁止在发布脚本中硬编码真实地址。构建产物只注入公共资源 URL，不注入 SSH 设置或签名私钥。
-5. 发布到该配置的 `remoteDirectory`，同时覆盖两个程序及 `latest.json`、`android-latest.json`。远端只保留各平台一份正式资源。发布器必须验证双端版本、大小、哈希与签名；上传完成并校验后才替换正式资源。
-   发布器只在服务器已有 `.next` 的完整哈希匹配时复用；新上传使用带超时与完整性检查的 SSH 流，失败仅重试暂存步骤，不能盲目重试正式切换。修改上传或资源服务时运行 `python scripts/verify-publish-transport.py`；线上同时核验固定 `/release-notes.md` 可读且哈希与签名清单一致。
+4. 公共更新入口统一在 `src/update-source.json`，使用本仓库 GitHub Releases；本地 release.local.json 仅保存工具路径等被忽略的开发配置，旧 baseUrl/SSH 项不再参与构建或发布。不得向应用注入设备/登录凭据或私钥。
+5. 同次云构建下载验签后执行 `node scripts/github-actions.mjs publish RUN_ID`，在固定提交对应的 v版本草稿Release中上传明确的八项资源，逐项从GitHub读回验签/哈希通过才公开。已发布同版本不可覆盖，标签/运行/资源不符拒绝。未知结果按同版本运行检查后恢复，不盲目重试公开操作。客户端清单走latest入口，安装包按已验签版本固定到tag；不再向旧服务器上传或配置跳转。测试和首次迁移见 GITHUB-UPDATES.md。
 6. 保留 `data/release-signing-key.json`、`data/android-signing.p12`、`data/android-signing-password.json`。不得重新生成已有身份。它们被忽略，密码绑定当前 Windows 用户；迁移构建机需安全迁移签名身份，不能提交 Git。
 7. Android 自动检查和下载更新，系统仍要求确认安装；不得宣称普通 APK 能静默安装。验证清单 RSA 签名、SHA-256、包名、版本和 APK 安装证书。
 8. 发布前运行 Node 回归与 Android 构建验证；Android 行为改动在隔离模拟器验证。记录具体通过项和未测试项，不把模拟器结果称作真机验证。
 9. 更新 `ANDROID.md` 或相关复测说明。交付 APK/EXE 链接并提交推送源码、文档（包括本文件）。不提交 `dist/`、`work/`、`data/`、本机配置或原始私人证据。
 
-行为验证未完成时继续相关测试，不自行构建。明确要求构建后下载对应云端产物，完成适用的包/行为验证后再按发布安排使用现有发布器；发布器不应重新构建。沿用本会话已授权的固定资源目标，不修改网络或另建服务器；目标配置缺失/变化、官方应用需重启/升级等超出授权范围时再说明具体影响。
+行为验证未完成时继续相关测试，不自行构建。明确要求构建后下载对应云端产物，完成适用的包/行为验证后再按发布安排使用GitHub Release发布器，不重新构建。用户已要求停止远端服务器中转，不再使用旧SSH发布目标，也不迁移SSH凭据。官方应用需重启/升级等超出授权范围时再说明具体影响。
 
 纯文档交接不改变软件行为或兼容性清单时，只校对引用、事实和 Git diff 后提交推送，不为此递增软件版本、重装客户端或发布双端产物。
 

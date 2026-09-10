@@ -25,18 +25,18 @@ test('cloud artifact validation accepts original signed APK metadata, rejects su
   assert.throws(() => verifyBuildManifest(envelope(meta), win.file, keys.publicKey));
 });
 
-test('cloud builds require explicit update URL and original APK certificate without importing deployment credentials', () => {
+test('cloud builds use the committed GitHub channel and ignore retired deployment settings', () => {
   const env = { REMOTE_CODEX_UPDATE_BASE_URL: 'https://updates.example.test/resources',
     REMOTE_CODEX_ANDROID_CERT_SHA256: 'AB:'.repeat(31)+'AB', ANDROID_HOME: 'C:/Android', JAVA_HOME: 'C:/Java',
     PRIVATE_SSH_KEY: 'must-never-be-copied' };
   const config = buildConfig(env);
-  assert.equal(config.baseUrl, 'https://updates.example.test/resources/');
+  assert.equal(config.baseUrl, 'https://github.com/Zmrn/RemoteCodex/releases/latest/download/');
   assert.equal(config.androidSdk, env.ANDROID_HOME);
   assert.equal(config.javaHome, env.JAVA_HOME);
-  assert.equal(config.sshHost, 'ci-build-only.invalid');
+  assert.equal(config.sshHost, undefined);
   assert.ok(!JSON.stringify(config).includes(env.PRIVATE_SSH_KEY));
   for (const url of ['', 'https://user:password@example.test/', 'file:///test', 'https://example.test/?secret=key', 'https://example.test/#fragment'])
-    assert.throws(() => buildConfig({ ...env, REMOTE_CODEX_UPDATE_BASE_URL: url }));
+    assert.equal(buildConfig({ ...env, REMOTE_CODEX_UPDATE_BASE_URL: url }).baseUrl, config.baseUrl);
   assert.throws(() => buildConfig({ ...env, REMOTE_CODEX_ANDROID_CERT_SHA256: '' }), /original/);
   assert.equal(certificateDigest(env.REMOTE_CODEX_ANDROID_CERT_SHA256), 'ab'.repeat(32));
 });

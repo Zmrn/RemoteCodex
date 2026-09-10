@@ -39,6 +39,9 @@ jobs:
           python -X utf8 scripts/verify-window-placement.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -X utf8 scripts/verify-desktop-notifications.py
+      - name: GitHub update network regressions
+        # Host Java classes only; this does not build an APK.
+        run: python -X utf8 scripts/verify-update-network.py
       - name: Scope
         shell: pwsh
         run: |

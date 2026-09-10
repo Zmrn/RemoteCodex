@@ -16,7 +16,7 @@ Windows 会记住上次的窗口大小、位置与最大化状态，退出、更
 
 左上角现在可切换 **Codex / Chat**，分别显示会话并保留草稿。Chat 历史读取已通过本机验证，已有 Chat 的文字续写作为试验性功能转交官方桌面；普通 Chat 新建、模型切换和图片暂需在官方桌面操作。官方 ChatGPT 列表可能包含 Work，界面明确提示。详细验证与限制见 [CHAT-MODE.md](CHAT-MODE.md)。
 
-Android APK 的安装、自动下载更新、系统确认安装和复测方法见 [ANDROID.md](ANDROID.md)。明确要求构建后，同一次 GitHub Actions 生成 `RemoteCodex.apk` 和 `RemoteCodex.exe`；正式发布使用验签通过的云端双端产物。发布地址配置在被 Git 忽略的 `release.local.json`，模板是 `release.example.json`，开发发布约定见 [AGENTS.md](AGENTS.md)。
+Android APK 的安装、自动下载更新、系统确认安装和复测方法见 [ANDROID.md](ANDROID.md)。明确要求构建后，同一次 GitHub Actions 生成 `RemoteCodex.apk` 和 `RemoteCodex.exe`；正式发布使用验签通过的云端双端产物。0.10.29 源码已将应用更新改为直接从 GitHub Releases 下载，未构建发布；首次迁移需手动安装一次，见 [GITHUB-UPDATES.md](GITHUB-UPDATES.md)。开发发布约定见 [AGENTS.md](AGENTS.md)。
 
 现已支持**单 EXE 分发及在线更新**：`RemoteCodex.exe` 内置运行依赖，文件名固定，当前软件版本显示在界面左下角设备名旁。左下角问号直接打开检查更新、安装更新和自动更新设置；下载期间问号变成下载进度。编辑本机设备可读取 Tailscale IP、设置端口和访问密钥、开关远程访问。更新只替换桥接程序，官方任务继续运行。详见 [PORTABLE.md](PORTABLE.md)。以下启动命令适用于源码调试版；仓库根目录的 `RemoteBridge.exe` 现在转到已构建的单 EXE 桌面。
 

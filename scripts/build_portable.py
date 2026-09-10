@@ -74,7 +74,7 @@ def main():
     package["version"] = version
     files["RELEASE-NOTES.md"] = release_notes(version)
     files["package.json"] = json.dumps(package, indent=2).encode()
-    files["src/update-source.json"] = json.dumps({"manifestUrl": config()["baseUrl"] + "latest.json", "checkIntervalMs": 3600000}).encode()
+    files["src/update-source.json"] = (ROOT / 'src/update-source.json').read_bytes()
     with zipfile.ZipFile(io.BytesIO(download(args.cache, RUNTIMES["node"]))) as archive:
         for name in ("node.exe", "LICENSE"):
             files["runtime/node/" + name] = archive.read("node-v22.19.0-win-x64/" + name)

@@ -10,14 +10,13 @@ def config():
     if not file.is_file():
         raise RuntimeError('Copy release.example.json to release.local.json and configure it first')
     value = json.loads(file.read_text(encoding='utf-8-sig'))
+    # The committed GitHub channel is authoritative; old machine settings cannot
+    # put the retired server back into a newly built application.
+    value['baseUrl'] = json.loads((ROOT / 'src/update-source.json').read_text())['baseUrl']
     url = urlsplit(value['baseUrl'])
     if url.scheme not in ('http', 'https') or not url.hostname or url.username or url.password or url.query or url.fragment:
         raise ValueError('Invalid public resource baseUrl')
     value['baseUrl'] = value['baseUrl'].rstrip('/') + '/'
-    if not re.fullmatch(r'[A-Za-z0-9_.@-]+', value['sshHost']) or value['sshHost'].startswith('-'):
-        raise ValueError('Invalid SSH host')
-    if not re.fullmatch(r'/[A-Za-z0-9_./-]+', value['remoteDirectory']) or '..' in Path(value['remoteDirectory']).parts:
-        raise ValueError('Invalid remote directory')
     return value
 
 def android_tools():

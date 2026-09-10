@@ -48,7 +48,7 @@ EXE 内置 Node.js 22.19.0、Python 3.13.2、WebView2 SDK Loader 和托管组件
 
 更新先校验发布签名、平台、版本、长度和 SHA-256，再保存草稿、退出旧窗口、替换 EXE、打开新版窗口。更新助手只在安装期间短暂运行，不作为常驻服务。安装失败会尝试回退本机备份。更新源只分发软件，不接收任务、图片或账号数据。
 
-资源服务地址和目标目录由被忽略的 `release.local.json` 配置，要求能连接该地址的 Tailscale 网络。远端只保留一个 `RemoteCodex.exe`、一个 `RemoteCodex.apk`，以及各自的签名清单。仅在用户明确要求构建时由 GitHub Actions 生成双端产物，正式发布按版本与签名验证后进行；日常迭代不自动构建或发布，详细约定见 `AGENTS.md`。
+0.10.29 源码将更新入口固定到 GitHub Releases，清单验签后按版本标签下载 EXE，允许受限的 GitHub HTTPS 资源重定向。更新不再经过原服务器，不需要 Tailscale 或 GitHub 登录；需要当前网络能访问 GitHub。旧版需首次手动覆盖安装迁移版并保留原数据，见 `GITHUB-UPDATES.md`。本次未构建发布；日常迭代不自动构建或发布，详细约定见 `AGENTS.md`。
 
 ## 开发与诊断
 

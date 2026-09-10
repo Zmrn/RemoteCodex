@@ -31,6 +31,8 @@ node scripts/github-actions.mjs download <runId>
 
 产物按明确白名单上传：EXE、APK、两个构建报告、两个签名更新清单、支持说明、构建来源记录。artifact 保留 **3 天**，内部程序仍为固定 `RemoteCodex.exe` / `RemoteCodex.apk` 文件名；不上传整个工作区、work、data 或原签名文件，不缓存密钥。
 
+正式应用更新使用 GitHub Releases 的长期资源。下载同次云构建产物并完成适用验收后，执行 `node scripts/github-actions.mjs publish <runId>`；先建立草稿、上传并读回核验全部资源，再公开。普通源码提交或构建本身不会发布 Release；首次迁移和重试规则见 [GITHUB-UPDATES.md](GITHUB-UPDATES.md)。
+
 这两条工作流不登录官方 ChatGPT、不执行真实会话、不运行 APK，也不自动上传现有更新服务器。云端构建成功只证明构建与隔离检查成功，不能取代当前官方版本的真实桥接验证。`GITHUB-BUILD.json` 明确记载这些未测项。
 
 ## 首次签名配置
@@ -45,7 +47,7 @@ node scripts/github-actions.mjs download <runId>
 | Secret | REMOTE_CODEX_ANDROID_KEYSTORE_PASSWORD | 原 DPAPI 密码文件在原 Windows 用户下解密后的密码 |
 | Secret | REMOTE_CODEX_UPDATE_PRIVATE_KEY_PEM | 原 DPAPI 发布密钥在原 Windows 用户下解密后的 PEM |
 | Variable | REMOTE_CODEX_ANDROID_CERT_SHA256 | 原 APK 签名证书 SHA-256（公开指纹） |
-| Variable | REMOTE_CODEX_UPDATE_BASE_URL | 现有 release.local.json 的公共 baseUrl |
+| Source | src/update-source.json | GitHub Releases 公共更新入口；不接受本地/环境的旧服务器地址覆盖 |
 
 这些值不得粘贴进对话，不得提交 Git。向 GitHub 保存原签名材料属于独立的敏感配置动作，应取得用户授权；Secret 通过 GitHub 提供的公钥在本机加密后提交。缺少任何一项时正式构建明确失败，不生成替代身份。环境可按团队需要增加审核人；启用审核后，等待审批不属于构建错误。
 
@@ -58,7 +60,7 @@ python -X utf8 scripts/configure-github-signing.py --apply
 
 工具校验原更新公钥与 APK 证书，在内存中解密并使用 GitHub 公钥加密后上传；不生成明文签名文件，不上传 SSH 或登录凭据。遇到已有不同的环境分支策略时停止，不放宽策略。2026-09-10 用户已授权并完成本仓库的三项 Secrets、两项 Variables 配置，`signing` 环境仅允许 main 分支。
 
-云端仍内嵌现有 baseUrl，因此不会改变已安装客户端的更新入口。本轮只接入构建与产物下载；需要把发布服务器也接入云端时，另行配置部署权限与网络访问，不能直接复制现有 SSH 凭据或修改 Tailscale。尚未正式发布的同版本重建产物，也不能直接覆盖已经发布的同版本资源。
+0.10.29 起云端固定内嵌仓库声明的 GitHub Releases 入口，旧 REMOTE_CODEX_UPDATE_BASE_URL 环境变量不再读取，配置工具也不再上传该项。原签名身份保持，不迁移 SSH 凭据。应用直接下载 GitHub 资源，不使用原服务器；已安装旧版需要首次手动安装迁移版。尚未正式发布的同版本重建产物不能覆盖已经发布的正式资源。
 
 ## 免费范围
 

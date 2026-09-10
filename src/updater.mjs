@@ -10,16 +10,7 @@ import {
   verifyExecutable,
   newerVersion,
 } from "./update-format.mjs";
-const source = JSON.parse(
-  fs.readFileSync(new URL("./update-source.json", import.meta.url)),
-);
-// Source runs may use the ignored publisher config; packages inject only the public URL.
-try {
-  if (!source.manifestUrl) {
-    const local = JSON.parse(fs.readFileSync(new URL("../release.local.json", import.meta.url)));
-    source.manifestUrl = local.baseUrl.replace(/\/$/, "") + "/latest.json";
-  }
-} catch {}
+import { updateSource as source, releaseAssetUrl, fetchUpdateAsset, readUpdateBytes } from './update-channel.mjs';
 
 export class Updater {
   constructor(dir, notify = () => {}) {
@@ -123,20 +114,13 @@ export class Updater {
     this.phase = "checking";
     this.error = "";
     try {
-      const response = await fetch(source.manifestUrl, {
-        redirect: "error",
+      const response = await fetchUpdateAsset(source.manifestUrl, {
         signal: AbortSignal.timeout(12000),
         cache: "no-store",
       });
       if (!response.ok)
-        throw Error("更新服务器暂不可用（" + response.status + "）");
-      if (Number(response.headers.get("content-length")) > 24000)
-        throw Error("更新清单过大");
-      let text = "";
-      for await (const chunk of response.body) {
-        text += Buffer.from(chunk).toString();
-        if (text.length > 24000) throw Error("更新清单过大");
-      }
+        throw Error("GitHub 更新资源暂不可用（" + response.status + "）");
+      const text = (await readUpdateBytes(response, 24000)).toString('utf8');
       const envelope = JSON.parse(text),
         latest = verifyManifest(envelope);
       this.envelope = envelope;
@@ -195,8 +179,7 @@ export class Updater {
       this.progress = 100;
     } catch {}
     if (!cached) {
-      const response = await fetch(new URL(manifest.file, source.manifestUrl), {
-        redirect: "error",
+      const response = await fetchUpdateAsset(releaseAssetUrl(manifest.version, manifest.file), {
         signal: AbortSignal.timeout(20 * 60000),
         cache: "no-store",
       });

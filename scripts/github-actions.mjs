@@ -7,8 +7,10 @@ import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { verifyBuildManifest } from './github-manifest.mjs';
+import { verifyReleaseBundle, publishRelease } from './github-release.mjs';
+import { updateSource, fetchUpdateAsset, readUpdateBytes } from '../src/update-channel.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const repository = 'Zmrn/RemoteCodex';
+const repository = updateSource.repository;
 const workflow = 'build.yml';
 function credential() {
   if (process.env.GH_TOKEN || process.env.GITHUB_TOKEN) return process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
@@ -94,6 +96,37 @@ async function main() {
         throw Error('Downloaded release notes hash mismatch');
     }
     console.log(JSON.stringify({ ...describe(run), version: provenance.version, files: ['RemoteCodex.exe','RemoteCodex.apk'].map(f=>path.join(folder,f)), verified: true }, null, 2));
-  } else throw Error('Usage: node scripts/github-actions.mjs build | status [runId] | watch runId | download runId');
+  } else if (action === 'publish') {
+    const runId = id(value), run = await api('actions/runs/' + runId);
+    const folder = path.join(root, 'work/github-downloads', runId);
+    const bundle = verifyReleaseBundle(folder, run, fs.readFileSync(path.join(root, 'src/update-public-key.pem')));
+    // Credentials only ever reach api.github.com or this repository's upload API.
+    const client = {
+      get: async (route, allow404 = false) => {
+        try { return await api(route); }
+        catch (error) { if (allow404 && error.message.startsWith('GitHub API 404 ')) return null; throw error; }
+      },
+      mutate: (route, method, body) => api(route, method, body),
+      upload: async (releaseId, name, bytes) => {
+        const response = await fetch(`https://uploads.github.com/repos/${repository}/releases/${id(String(releaseId))}/assets?name=${encodeURIComponent(name)}`, {
+          method: 'POST', redirect: 'error', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/octet-stream' },
+          body: bytes, signal: AbortSignal.timeout(180000),
+        });
+        if (!response.ok) throw Error('Release upload result unconfirmed (' + response.status + '); inspect the draft before retrying');
+        return response.json();
+      },
+      readAsset: async (assetId, limit) => {
+        const response = await fetch(`https://api.github.com/repos/${repository}/releases/assets/${id(String(assetId))}`, {
+          redirect: 'manual', headers: { Authorization: 'Bearer ' + token, Accept: 'application/octet-stream' }, signal: AbortSignal.timeout(180000),
+        });
+        if (response.status === 200 && !response.headers.get('content-type')?.includes('json')) return readUpdateBytes(response, limit);
+        if (response.status !== 302 || !response.headers.get('location')) throw Error('Cannot verify uploaded release asset');
+        const download = await fetchUpdateAsset(response.headers.get('location'), { signal: AbortSignal.timeout(180000) });
+        if (!download.ok) throw Error('Cannot download uploaded release asset for verification');
+        return readUpdateBytes(download, limit);
+      },
+    };
+    console.log(JSON.stringify(await publishRelease(client, bundle), null, 2));
+  } else throw Error('Usage: node scripts/github-actions.mjs build | status [runId] | watch runId | download runId | publish runId');
 }
 main().catch(error => { console.error(error.message); process.exitCode = 1; });

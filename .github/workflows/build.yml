@@ -42,7 +42,6 @@ jobs:
           java-version: '21'
       - name: Require build configuration
         env:
-          REMOTE_CODEX_UPDATE_BASE_URL: ${{ vars.REMOTE_CODEX_UPDATE_BASE_URL }}
           REMOTE_CODEX_ANDROID_CERT_SHA256: ${{ vars.REMOTE_CODEX_ANDROID_CERT_SHA256 }}
         run: node scripts/github-build.mjs configure
       - name: Install pinned Android SDK components
@@ -60,6 +59,8 @@ jobs:
         run: python -X utf8 scripts/build-release.py
       - name: Android host-JVM regressions
         run: python -X utf8 scripts/verify-device-connections.py
+      - name: GitHub update download regressions
+        run: python -X utf8 scripts/verify-update-network.py
       - name: Sign manifests and verify deliverables
         env:
           REMOTE_CODEX_ANDROID_CERT_SHA256: ${{ vars.REMOTE_CODEX_ANDROID_CERT_SHA256 }}

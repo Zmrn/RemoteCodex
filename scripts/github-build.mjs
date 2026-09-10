@@ -6,23 +6,17 @@ import { fileURLToPath } from 'node:url';
 import { createPrivateKey, createPublicKey, createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { verifyBuildManifest } from './github-manifest.mjs';
+import { updateSource } from '../src/update-channel.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ownedFiles = ['release.local.json', 'data/android-signing.p12',
   'data/android-signing-password.json', 'data/release-signing-key.json'];
 const marker = path.join(ROOT, 'work/github-build-owned.json');
 
 export function buildConfig(env) {
-  const base = env.REMOTE_CODEX_UPDATE_BASE_URL;
-  if (!base) throw Error('Set signing environment variable REMOTE_CODEX_UPDATE_BASE_URL');
-  const url = new URL(base);
-  if (!['https:', 'http:'].includes(url.protocol) || !url.hostname || url.username || url.password || url.search || url.hash)
-    throw Error('Invalid update resource base URL');
   if (!env.ANDROID_HOME || !env.JAVA_HOME) throw Error('Android SDK and JDK environment required');
   certificateDigest(env.REMOTE_CODEX_ANDROID_CERT_SHA256);
-  return { baseUrl: base.replace(/\/+$/, '') + '/', androidSdk: env.ANDROID_HOME,
-    javaHome: env.JAVA_HOME, buildTools: '35.0.1', androidPlatform: 'android-35',
-    // Required by the legacy local config parser; no SSH credentials or deploy step.
-    sshHost: 'ci-build-only.invalid', remoteDirectory: '/ci-build-only' };
+  return { baseUrl: updateSource.baseUrl, androidSdk: env.ANDROID_HOME,
+    javaHome: env.JAVA_HOME, buildTools: '35.0.1', androidPlatform: 'android-35' };
 }
 
 export function certificateDigest(value) {
@@ -110,6 +104,7 @@ async function main(action) {
       version, commit: process.env.GITHUB_SHA, runId: process.env.GITHUB_RUN_ID,
       runUrl: `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
       androidCertificateSha256: actual, liveDesktopTested: false, apkExecuted: false, published: false,
+      updateBaseUrl: updateSource.baseUrl,
     }, null, 2));
   } else if (action === 'clean') {
     if (!fs.existsSync(marker)) return;

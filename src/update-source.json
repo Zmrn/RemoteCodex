@@ -1,4 +1,6 @@
 {
-  "manifestUrl": "",
+  "repository": "Zmrn/RemoteCodex",
+  "baseUrl": "https://github.com/Zmrn/RemoteCodex/releases/latest/download/",
+  "manifestUrl": "https://github.com/Zmrn/RemoteCodex/releases/latest/download/latest.json",
   "checkIntervalMs": 3600000
 }
