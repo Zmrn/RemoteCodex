@@ -74,6 +74,19 @@ test('malformed completed records are reported; an in-progress final line is nev
  const head=await s.read({}); assert.equal(head.turns[0].items.length,1);
  fs.appendFileSync(s.file,'\n'); await assert.rejects(s.read({}),/无法解析/);
 });
+
+test('a rejected scan waits for its file handle to close before returning',async t=>{
+ const s=setup(t,[item(1)]),opened=[],create=fs.createReadStream;
+ t.mock.method(fs,'createReadStream',function(...args){
+   const stream=create.apply(this,args),destroy=stream._destroy;
+   stream._destroy=function(error,done){setTimeout(()=>destroy.call(this,error,done),50);};
+   opened.push(stream);return stream;
+ });
+ fs.writeFileSync(s.file,JSON.stringify(record({id:b},'session_meta'))+'\n');
+ await assert.rejects(s.read({}),/身份不一致/);
+ assert.equal(opened.length,1);assert.equal(opened[0].closed,true);
+ fs.renameSync(path.join(s.home,'sessions'),path.join(s.home,'outside'));
+});
 test('official rollback removes historical members and never supplies a live completion flag',async t=>{
  const s=setup(t,[item(1,a),item(2,b),record({type:'thread_rolled_back',num_turns:1})]);
  const head=await s.read({}); assert.deepEqual(head.turns.map(t=>t.id),[a]);

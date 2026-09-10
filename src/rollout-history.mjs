@@ -75,7 +75,15 @@ async function* records(file, limit, check) {
       }
     }
     // A writer may not have completed the final line yet. Never parse a torn record.
-  } finally { stream.destroy(); }
+  } finally {
+    // A consumer can reject a yielded record before the stream reaches EOF.
+    // destroy() starts asynchronous close; await it so Windows does not retain
+    // the history handle after a failed/cancelled scan has returned.
+    if (!stream.closed) await new Promise(resolve => {
+      stream.once('close', resolve);
+      stream.destroy();
+    });
+  }
 }
 
 function textContent(content) {
