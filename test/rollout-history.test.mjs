@@ -9,6 +9,7 @@ import { ConversationPages, compactConversation } from '../src/conversation-page
 import { mergeTurns } from '../public/conversation-history.mjs';
 import { readOfficialHistory } from '../src/history-read.mjs';
 import { Bridge } from '../src/bridge.mjs';
+import { EventEmitter } from 'node:events';
 const id='11111111-2222-4333-8444-555555555555', a='aaaaaaaa-2222-4333-8444-555555555555', b='bbbbbbbb-2222-4333-8444-555555555555';
 const thread={id,kind:'codex',hostId:'local',title:'History',status:'active'};
 const png='data:image/png;base64,'+Buffer.from([137,80,78,71,13,10,26,10,0,0]).toString('base64');
@@ -111,4 +112,18 @@ test('Bridge viewer recovers content; full operational reads stay on the officia
  await assert.rejects(bridge.readPage(id,page.data.page.nextCursor),/历史已变化/);
  await assert.rejects(bridge.read(id),/读取接口/);
  bridge.connected=false; await assert.rejects(bridge.readPage(id),/connection-interrupted/);
+});
+test('official reconnection replaces the history revision and registers usable fresh image references',async t=>{
+ const s=setup(t,[item(1),record({type:'item_completed',thread_id:id,turn_id:a,item:{type:'Extension',kind:'image_gen.generation',id:'picture',result:png}})]);
+ const factory=()=>({identity:{officialPid:7},tools:new EventEmitter(),ipc:new EventEmitter(),connect:async()=>{},close(){},
+   call:async tool=>{if(tool==='list_threads')return {threads:[thread]};throw Error('Codex app tool request failed');}});
+ const bridge=new Bridge(path.join(s.home,'bridge'),{desktopFactory:factory,homeResolver:async()=>s.home});
+ t.after(()=>bridge.disconnect()); await bridge.connect();
+ const first=await bridge.readPage(id),old=first.data.turns[0].items.find(i=>i.id==='picture').bridgeDisplay.images[0].id;
+ assert.equal(bridge.media.read(id,old).type,'image/png');
+ bridge.connected=false; await bridge.connect();
+ assert.throws(()=>bridge.media.read(id,old),/图片未出现/);
+ const second=await bridge.readPage(id),fresh=second.data.turns[0].items.find(i=>i.id==='picture').bridgeDisplay.images[0].id;
+ assert.notEqual(first.data.history.revision,second.data.history.revision);
+ assert.equal(bridge.media.read(id,fresh).type,'image/png');
 });

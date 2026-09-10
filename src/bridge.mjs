@@ -112,6 +112,8 @@ export class Bridge extends EventEmitter {
     }
   }
   async _connect(generation) {
+    this.rolloutHistory.clear();
+    this.media.deferred.clear();
     this.desktop?.close();
     this.live.clear();
     this.queue.clear();
