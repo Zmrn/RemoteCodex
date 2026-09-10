@@ -10,10 +10,10 @@ const dir = fs.mkdtempSync(path.join(ROOT, "test/scratch/widget-ui-"));
 fs.writeFileSync(path.join(dir, "update-settings.json"), '{"automatic":false}');
 const id = "99999999-9999-4999-8999-999999999999", other = "88888888-8888-4888-8888-888888888888", agent = "77777777-7777-4777-8777-777777777777";
 const bridge = new Bridge(dir), errors = [], acknowledgements = [], checks = [];
-let revision = 1, fail = false;
+let revision = 1, fail = false, officialUnread = true, summaryFails = false;
 bridge.connected = true;
 const originalStatus = bridge.status.bind(bridge);
-bridge.status = () => ({ ...originalStatus(), existingCodexWritable: true });
+bridge.status = () => ({ ...originalStatus(), existingCodexWritable: true, threads: Object.fromEntries([id,other].map(t=>[t,{status:{type:'completed',confirmed:true}}])) });
 bridge.desktop = { identity: { officialPid: 1 }, catalog: [], call: async (tool, args) => {
   assert.equal(tool, "read_thread"); if (fail) throw Error("unreadable fixture");
   return { thread: { id: args.threadId, title: args.threadId === id ? "Report fixture" : "Other fixture", kind: "codex", status: { type: "idle" } },
@@ -27,15 +27,15 @@ bridge.connect = async () => { bridge.connected = true; return bridge.desktop.id
 bridge.follow = async () => ({}); bridge.queue.read = () => ({ confirmed: true, revision: "1", messages: [], recoveries: [] });
 bridge.disconnect = () => { bridge.connected = false; };
 const confirmed=[];
-bridge.markOfficialReportRead=async(thread,token)=>{confirmed.push({thread,token});return {status:"synced"};};
-bridge.taskReports.stateFactory=()=>({supported:()=>true,connect:async()=>{},close(){},read:async()=>({running:false,unread:true,runtimeKnown:true,readStateKnown:true,unknown:false,stateSource:"official-owner-snapshot"})});
+bridge.markOfficialReportRead=async(thread,token)=>{confirmed.push({thread,token});officialUnread=false;return {status:"synced"};};
+bridge.taskReports.stateFactory=()=>({supported:()=>true,connect:async()=>{},close(){},read:async task=>{if(summaryFails)throw Error('state fixture unavailable');return {running:false,unread:task===id&&officialUnread,runtimeKnown:true,readStateKnown:true,unknown:false,stateSource:"official-owner-snapshot"};}});
 const originalAck = bridge.taskReports.acknowledge.bind(bridge.taskReports);
 bridge.taskReports.acknowledge = async (thread, token) => { acknowledgements.push({ thread, token }); return originalAck(thread, token); };
 const app = await startServer({ port: 0, bridge });
 const browser = await chromium.launch({ executablePath: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", headless: true });
 try {
  for (const width of [1300, 390]) {
-  revision++; fail = false; const before = acknowledgements.length;
+  revision++; fail = false; officialUnread = true; summaryFails = false; const before = acknowledgements.length;
   const context = await browser.newContext({ viewport: { width, height: 800 } }); const page = await context.newPage();
   await page.addInitScript(() => { window.fixtureFocus = false; Object.defineProperty(document, "hasFocus", { value: () => window.fixtureFocus }); });
   page.on("pageerror", e => errors.push(e.message));
@@ -43,6 +43,9 @@ try {
     if (req.method() !== "GET" && !/\/(follow|connect|activity|select|read-receipt)$/.test(p)) return route.abort(); return route.continue(); });
   await page.goto(app.address + "/?thread=" + id);
   await page.waitForFunction(() => document.querySelector("#messages").textContent.includes("REPORT_"));
+  await page.locator(`[data-thread-id="${id}"] .thread-dot.unread`).waitFor({state:"attached"});
+  await page.waitForFunction(task=>document.querySelector(`[data-thread-id="${task}"]`)?.title.includes('官方已读状态'),other);
+  assert.equal(await page.locator(`[data-thread-id="${other}"] .thread-dot`).count(),0,'completed but officially read has no blue dot');
   await page.waitForTimeout(1000); assert.equal(acknowledgements.length, before, "background page must not acknowledge");
   await page.evaluate(() => { const s = document.querySelector("#message-scroll"); s.scrollTop = 0; window.fixtureFocus = true; window.dispatchEvent(new Event("focus")); });
   await page.waitForTimeout(1000); assert.equal(acknowledgements.length, before, "reading older content must not acknowledge the return");
@@ -53,7 +56,17 @@ try {
   const oldToken = acknowledgements.at(-1).token;
   for(let i=0;i<30&&!confirmed.some(r=>r.token===oldToken);i++)await page.waitForTimeout(100);
   assert.ok(confirmed.some(r=>r.token===oldToken));assert.ok(!fs.existsSync(path.join(dir,'task-receipts.json')));
+  await page.waitForFunction(task=>document.querySelector(`[data-thread-id="${task}"]`)?.title.includes('官方已读状态'),id);
+  assert.equal(await page.locator(`[data-thread-id="${id}"] .thread-dot`).count(),0,'official read confirmation removes selected task blue dot');
   assert.equal(await page.locator("#prompt").inputValue(), "DRAFT_RETAINED");
+  await page.evaluate(()=>{window.fixtureFocus=false;});officialUnread=true;
+  await page.locator('#refresh').evaluate(e=>e.click());await page.locator(`[data-thread-id="${id}"] .thread-dot.unread`).waitFor({state:"attached"});
+  officialUnread=false;await page.locator('#refresh').evaluate(e=>e.click());
+  await page.waitForFunction(task=>document.querySelector(`[data-thread-id="${task}"]`)?.title.includes('官方已读状态'),id);
+  summaryFails=true;await page.locator('#refresh').evaluate(e=>e.click());
+  await page.waitForFunction(task=>document.querySelector(`[data-thread-id="${task}"]`)?.dataset.status==='unknown',id);
+  assert.equal(await page.locator('.thread-dot.unread').count(),0);summaryFails=false;officialUnread=true;
+  checks.push(`${width}px: completed/history never paints unread; official read clears blue dot, official unread can return, external read clears it, unavailable becomes unknown`);
   revision++;
   const summary = await bridge.taskReports.summary(); assert.equal(summary.threads.find(t => t.id === id).unread, true);
   fail = true; await page.evaluate(() => document.querySelector("#refresh").click());

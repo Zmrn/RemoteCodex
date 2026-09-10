@@ -21,6 +21,17 @@ function fixture(t) {
   const reports=new TaskReports(bridge,{now:()=>now,stateFactory:()=>reader});
   return {bridge,reports,rows,states,calls,reader,dir,advance:ms=>now+=ms,disconnect:()=>{connected=false;}};
 }
+test('read confirmation invalidates a still-running summary before any coalesced caller can consume it',async t=>{
+  const f=fixture(t),gates=[];
+  f.reader.read=()=>new Promise(resolve=>gates.push(resolve));
+  f.bridge.markOfficialReportRead=async()=>({status:'synced'});
+  const receipt=f.reports.observe(report());
+  const before=f.reports.summary();while(!gates.length)await new Promise(resolve=>setImmediate(resolve));
+  await f.reports.acknowledge(id,receipt.token);const after=f.reports.summary();
+  gates[0]({...f.states.get(id),unread:true});while(gates.length<2)await new Promise(resolve=>setImmediate(resolve));
+  gates[1]({...f.states.get(id),unread:false});
+  assert.equal((await before).threads[0].unread,false);assert.equal((await after).threads[0].unread,false);
+});
 test("report tokens require a final return, distinguish revisions, and never use Chat synthetic completion as runtime proof", () => {
   const first = reportReceipt(report()); assert.ok(first); assert.equal(first.itemId, "item-1");
   assert.notEqual(first.token, reportReceipt(report("New return")).token);

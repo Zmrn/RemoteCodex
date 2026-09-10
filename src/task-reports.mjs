@@ -20,7 +20,7 @@ export function reportReceipt(data) {
 // history cache or persisted receipt participates in task statistics.
 export class TaskReports {
   constructor(bridge, { now = Date.now, stateFactory = desktop => new OfficialTaskState(desktop) } = {}) {
-    this.bridge = bridge; this.now = now; this.stateFactory = stateFactory; this.issued = new Map(); this.officialPending = new Map(); this.nextTask = null;
+    this.bridge = bridge; this.now = now; this.stateFactory = stateFactory; this.issued = new Map(); this.officialPending = new Map(); this.nextTask = null; this.readRevision = 0;
   }
   observe(data) {
     const receipt = reportReceipt(data);
@@ -45,13 +45,20 @@ export class TaskReports {
     }
     const officialReadSync = await this.officialPending.get(key);
     const accepted = ['synced', 'already-read'].includes(officialReadSync.status);
-    if (accepted) this.bridge.emitEvent?.('report-read', { threadId: id });
+    if (accepted) { this.readRevision++; this.bridge.emitEvent?.('report-read', { threadId: id }); }
     return { accepted, officialReadSync };
   }
   async summary() {
     this.bridge.requireConnection();
     if (this.pending) return this.pending;
-    this.pending = this.collect().finally(() => { this.pending = null; });
+    this.pending = (async () => {
+      for (;;) {
+        const revision = this.readRevision, result = await this.collect();
+        if (revision === this.readRevision) return result;
+        // A read notification invalidates scans that began before it, including
+        // callers coalesced onto that scan. Obtain another official snapshot.
+      }
+    })().finally(() => { this.pending = null; });
     return this.pending;
   }
   async collect() {

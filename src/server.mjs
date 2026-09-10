@@ -62,6 +62,7 @@ export async function startServer({
     ["/diagnostic-state.mjs", "text/javascript; charset=utf-8"],
     ["/connection-diagnostics.mjs", "text/javascript; charset=utf-8"],
     ["/draft-guard.mjs", "text/javascript; charset=utf-8"],
+    ["/sidebar-reports.mjs", "text/javascript; charset=utf-8"],
     ["/update-recovery.mjs", "text/javascript; charset=utf-8"],
     ["/style.css", "text/css; charset=utf-8"],
     ["/app-icon.svg", "image/svg+xml"],

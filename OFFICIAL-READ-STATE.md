@@ -52,3 +52,19 @@
 - node scripts/verify-official-read-roundtrip.mjs --create-probe：**创建本轮专用测试任务**，不用于旧任务。2026-09-10已通过8项现场检查：默认本机身份分区匹配、首轮完成未读、Remote回执清除官方持久标记、官方owner快照也变已读、新一轮重新未读、迟到旧回执不能清新标记、新回执再次同步。1项新任务、2次测试文字；官方PID108796未重启，broker为官方独占。证据保存在被忽略的work/official-read-roundtrip-ATOK3G/。
 
 常规Node/窗口、共享界面可见性/侧栏/设备切换、双端构建签名、包内自检及更新保留检查按发布记录列出。用户继续自行更新测试APK，本轮不安装或执行APK，不启动模拟器。VS Code共享broker新已读通知没有在该组合重新实测；既有核心写入证据仅官方26.903.8094.0 + VS Code1.136.2 + Codex扩展26.903.61454。Chat列表/历史支持、文字续写未验证，新建/模型/图片不支持；Work未独立验证。
+
+## 0.10.25：侧栏蓝点也统一为官方未读
+
+2026-09-10 用户截图指出侧栏蓝点点击后仍在、官方已无蓝点。根因是 public/app.js 的 renderThreadIndicator 把 completed 画成蓝点，数据来自 sidebarStatus 合并的列表/owner 运行状态；它并没有查询 hasUnreadTurn。0.10.23 只统一了任务概览/小组件，这一侧栏旧路径遗漏，0.10.24 亦受影响。
+
+public/sidebar-reports.mjs 现在使用与小组件相同的 /task-summary（schemaVersion=2/statePolicy=official-only）并且仅认可 source=official-owner-snapshot、明确 readStateKnown/runtimeKnown、unread=true 的未读观察。历史完成、当前选中和本地通知尝试都不能画蓝点。官方已读无点，无法确认为空心未知；Chat 未读未接入。运行/等待/错误仍用其各自状态样式。
+
+观察只在当前页面短时保留，不写 localStorage/IndexedDB 或用户数据文件，不继承失败、过期、旧设备/模式的结果。约 15 秒刷新；开始请求 60 秒后过期，失败即失效。人工刷新、唤醒及官方已读通知触发重查，切换设备/模式和断线取消旧响应。后端在确认官方已读时使已开始的统计失效，所有共享该请求的调用者会重新采集官方状态，不能接收到确认前的旧快照；通知本身不能代替新的官方观察。
+
+本轮新测试：test/sidebar-reports.test.mjs、test/task-reports.test.mjs 的在途确认竞态；scripts/verify-widget-ui.mjs 增加桌面/窄屏 completed 仍存在但官方已读无点、未读蓝点、确认后消失、同一报告重新标未读、外部已读、未知状态与草稿保留。scripts/verify-official-read-live.mjs 只读检查官方 26.903.8094.0、没有创建回执或任务写入。发布、安装及最终回归结果以本版验收记录为准。官方版本/Chat/Work/VS Code 支持和用户不执行 APK 的范围沿用 0.10.24，无接口放宽。
+
+### 0.10.25 正式发布验收（2026-09-10）
+
+174 项 Node、13 项 Windows 窗口、5 组桌面/窄屏已读与蓝点/草稿/深链回归、9 组侧栏导航、8 组设备切换、7 组连接诊断、隔离设备强制重启通过。官方 26.903.8094.0 只读统计、最终 EXE 包内运行时/DPAPI/只读自检及 0.10.24→0.10.25 包内保存/强制重启/删除通过。Android 仅构建、原签名/证书与元数据检查，没有安装或执行 APK。用户真实任务写入为零。
+
+双端正式发布、线上签名/完整资源哈希/发布说明/单份资源通过。EXE 44,092,416 字节，SHA-256 `2ffbbec25e229a4886c0ddd2b40b7fda831a8bf897b79a5e9f0568be08bf64da`；APK 253,381 字节，SHA-256 `03184b185c71cfb9fbdd76cc6ea29521abd2c8cbf2289895092a31ec8555b581`。兼容清单 `f53bfc41a02e92cfe8a68c4ac55f6f5b3eeb34a65b75a1cd239cc23e1eb4391a` 与 0.10.24 相同；Android 原证书保持。笔记本内置更新通过，2 项设备/选择/密钥/接入与更新设置/独立历史保持，旧回执文件不变，官方 PID 108796 未重启。主工作区未发布 Chat 修改保留，未混入正式包。

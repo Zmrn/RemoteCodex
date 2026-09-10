@@ -1,5 +1,6 @@
 import { draftBinding, protectRecovery, orphanEntries } from "./draft-guard.mjs";
 import { ConnectionDiagnostics } from "./connection-diagnostics.mjs";
+import { SidebarReports, sidebarIndicator } from "./sidebar-reports.mjs";
 import { USER_INPUT_REQUEST } from "./official-events.mjs";
 import { validateImageBatch, imagePayload, imageUrls } from "./image-input.mjs";
 import { normalizeMode, matchesMode, modeTaskKey, modeCatalog, chatComposer, chatNotice, chatEmpty } from "./modes.mjs";
@@ -98,6 +99,14 @@ let usageData = null,
   usagePending = false,
   usageFetchedAt = 0;
 const sidebarStates = new Map();
+const sidebarReports = new SidebarReports({
+  read: (id, signal) => agentApi(id, '/task-summary', undefined, { signal: AbortSignal.any([signal, AbortSignal.timeout(22000)]) }),
+  changed: updateThreadIndicators,
+});
+function refreshSidebarReports(invalidate = false) {
+  if (invalidate) { sidebarReports.reset(); updateThreadIndicators(); }
+  if (!booting && !document.hidden && status.connected && agentId && mode === 'codex') sidebarReports.refresh(agentId);
+}
 let sidebarSequence = 0,
   sidebarPolling = false;
 const currentAgent = () => agents.find((a) => a.id === agentId);
@@ -266,6 +275,7 @@ const stateNames = {
   running: "运行中",
   idle: "空闲",
   completed: "已完成",
+  unread: "未读回报",
   inProgress: "运行中",
   interrupted: "已中断",
   error: "出错",
@@ -308,9 +318,10 @@ function rememberSidebarStatus(id, state, sequence = ++sidebarSequence) {
   sidebarStates.set(id, { ...state, sequence });
 }
 function renderThreadIndicator(card, thread) {
-  const state = status.connected
+  const runtime = status.connected
     ? (sidebarStates.get(thread.id) ?? sidebarStatus(thread.status))
     : { type: "connection-interrupted", confirmed: false };
+  const state = sidebarIndicator(runtime, sidebarReports.get(thread.id), mode, status.connected);
   const type =
     state.confirmed === false && state.type !== "connection-interrupted"
       ? "unknown"
@@ -326,8 +337,8 @@ function renderThreadIndicator(card, thread) {
   const cls =
     type === "running"
       ? "thread-spinner"
-      : type === "completed"
-        ? "thread-dot completed"
+      : type === "unread"
+        ? "thread-dot unread"
         : type?.startsWith("waiting-")
           ? "thread-dot waiting"
           : ["failed", "error"].includes(type)
@@ -414,6 +425,7 @@ function checkVisibleReport() {
     acknowledgedReports.set(key, report.token);
     try {
       const result = await agentApi(report.a, "/threads/" + report.id + "/read-receipt", { token: report.token });
+      if (report.a === agentId && report.g === generation) refreshSidebarReports(true);
       if (!result.accepted && visibleReport === report)
         toast("官方已读状态尚未确认，统计以官方为准");
     } catch { /* Do not replay an uncertain notification or infer local read. */ }
@@ -779,6 +791,7 @@ function modelSettings(state) {
 }
 function setConnection(connected, text) {
   if (!connected) {
+    sidebarReports.reset();
     closeSettingsMenu(false);
     resetTaskReads();
     taskData = null;
@@ -1108,6 +1121,7 @@ async function refresh(g = generation, options = {}) {
     $("project-filter").value = filter;
   renderThreads();
   permissions();
+  refreshSidebarReports();
 }
 async function pollSidebar() {
   if (sidebarPolling || booting || document.hidden || !status.connected) return;
@@ -1136,6 +1150,7 @@ async function pollSidebar() {
       );
     renderThreads();
     permissions();
+    refreshSidebarReports();
   } catch {
     if (g === generation) setConnection(false, "状态读取失败 · 状态未知");
   } finally {
@@ -1151,6 +1166,7 @@ function saveDraft() {
   else if (files.length) takenDrafts.set(taskKey(), { files });
 }
 async function switchAgent(id, record = true, resumeId = null, nextMode = mode) {
+  sidebarReports.reset();
   $("mode-menu").hidePopover();
   viewerRecovery?.stop();
   viewerRecovery = null;
@@ -1843,6 +1859,7 @@ async function stream(id, g) {
         if (e.kind === "connected") {
           viewerRecovery?.request(true);
         }
+        if (e.kind === 'report-read') refreshSidebarReports(true);
         if (status.connected && ["thread-state", "unknown"].includes(e.kind)) {
           rememberSidebarStatus(e.threadId, {
             ...(e.kind === "thread-state"
@@ -2306,6 +2323,7 @@ setInterval(() => {
   if (!document.hidden) refreshUsage();
 }, 60000);
 setInterval(pollSidebar, 15000);
+setInterval(() => sidebarReports.expire(), 1000);
 setInterval(() => {
   if (!booting && !document.hidden && mode === "codex" && selected)
     draftDiscards.flush({ agent: agentId, id: selected, connected: !!status.connected });
@@ -3101,6 +3119,7 @@ api("/api/agents")
   .finally(() => {
     booting = false;
     permissions();
+    refreshSidebarReports();
     backupDrafts().catch(error);
     const params = new URL(location.href).searchParams;
     const destination = widgetDestination ?? (params.get("widgetThread") ? { agent: params.get("widgetAgent"), thread: params.get("widgetThread"), mode: params.get("widgetMode") } : null);
