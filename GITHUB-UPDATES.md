@@ -1,5 +1,26 @@
 # GitHub 直接更新
 
+## 0.10.32 正式发布（2026-09-10）
+
+[GitHub Release v0.10.32](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.32) 已公开。用户明确要求发布后，先在最终 0.10.32 工作树通过 Node22.19.0 的 259 项测试、接口清单及 5 组功能独立/7 组兼容报告/7 组已读 UI 检查；提交 `9b7dfa03f3056f7a686a0aaec8065b951e585c39` 的 [Checks34497736006](https://github.com/Zmrn/RemoteCodex/actions/runs/34497736006) 全部成功后，通过只读 preflight，仅派发一次 [Build34498105728](https://github.com/Zmrn/RemoteCodex/actions/runs/34498105728)。requestId 为 `5142fd0f-0e84-4e44-bdb3-e494f8ff9e49`，云端签名前同 SHA Checks 门禁实际通过，所有构建步骤首次成功。
+
+本版包含逐功能兼容策略：官方版本号变化不再全局禁用，20 项实际接口按 23 项功能依赖判断；运行时、状态和兼容页面统一。缺少列表/项目/模型目录不再导致整机断线或阻止默认发送，队列/调整方向/停止分别判断。保留官方身份、owner、轮次、回执和未知结果不重放保护，任务和已读状态仍来自官方。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44149760 | `c0b0e35b3376ee340dd6d55725670c461207b91e8c0ba8f1fd0509965b555e48` |
+| RemoteCodex.apk | 274371 | `5b17e3ca14f2f37c65072054dc8ddd6c3a896396d74b6c865c60f3c3e5008d03` |
+
+两个更新清单原 RSA 签名、APK v2/v3 原证书、包名 com.anso.remotecodex、versionCode10032、双端版本/源码 SHA/运行 ID/发布说明和 GitHub 更新渠道核验通过。APK 证书 SHA-256 仍为 `3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`。正式中央清单 SHA-256 为 `d87d2cf363159c5ae95939c900b4886b5b4fabfd1cc5b14ee00b3299b4d4a3f2`，与构建提交的 Git blob 及包内实际字节一致；旧开发现场报告中的哈希不能代替最终提交。包内源码和共享界面与发布源码一致，无用户配置或签名私钥。
+
+EXE 在隔离 home、PATH 仅含 Windows System32 的条件下通过内嵌 Node22.19.0/Python3.13.2、DPAPI、资源和真实官方项目/任务只读自检。确认官方 26.903.9818.0/PID30692 为官方独占 broker；使用包内源码重新连接确认 20/20 接口匹配、23/23 功能条件满足。隔离 0.10.31 云包到 0.10.32 云包的 UI 保存、升级、强制重启及显式删除通过；现有设备、接入、更新、通知设置及通知草稿文件字节未改。
+
+标准发布器用同次八项资源建立草稿、逐项上传并读回后公开。发布后，不携带 GitHub 登录凭据，通过生产下载函数读取 latest 双签名清单，再按 v0.10.32 完整下载 APK/EXE 和说明，验签/长度/哈希全部一致。未重复派发、重建或覆盖已发布资源。
+
+Windows x64 官方 26.903.9818.0 本轮仅有接口条件与只读行为验证，没有真实任务写入往返；历史行为实测仍是 26.901.6511.0、26.903.8094.0，其他版本按当前接口判断。Chat 列表/文字历史保持，续写待专用真实验证，新建/模型/生成图片和 Work 未完成；8 份未完成 Chat 修改未纳入包。本轮未运行 APK/模拟器、升级现有客户端、重启官方应用或写真实任务，未使用旧服务器或本地构建。GITHUB-BUILD.json 的 published/liveDesktopTested 保留云端产出时的 false，不改写已发布资源。
+
+证据位于会话 `work/release-032/work/`：checks-watch.log、preflight.json、build-dispatch.log、build-watch.log、package-verification.json、packaged-policy.json、agent-restart.log、installed-data-after.json、release-state.json、online-verification.json。发布记录提交仅记录结果，不再次构建。
+
 ## 0.10.31 正式发布（2026-09-10）
 
 [GitHub Release v0.10.31](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.31) 已公开，同次八项资源均由标准发布器上传并读回核验。构建为 [34483037972](https://github.com/Zmrn/RemoteCodex/actions/runs/34483037972)，源码 `9bdd09d03bbbeec6337d60331d3c245cdd988dbb`；同提交 [Checks34483033637](https://github.com/Zmrn/RemoteCodex/actions/runs/34483033637) 成功，包含243项Node和相关共享UI、Windows窗口/通知、主机JVM检查。
