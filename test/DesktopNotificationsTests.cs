@@ -79,6 +79,20 @@ class DesktopNotificationsTests {
                 Pump(2850);Check(editing.IsDisposed,"stopping input closes popup and retains the saved draft");
                 Check(!composing.IsDisposed,"IME completion restarts the inactivity window");Pump(2400);Check(composing.IsDisposed,"notification expires after composition finishes");
             }finally{foreach(var card in timed){card.AllowClose=true;card.Dispose();}}
+            var pendingSave = new TaskCompletionSource<Dictionary<string, object>>();
+            string latestSaved = null;
+            using (var card = new NotificationCard(Item(true), async (route, text) => {
+                if (route == "draft" && text == "原草稿") await pendingSave.Task;
+                if (route == "draft") latestSaved = text;
+                return new Dictionary<string, object>();
+            }, () => Task.FromResult(true))) {
+                ShowBriefly(card); Click(card, "send"); Input(card).Text = "原草稿";
+                Pump(5300); Input(card).AppendText("，保存等待期间的新文字");
+                pendingSave.SetResult(new Dictionary<string, object>()); Pump(700);
+                Check(!card.IsDisposed, "typing during delayed expiry save keeps the card open");
+                Check(latestSaved == Input(card).Text, "new text during expiry save is persisted before closing");
+                Pump(4600); Check(card.IsDisposed, "delayed save still allows closure after the new inactivity window");
+            }
             int displayed=0;
             using(var owner=new Form())using(var menu=new ContextMenuStrip())using(var host=new DesktopNotifications(owner,args[0],menu,()=>Task.FromResult("null"),text=>Task.FromResult(true),card=>{displayed++;ShowBriefly(card);})){var handle=owner.Handle;host.Start(new string('b',64));Pump(2500);
                 Check(!owner.Visible&&displayed==1,"hidden main window still receives notification");

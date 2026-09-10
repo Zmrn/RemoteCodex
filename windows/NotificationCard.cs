@@ -21,6 +21,7 @@ public sealed class NotificationCard : Form {
     Task saves = Task.FromResult(true);
     string savedText;
     bool quick, expanded, dismissing, saveFailed, layoutReady;
+    long activity;
     float scale = 1;
     public bool Busy { get; private set; }
     public bool HasInput { get { return reply.Text.Length > 0; } }
@@ -151,7 +152,7 @@ public sealed class NotificationCard : Form {
         ResumeLayout(false); Invalidate();
     }
     void SetStatus(string value, bool error) { status.Text = value; status.ForeColor = error ? Color.FromArgb(236, 166, 143) : muted; UpdateLayout(); }
-    void Touch() { inactive.Restart(); }
+    void Touch() { activity++; inactive.Restart(); }
     void SaveError() { saveFailed = true; SetStatus("草稿未能保存，请保留此窗口并复制文字。", true); }
     public Task Save() { saveTimer.Stop(); saves = SaveAfter(saves, reply.Text); return saves; }
     async Task SaveAfter(Task previous, string value) {
@@ -163,7 +164,14 @@ public sealed class NotificationCard : Form {
     async Task Dismiss() {
         if (Busy || dismissing || AllowClose || IsDisposed) return;
         dismissing = true;
-        try { await Save(); AllowClose = true; Close(); }
+        long closingActivity = activity;
+        try {
+            await Save();
+            // Saving can yield while the user resumes typing or composing text.
+            // Keep the card and its new inactivity window in that case.
+            if (IsDisposed || closingActivity != activity || reply.IsComposing) return;
+            AllowClose = true; Close();
+        }
         catch { if (!IsDisposed) SaveError(); }
         finally { dismissing = false; }
     }
