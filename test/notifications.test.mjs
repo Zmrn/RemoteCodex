@@ -74,7 +74,7 @@ test('draft survives dismissal/restart; deleting text removes the unsent draft; 
   const calls = []; const { service, observe, dir, agents, change } = setup(t, { request: async (...args) => { calls.push(args); return { application: 'remote-codex', instanceId: randomUUID() }; } });
   observe([row()]); observe([row('a')]); const e = [...service.events.values()][0];
   service.draft(e.id, '未发送的测试草稿'); service.dismiss(e.id);
-  const restarted = new DesktopNotifications(agents, dir); t.after(() => restarted.close()); restarted.restore();
+  const restarted = new DesktopNotifications(agents, dir); t.after(() => restarted.close()); assert.deepEqual(restarted.restore().ids, [e.id]);
   assert.equal(restarted.db.drafts[e.id].text, '未发送的测试草稿');
   restarted.draft(e.id, ''); assert.equal(Object.keys(restarted.db.drafts).length, 0);
   // Use restarted writer only after it has changed the storage.

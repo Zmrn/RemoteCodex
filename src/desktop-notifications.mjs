@@ -124,7 +124,7 @@ export class DesktopNotifications {
   dismiss(id) { this.events.delete(id); return { saved: true }; }
   restore() {
     for (const [id, draft] of Object.entries(this.db.drafts)) this.events.set(id, { ...draft.event, createdAt: this.now() });
-    return { restored: true };
+    return { restored: true, ids: Object.keys(this.db.drafts) };
   }
   discard(id) {
     this.event(id); if (this.flights.has(id)) throw Error('正在提交，请稍候');
