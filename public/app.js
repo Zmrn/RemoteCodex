@@ -1,3 +1,5 @@
+import { draftBinding, protectRecovery, orphanEntries } from "./draft-guard.mjs";
+import { ConnectionDiagnostics } from "./connection-diagnostics.mjs";
 import { USER_INPUT_REQUEST } from "./official-events.mjs";
 import { validateImageBatch, imagePayload, imageUrls } from "./image-input.mjs";
 import { normalizeMode, matchesMode, modeTaskKey, modeCatalog, chatComposer, chatNotice, chatEmpty } from "./modes.mjs";
@@ -107,6 +109,8 @@ const base = (id) => "/api/agents/" + encodeURIComponent(id) + "/bridge";
 const taskKey = (a = agentId, t = selected, m = mode) => modeTaskKey(a, t, m);
 const modeSelections = new Map();
 const takenDrafts = new Map();
+let draftBindings = new Map(), orphanedDrafts = [];
+let recoveryLoaded = false;
 const draftDiscards = new DraftDiscards({
   api: agentApi,
   persist: backupDrafts,
@@ -125,9 +129,9 @@ const projectPicker = new ProjectPicker({ $, changed: () => {
   permissions();
   backupDrafts().catch(error);
 } });
-async function backupDrafts() {
-  saveDraft();
-  await saveRecovery({
+function draftSnapshot() {
+  return {
+    deviceBindings: [...draftBindings], orphanedDrafts,
     agent: agentId,
     mode,
     modeSelections: [...modeSelections],
@@ -140,7 +144,28 @@ async function backupDrafts() {
     prompt: $("prompt").value,
     files: [...composerImages],
     questions: questionUI.snapshot(),
-  });
+  };
+}
+function guardDraftTargets() {
+  const protectedDrafts = protectRecovery(draftSnapshot(), agents);
+  if (protectedDrafts.saved.orphanedDrafts.length === orphanedDrafts.length && !protectedDrafts.blockedActive) return false;
+  const saved = protectedDrafts.saved;
+  draft = new Map(saved.drafts);pendingSettings = new Map(saved.settings);
+  takenDrafts.clear();for(const [key,value] of saved.taken)takenDrafts.set(key,value);
+  modeSelections.clear();for(const [key,value] of saved.modeSelections)modeSelections.set(key,value);
+  draftDiscards.entries.clear();draftDiscards.restore(saved.discardedRecoveries);
+  questionUI.restore(saved.questions);projectPicker.restore(saved.creationProjects);
+  draftBindings = new Map(saved.deviceBindings);orphanedDrafts = saved.orphanedDrafts;
+  if(protectedDrafts.blockedActive){
+    setPromptValue("");setImages([]);renderAttachment();
+    selected=null;
+    if(currentAgent())newConversation(false,{preserveDrawer:true});
+  }
+  renderOrphanNotice();return protectedDrafts.blockedActive;
+}
+async function backupDrafts() {
+  if (booting || !recoveryLoaded) return;
+  saveDraft();guardDraftTargets();await saveRecovery(draftSnapshot());
 }
 let draftBackupTimer;
 function scheduleDraftBackup() {
@@ -327,6 +352,36 @@ function node(tag, cls, text) {
   if (cls) n.className = cls;
   if (text !== undefined) n.textContent = text;
   return n;
+}
+function renderOrphanNotice() {
+  const button=$("orphan-drafts");if(!button)return;
+  button.hidden=!orphanedDrafts.length;button.textContent="保留的草稿（"+orphanedDrafts.length+"）";
+}
+function openOrphanDrafts() {
+  const dialog=$("orphan-dialog"),rows=$("orphan-draft-rows");rows.replaceChildren();
+  for(const orphan of orphanedDrafts){
+    const card=node('section','diagnostic-check');card.append(node('strong','',orphan.name+' · '+orphan.reason));
+    for(const row of orphanEntries(orphan)){
+      card.append(node('p','orphan-preview',row.text||'图片草稿'));
+      const source=row.taken,files=source?.files??(source?.file?[source.file]:imageUrls(source?.message?.imageDataUrls??source?.message?.imageDataUrl).map((data,i)=>new File([Uint8Array.from(atob(data.split(',')[1]),c=>c.charCodeAt(0))],'recovered-'+(i+1)+'.png',{type:data.slice(5,data.indexOf(';'))})));
+      if(files.length)card.append(node('p','field-help',files.length+' 张原始图片已保留'));
+      const target=currentAgent(),targetMode=mode,targetBinding=draftBinding(target);
+      const restore=node('button','',target?'放入「'+target.name+' · '+targetMode+'」的新对话':'请先选择设备');
+      restore.disabled=!target||selected!==null||!!$('prompt').value||!!composerImages.length||(row.mode&&row.mode!==mode)||mode==='chat';
+      restore.onclick=async()=>{try{
+        if(target?.id!==agentId||targetMode!==mode||targetBinding!==draftBinding(currentAgent())||selected!==null||$('prompt').value||composerImages.length)throw Error('目标或输入框已变化，请重新打开草稿列表');
+        validateImageBatch(files);setPromptValue(row.text);setImages(files);renderAttachment();saveDraft();permissions();await backupDrafts();dialog.close();closeDrawer(false);toast('已放入当前新对话，保护备份仍保留');
+      }catch(e){error(e);}};
+      const copy=node('button','','复制文字');copy.disabled=!row.text;copy.onclick=()=>navigator.clipboard.writeText(row.text).then(()=>toast('已复制草稿文字')).catch(error);
+      const actions=node('div','diagnostic-actions');actions.append(restore,copy);card.append(actions);
+    }
+    const remove=node('button','','删除这份保护备份');remove.onclick=async()=>{
+      const previous=orphanedDrafts;orphanedDrafts=orphanedDrafts.filter(o=>o.id!==orphan.id);
+      try{await backupDrafts();renderOrphanNotice();openOrphanDrafts();}catch(e){orphanedDrafts=previous;error(e);}
+    };card.append(remove);rows.append(card);
+  }
+  if(!orphanedDrafts.length)rows.append(node('p','','没有另外保留的草稿。'));
+  if(!dialog.open)dialog.showModal();
 }
 function error(e) {
   $("error").textContent = e.message ?? String(e);
@@ -1088,6 +1143,7 @@ async function pollSidebar() {
   }
 }
 function saveDraft() {
+  if (currentAgent() && !draftBindings.has(agentId)) draftBindings.set(agentId,{binding:draftBinding(currentAgent()),name:currentAgent().name});
   draft.set(taskKey(), $("prompt").value);
   const saved = takenDrafts.get(taskKey());
   const files = [...composerImages];
@@ -1100,6 +1156,7 @@ async function switchAgent(id, record = true, resumeId = null, nextMode = mode) 
   viewerRecovery = null;
   closeSettingsMenu(false);
   saveDraft();
+  guardDraftTargets();
   modeSelections.set(agentId + ":" + mode, selected);
   mode = normalizeMode(nextMode);
   localStorage.setItem("remote-codex-mode", mode);
@@ -1171,6 +1228,8 @@ async function switchAgent(id, record = true, resumeId = null, nextMode = mode) 
       { id },
       { signal: AbortSignal.timeout(10000) },
     );
+    if (g !== generation) return;
+    await backupDrafts();
     if (g !== generation) return;
     let s = await agentApi(id, "/status");
     if (!s.connected)
@@ -1981,7 +2040,7 @@ async function navigateBy(delta) {
   else if (r.t) await selectThread(r.t, false);
   else newConversation(false);
 }
-function newConversation(record = true) {
+function newConversation(record = true, { preserveDrawer = false } = {}) {
   if (!currentAgent()) { editAgent(null); return; }
   closeSettingsMenu(false);
   projectPicker.close();
@@ -2015,13 +2074,16 @@ function newConversation(record = true) {
   clearError();
   renderThreads();
   permissions();
-  closeDrawer(false);
+  if (!preserveDrawer) closeDrawer(false);
   if (record) recordRoute(agentId, null);
   $("prompt").focus();
 }
 $("form").onsubmit = async (e) => {
   e.preventDefault();
   if ($("send").disabled) return;
+  if (!recoveryLoaded) { error(Error('草稿存储尚未读取，已暂停发送，请重新打开 Remote Codex')); return; }
+  saveDraft();
+  if(guardDraftTargets()){await backupDrafts();permissions();toast("原连接已变化，草稿已另外保留，请核对目标设备");return;}
   const a = agentId,
     t = selected,
     g = generation,
@@ -2172,6 +2234,7 @@ $("agent-form").onsubmit = async (e) => {
   agentRefresh++;
   $("save-agent").disabled = true;
   try {
+    await backupDrafts();
     await deviceSettings.saveLocal();
     const d = await api("/api/agents", {
       id: editing,
@@ -2197,6 +2260,7 @@ $("agent-form").onsubmit = async (e) => {
 $("remove-agent").onclick = async () => {
   agentRefresh++;
   try {
+    await backupDrafts();
     const removed = editing,
       d = await api("/api/agents/remove", { id: removed });
     agentRefresh++;
@@ -2978,6 +3042,14 @@ $("setup-dialog").addEventListener("close", () => {
   $("pairing-key").hidden = $("copy-key").hidden = true;
 });
 modeUI();
+$("orphan-drafts").onclick=openOrphanDrafts;
+const connectionDiagnostics=new ConnectionDiagnostics({api,getAgent:currentAgent,getAgents:()=>agents,edit:editAgent,toast,
+  retry:async id=>{await agentApi(id,'/connect',{});if(id===agentId)viewerRecovery?.request(true);},
+  updates:async id=>{await agentApi(id,'/updates/check',{});toast('已请求目标检查更新');},
+});
+$("diagnose-connection").onclick=$("help-diagnose").onclick=()=>connectionDiagnostics.open();
+$('connection').onclick=()=>connectionDiagnostics.open();$('connection').setAttribute('role','button');$('connection').tabIndex=0;
+$('connection').onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();connectionDiagnostics.open();}};
 if (android) new DeviceConnections({ $, api });
 let widgetDestination = null, widgetNavigation = 0;
 window.remoteCodexOpenTask = async (destination) => {
@@ -2995,7 +3067,10 @@ api("/api/agents")
   .then(async (d) => {
     storageNotice(d);
     agents = d.agents;
-    const saved = await readRecovery().catch(() => null);
+    const original = await readRecovery();
+    recoveryLoaded = true;
+    const protection = protectRecovery(original, agents), saved = protection.saved;
+    draftBindings = new Map(saved?.deviceBindings ?? []);orphanedDrafts = saved?.orphanedDrafts ?? [];renderOrphanNotice();
     draftDiscards.restore(saved?.discardedRecoveries);
     projectPicker.restore(saved?.creationProjects);
     questionUI.restore(saved?.questions);
@@ -3008,7 +3083,7 @@ api("/api/agents")
         : d.selectedId,
     );
     const requested =
-      saved?.thread || new URL(location.href).searchParams.get("thread");
+      saved?.thread || (!protection.blockedActive && new URL(location.href).searchParams.get("thread"));
     if (requested && /^[a-f0-9-]{36}$/.test(requested))
       await selectThread(requested, true, { preserveDrawer: true });
     if (saved) {
@@ -3026,6 +3101,7 @@ api("/api/agents")
   .finally(() => {
     booting = false;
     permissions();
+    backupDrafts().catch(error);
     const params = new URL(location.href).searchParams;
     const destination = widgetDestination ?? (params.get("widgetThread") ? { agent: params.get("widgetAgent"), thread: params.get("widgetThread"), mode: params.get("widgetMode") } : null);
     widgetDestination = null;

@@ -23,7 +23,7 @@ public final class TaskWidget extends AppWidgetProvider {
     float density=c.getResources().getDisplayMetrics().density,scale=c.getResources().getConfiguration().fontScale;
     int x=Math.round(sizing.horizontalInset*density),y=Math.round(sizing.verticalInset*density);
     v.setViewPadding(R.id.widget_frame,x,y,x,y);
-    boolean known=state.getBoolean("known");String unread=known?String.valueOf(state.getInt("unread")):"—",running=known?String.valueOf(state.getInt("running")):"—";
+    String unread=WidgetText.count(state,"unread"),running=WidgetText.count(state,"running");
     v.setTextViewText(R.id.widget_unread,unread);v.setTextViewText(R.id.widget_running,running);
     v.setTextViewTextSize(R.id.widget_unread,TypedValue.COMPLEX_UNIT_SP,sizing.digitSize(unread.length(),scale));v.setTextViewTextSize(R.id.widget_running,TypedValue.COMPLEX_UNIT_SP,sizing.digitSize(running.length(),scale));
     v.setTextViewText(R.id.widget_status,state.getString("label"));

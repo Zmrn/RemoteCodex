@@ -113,3 +113,7 @@ adb -s emulator-5580 shell am instrument -w -e stage layout com.anso.remotecodex
 ## 0.10.21 已读同步
 
 任务概览缓存新增官方已读观察来源，精确回报同token时采用本轮已读，不让未知运行状态反写旧未读；离线/旧回报的官方观察不压掉在线计数。Remote实际可见阅读仍经共享界面，目标电脑负责通知官方；26.903.8094.0本机Codex验证范围及协议边界见OFFICIAL-READ-STATE.md。主机JVM验证生产缓存/聚合，按用户安排本轮不安装或执行APK。
+
+## 0.10.24 连接诊断与数据保护
+
+2026-09-10：连接诊断、旧设备草稿隔离、Android 带校验独立历史设备存储、通知未知状态、官方统计公平扫描和关键配置保护见 [CONNECTION-DIAGNOSTICS.md](CONNECTION-DIAGNOSTICS.md)。旧文档中的 SharedPreferences 可变设备存储由本版迁移替代；原文件仅作迁移输入，Keystore 与加密密钥保持。统计仍只服从官方，无自有已读/运行缓存。关键配置保护中，损坏请求记录不得重放，双副本不一致不得静默覆盖。用户不执行 APK、自行更新验证的安排继续。

@@ -15,6 +15,7 @@ import { DATA_DIR, INSTANCE } from "./runtime.mjs";
 import { createGzip } from "node:zlib";
 import { conversationView } from "./state.mjs";
 import { CompatibilityProbes, inspectDesktop } from "./compatibility-probe.mjs";
+import { diagnoseDevice } from "./diagnostics.mjs";
 export async function startServer({
   port = 43127,
   bridge = new Bridge(),
@@ -30,6 +31,8 @@ export async function startServer({
   const updater = new Updater(bridge.dataDir ?? DATA_DIR, (e) =>
     bridge.emitEvent?.(e.kind, e),
   );
+  const diagnosticStatus = () => ({...bridge.status(),bridgeVersion:INSTANCE.version,storageHealth:[...(bridge.status().storageHealth??[]),access.store?.health,updater.store?.health].filter(Boolean)});
+  const diagnostics = new Map();
   const secret = randomBytes(32).toString("hex"),
     sse = new Set();
   let closing = false;
@@ -56,6 +59,9 @@ export async function startServer({
     ["/queue-ui.mjs", "text/javascript; charset=utf-8"],
     ["/draft-discards.mjs", "text/javascript; charset=utf-8"],
     ["/device-settings.mjs", "text/javascript; charset=utf-8"],
+    ["/diagnostic-state.mjs", "text/javascript; charset=utf-8"],
+    ["/connection-diagnostics.mjs", "text/javascript; charset=utf-8"],
+    ["/draft-guard.mjs", "text/javascript; charset=utf-8"],
     ["/update-recovery.mjs", "text/javascript; charset=utf-8"],
     ["/style.css", "text/css; charset=utf-8"],
     ["/app-icon.svg", "image/svg+xml"],
@@ -185,7 +191,13 @@ export async function startServer({
       if (req.method === "GET" && url.pathname === "/api/updates")
         return json(res, 200, updater.status());
       if (req.method === "GET" && url.pathname === "/api/status")
-        return json(res, 200, bridge.status());
+        return json(res, 200, diagnosticStatus());
+      if (req.method === "GET" && url.pathname === "/api/diagnostics") {
+        const id=url.searchParams.get('agent');
+        if(!/^(local|[a-f0-9-]{36})$/.test(id??''))return json(res,400,{error:'请选择已保存的设备'});
+        if(!diagnostics.has(id))diagnostics.set(id,diagnoseDevice(agents,id,{localStatus:diagnosticStatus}).finally(()=>diagnostics.delete(id)));
+        return json(res,200,await diagnostics.get(id));
+      }
       if (req.method === "GET" && url.pathname === "/api/compatibility") {
         bridge.requireConnection();
         return json(res, 200, await inspectDesktop(bridge.desktop));

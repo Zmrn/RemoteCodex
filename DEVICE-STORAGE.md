@@ -86,3 +86,7 @@ adb -s emulator-5580 shell am instrument -w -e stage device-storage com.anso.rem
 ```
 
 浏览器脚本需要现有 Playwright 安装（可由 `REMOTE_BRIDGE_PLAYWRIGHT` 指向模块）。测试只创建隔离目录及合成设备，不向官方任务发送消息。Android 测试添加并清理合成设备，保留模拟器已有设备，禁止将用户物理手机当成默认测试目标。原始测试输出位于被忽略的 `work/device-recovery/`。
+
+## 0.10.24 连接诊断与数据保护
+
+2026-09-10：连接诊断、旧设备草稿隔离、Android 带校验独立历史设备存储、通知未知状态、官方统计公平扫描和关键配置保护见 [CONNECTION-DIAGNOSTICS.md](CONNECTION-DIAGNOSTICS.md)。旧文档中的 SharedPreferences 可变设备存储由本版迁移替代；原文件仅作迁移输入，Keystore 与加密密钥保持。统计仍只服从官方，无自有已读/运行缓存。关键配置保护中，损坏请求记录不得重放，双副本不一致不得静默覆盖。用户不执行 APK、自行更新验证的安排继续。

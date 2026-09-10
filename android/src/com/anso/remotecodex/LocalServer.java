@@ -44,6 +44,7 @@ public final class LocalServer {
     }
     if(api){JSONObject input=body.length==0?new JSONObject():new JSONObject(new String(body,StandardCharsets.UTF_8)),answer;
       if(route.equals("/api/agents")&&method.equals("GET"))answer=app.devices.list();
+      else if(route.equals("/api/diagnostics")&&method.equals("GET")){String id=android.net.Uri.parse(target).getQueryParameter("agent");if(id==null||!id.matches("[a-f0-9-]{36}"))answer=new JSONObject().put("schemaVersion",1).put("failure","device-missing");else answer=ConnectionDiagnostics.read(app.devices,id);}
       else if(route.equals("/api/agents")&&method.equals("POST")){answer=app.devices.save(input);app.widgetMonitor.devicesChanged();}
       else if(route.equals("/api/agents/select")&&method.equals("POST"))answer=app.devices.select(input.getString("id"));
       else if(route.equals("/api/agents/remove")&&method.equals("POST")){answer=app.devices.remove(input.getString("id"));app.widgetMonitor.devicesChanged();}

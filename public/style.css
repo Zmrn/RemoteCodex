@@ -2989,3 +2989,17 @@ dialog textarea,
 .markdown td > .remote-message-image { min-width: 100px; }
 .markdown pre { max-width: 100%; }
 .markdown pre code { white-space: pre; overflow-wrap: normal; }
+
+.diagnostics-dialog { width:min(680px,calc(100vw - 28px)); max-height:calc(100dvh - 36px); overflow:auto; box-sizing:border-box; }
+.diagnostics-dialog header,.diagnostic-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.diagnostics-dialog h2 { margin:8px 0 16px; font-size:20px; }
+.diagnostics-dialog select { width:100%; margin:8px 0; min-height:40px; }
+.diagnostic-check { padding:14px; border:1px solid #354559; border-radius:12px; margin:12px 0; background:#161e2a; }
+.diagnostic-check p { line-height:1.6; overflow-wrap:anywhere; }
+.diagnostic-check[data-status="error"] { border-color:#aa675f; }
+.diagnostic-check[data-status="warning"] { border-color:#aa8553; }
+.diagnostic-check button,.diagnostic-actions button,#help-diagnose { min-height:40px; padding:8px 12px; white-space:normal; }
+.diagnostic-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.diagnostic-checks textarea { box-sizing:border-box; width:100%; min-height:160px; }
+.orphan-preview { white-space:pre-wrap; max-height:180px; overflow:auto; }
+#connection[role="button"] { cursor:pointer; }

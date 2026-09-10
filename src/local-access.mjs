@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import { protect, isTailAddress } from "./agents.mjs";
 import { validateAccessKey } from "./access-key.mjs";
 import { startRemoteListener } from "./remote.mjs";
+import { DurableJson } from "./durable-json.mjs";
 
 export const tailscaleAddresses = () =>
   [
@@ -22,9 +23,8 @@ export class LocalAccess {
     { addresses = tailscaleAddresses, listen = startRemoteListener } = {},
   ) {
     this.file = path.join(dir, "remote-access.json");
-    this.config = fs.existsSync(this.file)
-      ? JSON.parse(fs.readFileSync(this.file))
-      : {};
+    this.store = new DurableJson(this.file,{label:"本机接入配置",empty:{},validate:value=>value&&typeof value==='object'&&!Array.isArray(value)&&(value.enabled===undefined||typeof value.enabled==='boolean')&&(value.sealedKey===undefined||typeof value.sealedKey==='string')&&(!value.enabled||(typeof value.host==='string'&&Number.isInteger(value.port)&&value.port>0&&value.port<=65535&&typeof value.sealedKey==='string'))});
+    this.config = this.store.value;
     this.addresses = addresses;
     this.listen = listen;
     this.server = null;
@@ -41,20 +41,20 @@ export class LocalAccess {
       enabled: !!this.config.enabled,
       hasKey: !!this.config.sealedKey,
       listening: this.server?.address() ?? null,
-      error: this.error,
+      error: this.store.health.message || this.error,
+      storageHealth: this.store.health,
     };
   }
   write(config) {
     if (this.closed) throw Error("本机接入管理已关闭");
-    fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    fs.writeFileSync(this.file + ".tmp", JSON.stringify(config, null, 2));
-    fs.renameSync(this.file + ".tmp", this.file);
+    this.store.write(config);
     this.config = config;
   }
   key() {
     return this.mutate(() => this.readKey());
   }
   async readKey() {
+    this.store.assertWritable();
     if (this.config.sealedKey)
       return protect(this.config.sealedKey, "unprotect");
     const key = randomBytes(32).toString("hex");
@@ -71,7 +71,7 @@ export class LocalAccess {
   }
   reconcile() {
     return this.mutate(async () => {
-      if (!this.config.enabled || this.server) return;
+      if (!this.config.enabled || this.server || !this.store.health.writable) return;
       try {
         const host = this.config.host || this.addresses()[0];
         if (!host || !this.addresses().includes(host))
@@ -100,6 +100,7 @@ export class LocalAccess {
   mutate(fn) {
     const next = this.queue.then(() => {
       if (this.closed) throw Error("本机接入管理已关闭");
+      this.store.assertWritable();
       return fn();
     });
     this.queue = next.catch(() => {});

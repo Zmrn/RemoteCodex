@@ -58,7 +58,7 @@ public final class DeviceSyncService extends Service {
   }
   private Notification notification(){
     String detail="正在连接全部设备";
-    try{JSONObject state=app.widgetMonitor.snapshot();int total=state.getInt("devices"),online=state.optInt("connectedDevices");detail=online+" / "+total+" 台设备已连接 · "+state.getInt("unread")+" 未读 / "+state.getInt("running")+" 运行中";if(online<total)detail+=" · 重连中";if(!state.optBoolean("complete"))detail+=" · 部分统计";}catch(Exception ignored){detail="设备统计暂不可用，正在重试";}
+    try{detail=WidgetText.notification(app.widgetMonitor.snapshot());}catch(Exception ignored){detail="设备统计暂不可用，正在重试";}
     PendingIntent open=PendingIntent.getActivity(this,42,new Intent(this,WidgetInboxActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
     PendingIntent pause=PendingIntent.getService(this,43,new Intent(this,DeviceSyncService.class).setAction(PAUSE),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
     return new Notification.Builder(this,CHANNEL).setSmallIcon(android.R.drawable.stat_notify_sync).setContentTitle("Remote Codex · 全部设备同步")

@@ -20,7 +20,7 @@ export function reportReceipt(data) {
 // history cache or persisted receipt participates in task statistics.
 export class TaskReports {
   constructor(bridge, { now = Date.now, stateFactory = desktop => new OfficialTaskState(desktop) } = {}) {
-    this.bridge = bridge; this.now = now; this.stateFactory = stateFactory; this.issued = new Map(); this.officialPending = new Map();
+    this.bridge = bridge; this.now = now; this.stateFactory = stateFactory; this.issued = new Map(); this.officialPending = new Map(); this.nextTask = null;
   }
   observe(data) {
     const receipt = reportReceipt(data);
@@ -61,19 +61,24 @@ export class TaskReports {
     const rows = [...new Map([...(list.pinnedThreads ?? []), ...(list.threads ?? [])]
       .filter(t => ["codex", "chatgpt"].includes(t.kind) && /^[a-f0-9-]{36}$/.test(t.id))
       .map(t => [t.id, t])).values()];
+    // Only scheduling position survives refreshes, never a task's old flags.
+    const start = Math.max(0, rows.findIndex(row => row.id === this.nextTask));
+    const order = rows.map((_, index) => (start + index) % rows.length);
     const deadline = this.now() + 10000, result = new Array(rows.length), reader = this.stateFactory(desktop);
     let next = 0, available = false;
     try {
       if (reader.supported()) { try { await reader.connect(); current(); available = true; } catch { current(); } }
       await Promise.all(Array.from({ length: Math.min(3, rows.length) }, async () => {
         for (;;) {
-          const index = next++; if (index >= rows.length) break;
+          const position = next++; if (position >= rows.length) break;
+          const index = order[position];
           const row = rows[index], base = { id: row.id, kind: row.kind, title: String(row.title ?? "未命名任务").slice(0, 240), updatedAt: row.updatedAt };
           // A current official list can confirm running work, but never unread.
           if (active(row.status)) { result[index] = { ...base, running: true, unread: false, runtimeKnown: true, readStateKnown: false, unknown: false, stateSource: 'official-list' }; continue; }
-          result[index] = { ...base, running: false, unread: false, runtimeKnown: false, readStateKnown: false, unknown: true, stateSource: 'unavailable' };
+          result[index] = { ...base, running: false, unread: false, runtimeKnown: false, readStateKnown: false, unknown: true, stateSource: 'unavailable', reason: this.now() >= deadline ? 'scan-budget' : 'official-state-unavailable' };
           if (!available || row.kind !== 'codex' || row.hostId !== OFFICIAL.discovery.hostId || this.now() >= deadline) continue;
           try {
+            this.nextTask = rows[order[(position + 1) % rows.length]].id;
             const flags = await reader.read(row.id, Math.min(2500, deadline - this.now())); current();
             result[index] = { ...base, ...flags };
           } catch { current(); }

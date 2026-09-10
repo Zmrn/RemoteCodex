@@ -14,6 +14,7 @@ import { DATA_DIR } from "./runtime.mjs";
 import { MessageMedia } from "./message-media.mjs";
 import { readOfficialHistory } from "./history-read.mjs";
 import { TaskReports } from "./task-reports.mjs";
+import { DurableJson } from "./durable-json.mjs";
 import { markOfficialReportRead } from "./official-report-read.mjs";
 import { SubscriptionLeases } from "./subscriptions.mjs";
 import { Reconnector } from "../public/reconnect.mjs";
@@ -46,9 +47,9 @@ export class Bridge extends EventEmitter {
     this.dataDir = dataDir;
     fs.mkdirSync(dataDir, { recursive: true });
     this.stateFile = path.join(dataDir, "bridge-state.json");
-    this.db = fs.existsSync(this.stateFile)
-      ? JSON.parse(fs.readFileSync(this.stateFile))
-      : { tests: {}, requests: {} };
+    this.stateStore = new DurableJson(this.stateFile, {label:"提交与草稿记录",empty:{tests:{},requests:{}},recoveryReadOnly:true,
+      validate:value=>value&&typeof value==='object'&&!Array.isArray(value)&&value.tests&&typeof value.tests==='object'&&!Array.isArray(value.tests)&&value.requests&&typeof value.requests==='object'&&!Array.isArray(value.requests)});
+    this.db = this.stateStore.value;
     this.watching = new Set();
     this.live = new Map();
     this.connected = false;
@@ -68,9 +69,7 @@ export class Bridge extends EventEmitter {
     this.subscriptionTimer.unref();
   }
   save() {
-    const tmp = this.stateFile + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(this.db, null, 2));
-    fs.renameSync(tmp, this.stateFile);
+    this.stateStore.write(this.db);
   }
   emitEvent(kind, details = {}) {
     const e = {
@@ -450,6 +449,7 @@ export class Bridge extends EventEmitter {
       : { ...result, headHash };
   }
   async once(key, operation, payload, fn, { deferredDispatch = false } = {}) {
+    this.stateStore.assertWritable();
     if (typeof key !== "string" || !/^[\w-]{8,100}$/.test(key))
       throw Error("requestId required (8-100 letters/digits/hyphens)");
     const hash = createHash("sha256")
@@ -839,7 +839,7 @@ export class Bridge extends EventEmitter {
     const has = name => catalog.some(t => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === name);
     return {
       read: has(TOOLS.readThread) && has(TOOLS.listThreads),
-      sendText: supported && has(TOOLS.sendMessage),
+      sendText: supported && this.stateStore.health.writable && has(TOOLS.sendMessage),
       sendValidation: "source-reviewed; dedicated-live-test-pending",
       create: false, models: false, images: false, queue: false, interrupt: false,
       status: "renderer-poll", classification: "chatgpt-including-work-unclassified",
@@ -1065,7 +1065,8 @@ export class Bridge extends EventEmitter {
       protectedThreadId: null,
       protectedThreadIds: [],
       desktopCompatibility: compatibility,
-      existingCodexWritable: compatibility.writeSupported,
+      existingCodexWritable: compatibility.writeSupported && this.stateStore.health.writable,
+      storageHealth: [this.stateStore.health],
       taskSummary: { supported: true, schemaVersion: 2, statePolicy: 'official-only', readReceipts: true },
       interrupt: { supported: compatibility.writeSupported, source: "official-desktop-owner-IPC" },
       projectCreation: {

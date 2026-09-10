@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { INSTANCE } from "./runtime.mjs";
+import { DurableJson } from "./durable-json.mjs";
 import {
   verifyManifest,
   verifyExecutable,
@@ -24,9 +25,8 @@ export class Updater {
   constructor(dir, notify = () => {}) {
     this.dir = path.join(dir, "updates");
     this.settingsFile = path.join(dir, "update-settings.json");
-    this.settings = fs.existsSync(this.settingsFile)
-      ? JSON.parse(fs.readFileSync(this.settingsFile))
-      : { automatic: true };
+    this.store = new DurableJson(this.settingsFile,{label:"更新设置",empty:{automatic:true},validate:value=>value&&typeof value==='object'&&typeof value.automatic==='boolean'&&Object.keys(value).every(k=>k==='automatic')});
+    this.settings = this.store.health.writable ? this.store.value : {automatic:false};
     this.notify = notify;
     this.phase = "idle";
     this.error = "";
@@ -90,7 +90,8 @@ export class Updater {
       available:
         !!this.latest && newerVersion(this.latest.version, INSTANCE.version),
       checkedAt: this.checkedAt ?? null,
-      error: this.error,
+      error: this.store.health.message || this.error,
+      storageHealth: this.store.health,
       progress: this.progress ?? 0,
       result,
       source: source.manifestUrl,
@@ -103,9 +104,7 @@ export class Updater {
       Object.keys(input).some((k) => k !== "automatic")
     )
       throw Error("更新设置无效");
-    fs.mkdirSync(path.dirname(this.settingsFile), { recursive: true });
-    fs.writeFileSync(this.settingsFile + ".tmp", JSON.stringify(input));
-    fs.renameSync(this.settingsFile + ".tmp", this.settingsFile);
+    this.store.write(input);
     this.settings = input;
     if (input.automatic && this.supported) this.check().catch(() => {});
     return this.status();
@@ -162,6 +161,7 @@ export class Updater {
     }
   }
   install(manual = false) {
+    this.store.assertWritable();
     if (!this.supported) throw Error("自动安装仅支持单 EXE 版本");
     if (this.installing) {
       if (manual) this.force = true;

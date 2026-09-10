@@ -95,7 +95,7 @@ public final class WidgetInboxActivity extends Activity {
     JSONObject s=app.widgetMonitor.snapshot(selectedDevice);
     deviceName.setText(selectedDevice.isEmpty()?"全部设备":app.devices.get(selectedDevice).getString("name"));deviceCount.setText(s.getInt("devices")+" 台设备");
     String time=s.optString("lastUpdated");updated.setText(refreshing||s.optBoolean("working")?"刷新中…":time.isEmpty()?"尚未更新":"更新于 "+time);
-    tabs.removeAllViews();tab("unread","未读回报",AMBER,s.optBoolean("known")?String.valueOf(s.getInt("unread")):"—");tab("running","运行中",BLUE,s.optBoolean("known")?String.valueOf(s.getInt("running")):"—");
+    tabs.removeAllViews();tab("unread","未读回报",AMBER,WidgetText.count(s,"unread"));tab("running","运行中",BLUE,WidgetText.count(s,"running"));
     rows.removeAllViews();
     if(s.optInt("offline")>0){
       LinearLayout warning=row();warning.setPadding(dp(14),dp(12),dp(12),dp(12));warning.addView(icon("offline",AMBER,26));space(warning,12);

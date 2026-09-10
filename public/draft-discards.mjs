@@ -32,7 +32,9 @@ export class DraftDiscards {
         // Commit intent before dispatch so closing/reloading during a lost
         // response cannot turn the discarded backup into a recoverable draft.
         await this.persist();
+        if (this.entries.get(key) !== r) return;
         const result = await this.api(r.agent, `/threads/${r.id}/queue`, { action: "ack-recovery", recoveryId: r.recoveryId });
+        if (this.entries.get(key) !== r) return;
         if (result.status !== "accepted" || result.result?.disposition !== "recovery-cleared") throw Error("草稿清理尚未确认");
         r.cleared = true;
         // Keep confirmed markers too: a previously started GET can arrive late.

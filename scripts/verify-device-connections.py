@@ -18,6 +18,8 @@ work = Path(tempfile.mkdtemp(prefix='device-connections-jvm-', dir=ROOT/'work'))
 source = ROOT / 'android/src/com/anso/remotecodex'
 subprocess.run([str(jdk/'bin/javac.exe'), '--release', '8', '-encoding', 'UTF-8', '-cp', str(jar), '-d', str(work),
                 str(source/'DevicePoller.java'), str(source/'SummaryConnection.java'), str(source/'WidgetSizing.java'), str(source/'WidgetSnapshot.java'), str(source/'WidgetReadState.java'),
+                str(source/'DeviceStore.java'),str(source/'WidgetText.java'),str(ROOT/'android/host-test/DeviceStoreTests.java'),
                 str(ROOT/'android/host-test/DeviceConnectionTests.java'), str(ROOT/'android/host-test/WidgetPresentationTests.java')], check=True)
 subprocess.run([str(jdk/'bin/java.exe'), '-ea', '-cp', str(work)+';'+str(jar), 'DeviceConnectionTests'], check=True, timeout=30)
 subprocess.run([str(jdk/'bin/java.exe'), '-ea', '-cp', str(work)+';'+str(jar), 'WidgetPresentationTests'], check=True, timeout=30)
+subprocess.run([str(jdk/'bin/java.exe'), '-ea', '-cp', str(work)+';'+str(jar), 'DeviceStoreTests',str(work)], check=True, timeout=30)

@@ -11,8 +11,11 @@ public final class DeviceConnection {
     return open(capture(devices,id),route,method,body,contentType,8000,75000);
   }
   public static HttpURLConnection open(Endpoint endpoint,String route,String method,byte[] body,String contentType,int connectTimeout,int readTimeout)throws Exception{
+    return openResolved(endpoint,Devices.resolve(endpoint.device.getString("host")).getHostAddress(),route,method,body,contentType,connectTimeout,readTimeout);
+  }
+  public static HttpURLConnection openResolved(Endpoint endpoint,String ip,String route,String method,byte[] body,String contentType,int connectTimeout,int readTimeout)throws Exception{
+    if(!Devices.tail(InetAddress.getByName(ip)))throw new IOException("设备地址不属于 Tailscale 网络");
     JSONObject d=endpoint.device;String key=endpoint.key;
-    String ip=Devices.resolve(d.getString("host")).getHostAddress();
     URL url=new URL("http",ip,d.getInt("port"),"/bridge/v1"+route);
     HttpURLConnection c=(HttpURLConnection)url.openConnection(Proxy.NO_PROXY);
     c.setInstanceFollowRedirects(false);c.setConnectTimeout(connectTimeout);c.setReadTimeout(readTimeout);c.setRequestMethod(method);
