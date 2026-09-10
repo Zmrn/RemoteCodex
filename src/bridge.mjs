@@ -925,7 +925,7 @@ export class Bridge extends EventEmitter {
       return r;
     }, { deferredDispatch: true });
   }
-  async nativeSend(id, key, prompt, imageDataUrl, options = {}) {
+  async nativeSend(id, key, prompt, imageDataUrl, options = {}, beforeDispatch) {
     this.guard(id);
     this.requireConnection();
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000)
@@ -977,6 +977,9 @@ export class Bridge extends EventEmitter {
             throw Error("官方会话尚未加载，消息没有发送");
         }
         if (status.thread.status.type === "notLoaded") {
+          // Notification replies require a still-loaded, freshly matched owner
+          // event; they must not resume an unobserved task through a fallback.
+          if (beforeDispatch) throw Error('Notification task state changed before dispatch');
           if (images.length)
             throw Error("此会话尚未加载，请先发送文字或在官方桌面打开后再发图");
           // The desktop tool resumes its own existing task. Choose this route
@@ -1015,6 +1018,7 @@ export class Bridge extends EventEmitter {
         }
         const input = [{ type: "text", text: prompt, text_elements: [] }];
         for (const url of images) input.push({ type: "image", url });
+        if (beforeDispatch) await beforeDispatch();
         dispatch();
         const r = await protocolRequest(this.desktop.ipc, "start",
           {

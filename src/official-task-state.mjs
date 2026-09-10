@@ -26,7 +26,7 @@ export class OfficialTaskState {
     await this.pipe.connect();
     if (this.identity !== this.desktop.identity) throw Error('Official connection changed');
   }
-  async read(id, timeoutMs = 2500) {
+  async read(id, timeoutMs = 2500, project = officialTaskFlags) {
     const pipe = this.pipe;
     if (!pipe || this.identity !== this.desktop.identity) throw Error('Official state unavailable');
     const started = Date.now();
@@ -41,7 +41,9 @@ export class OfficialTaskState {
               f.params?.hostId !== OFFICIAL.discovery.hostId || f.params?.conversationId !== id || f.params?.change?.type !== 'snapshot') return;
           try {
             if (this.identity !== this.desktop.identity) throw Error('Official connection changed');
-            resolve(officialTaskFlags(f.params.change.conversationState, id));
+            const state = f.params.change.conversationState;
+            if (state?.id !== id) throw Error('Official task identity changed');
+            resolve(project(state, id));
           } catch (e) { reject(e); }
         };
         onDisconnect = () => reject(Error('Official state connection interrupted'));

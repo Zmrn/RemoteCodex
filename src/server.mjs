@@ -16,6 +16,8 @@ import { createGzip } from "node:zlib";
 import { conversationView } from "./state.mjs";
 import { CompatibilityProbes, inspectDesktop } from "./compatibility-probe.mjs";
 import { diagnoseDevice } from "./diagnostics.mjs";
+import { NotificationSource } from './notification-source.mjs';
+import { DesktopNotifications } from './desktop-notifications.mjs';
 export async function startServer({
   port = 43127,
   bridge = new Bridge(),
@@ -33,6 +35,9 @@ export async function startServer({
   );
   const diagnosticStatus = () => ({...bridge.status(),bridgeVersion:INSTANCE.version,storageHealth:[...(bridge.status().storageHealth??[]),access.store?.health,updater.store?.health].filter(Boolean)});
   const diagnostics = new Map();
+  const notificationSource = new NotificationSource(bridge);
+  let desktopNotifications;
+  const notifications = () => desktopNotifications ??= new DesktopNotifications(agents, bridge.dataDir ?? DATA_DIR);
   const secret = randomBytes(32).toString("hex"),
     sse = new Set();
   let closing = false;
@@ -207,6 +212,8 @@ export async function startServer({
         return json(res, 200, compatibilityProbes.read(url.searchParams.get("requestId")));
       if (req.method === "GET" && url.pathname === "/api/instance")
         return json(res, 200, INSTANCE);
+      if (req.method === 'GET' && url.pathname === '/api/notification-state')
+        return json(res, 200, await notificationSource.collect());
       if (req.method === "GET" && url.pathname === "/api/events") {
         res.writeHead(200, {
           "Content-Type": "text/event-stream",
@@ -331,6 +338,15 @@ export async function startServer({
         chunks.push(chunk);
       }
       const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+      if (url.pathname === '/api/desktop-notifications/poll') return json(res, 200, notifications().poll(body));
+      if (url.pathname === '/api/desktop-notifications/settings') return json(res, 200, notifications().settings(body.enabled));
+      if (url.pathname === '/api/desktop-notifications/draft') return json(res, 200, { saved: !!notifications().draft(body.id, body.text) });
+      if (url.pathname === '/api/desktop-notifications/dismiss') return json(res, 200, notifications().dismiss(body.id));
+      if (url.pathname === '/api/desktop-notifications/restore') return json(res, 200, notifications().restore());
+      if (url.pathname === '/api/desktop-notifications/discard') return json(res, 200, notifications().discard(body.id));
+      if (url.pathname === '/api/desktop-notifications/reply') return json(res, 200, await notifications().reply(body.id, body.text));
+      const notificationReply = /^\/api\/threads\/([a-f0-9-]{36})\/notification-reply$/.exec(url.pathname);
+      if (notificationReply) return json(res, 200, await notificationSource.reply(notificationReply[1], body));
       if (url.pathname === "/api/compatibility/probe")
         return json(res, 202, compatibilityProbes.start(body));
       if (url.pathname === "/api/agents")
@@ -453,6 +469,7 @@ export async function startServer({
   }, 15000);
   heartbeat.unref();
   server.on("close", () => {
+    desktopNotifications?.close();
     bridge.disconnect();
     access.close();
     updater.close();

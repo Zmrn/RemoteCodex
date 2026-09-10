@@ -64,3 +64,14 @@ test('new-task permission preparation failure remains retryable without duplicat
   assert.equal((await create()).status, 'accepted');
   assert.equal((await create()).deduplicated, true); assert.equal(creates, 1);
 });
+
+test('notification preflight rechecks immediately before native dispatch and never resumes a notLoaded fallback', async t => {
+  const { bridge, state, calls } = fixture(t, 'codex'); let ready = false, checked = 0;
+  const send = () => bridge.nativeSend(id, 'send-once-001', 'synthetic prompt', undefined, {}, async () => { checked++; if (!ready) throw Error('notification changed'); });
+  state.type = 'notLoaded'; await assert.rejects(send(), /Notification task state changed/);
+  assert.equal(calls.filter(x => x === 'send_message_to_thread').length, 0);
+  state.type = 'idle'; await assert.rejects(send(), /notification changed/);
+  assert.equal(checked, 1); assert.equal(calls.filter(x => x === 'native-start').length, 0);
+  ready = true; assert.equal((await send()).status, 'accepted'); assert.equal(checked, 2);
+  assert.equal(calls.filter(x => x === 'native-start').length, 1);
+});

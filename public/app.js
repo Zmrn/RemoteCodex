@@ -3079,16 +3079,19 @@ $('connection').onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault
 if (android) new DeviceConnections({ $, api });
 let widgetDestination = null, widgetNavigation = 0;
 window.remoteCodexOpenTask = async (destination) => {
-  if (!android || !destination || !/^[a-f0-9-]{36}$/.test(destination.thread ?? "") || !/^[a-f0-9-]{36}$/.test(destination.agent ?? "")) return;
+  if ((!android && !window.chrome?.webview) || !destination || !/^[a-f0-9-]{36}$/.test(destination.thread ?? "") || !/^[a-f0-9-]{36}$/.test(destination.agent ?? "")) return;
   if (booting) { widgetDestination = destination; return; }
   const navigation = ++widgetNavigation;
   const data = await api("/api/agents");
   if (navigation !== widgetNavigation) return;
-  if (!data.agents.some(a => a.id === destination.agent)) throw Error("小组件中的设备已移除，请刷新小组件");
+  if (!data.agents.some(a => a.id === destination.agent)) throw Error("目标设备已移除，请刷新设备列表");
   agents = data.agents;
   closeDrawer(false);
   await switchAgent(destination.agent, true, destination.thread, normalizeMode(destination.mode));
 };
+window.remoteCodexNotificationContext = () => !booting && selected && !document.hidden && !drawerOpen &&
+  !document.querySelector('dialog[open]') ? { agent: agentId, thread: selected, mode } : null;
+window.chrome?.webview?.postMessage(JSON.stringify({ type: 'notifications-ready', csrf }));
 api("/api/agents")
   .then(async (d) => {
     storageNotice(d);

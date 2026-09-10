@@ -81,12 +81,14 @@ try {
   await context.close();
  }
  // Android deep link plumbing in the shared JS (browser fixture, not an APK test).
+ for (const platform of ['android', 'desktop']) {
  const context = await browser.newContext({ viewport: { width: 390, height: 800 } }); const page = await context.newPage();
+ if (platform === 'desktop') await page.addInitScript(() => { window.chrome ??= {}; window.chrome.webview = { postMessage() {} }; });
  page.on("pageerror", e => errors.push(e.message));
  await page.addInitScript(() => { Object.defineProperty(document, "hasFocus", { value: () => false }); });
  await page.route("**/*", async route => {
    const url = new URL(route.request().url());
-   if (url.pathname === "/") { const response = await route.fetch(); return route.fulfill({ response, body: (await response.text()).replace("<head>", '<head><meta name="bridge-platform" content="android">') }); }
+   if (url.pathname === "/") { const response = await route.fetch(); return route.fulfill({ response, body: (await response.text()).replace("<head>", '<head><meta name="bridge-platform" content="'+platform+'">') }); }
    if (url.pathname === "/api/agents") return route.fulfill({ json: { agents: [{ id: agent, kind: "remote", name: "Fixture device", host: "100.70.1.1", port: 43128, hasKey: true }], selectedId: agent } });
    if (url.pathname === "/api/agents/select") return route.fulfill({ json: { selectedId: agent } });
    if (url.pathname.startsWith(`/api/agents/${agent}/bridge/`)) { url.pathname = url.pathname.replace(`/api/agents/${agent}/bridge/`, "/api/agents/local/bridge/"); return route.continue({ url: url.toString() }); }
@@ -100,8 +102,18 @@ try {
  await page.evaluate(d => window.remoteCodexOpenTask(d), { agent, thread: id, mode: "codex" });
  await page.waitForFunction(() => document.querySelector("#prompt").value === "WIDGET_DRAFT");
  const missing = await page.evaluate(async d => { try { await window.remoteCodexOpenTask(d); return "unexpected"; } catch(e) { return e.message; } }, { agent: other, thread: id, mode: "codex" });
- assert.match(missing, /已移除/); checks.push("Android shared-JS deep link: startup task, warm navigation, device validation and isolated draft restoration");
- await context.close(); assert.deepEqual(errors, []);
+ assert.match(missing, /已移除/); checks.push(platform + " shared-JS deep link: startup task, warm navigation, device validation and isolated draft restoration");
+ // Same navigation path in a desktop shell, including native current-task suppression context.
+ await page.evaluate(() => { window.chrome ??= {}; window.chrome.webview = { postMessage() {} }; document.querySelector('meta[name="bridge-platform"]').content='desktop'; });
+ await page.evaluate(d => window.remoteCodexOpenTask(d), { agent, thread: other, mode: 'codex' });
+ await page.waitForFunction(() => document.querySelector('#title').textContent === 'Other fixture');
+ assert.deepEqual(await page.evaluate(() => window.remoteCodexNotificationContext()), { agent, thread: other, mode: 'codex' });
+ await page.evaluate(d => window.remoteCodexOpenTask(d), { agent, thread: id, mode: 'codex' });
+ await page.waitForFunction(() => document.querySelector('#prompt').value === 'WIDGET_DRAFT');
+ checks.push('Desktop notification navigation shares validated target routing and preserves existing task drafts');
+ await context.close();
+ }
+ assert.deepEqual(errors, []);
  fs.mkdirSync(path.join(ROOT, "evidence"), { recursive: true });
  const result = { result: "PASS", checks, errors, officialTaskWrites: 0, apkBehaviorTested: false };
  fs.writeFileSync(path.join(ROOT, "evidence/widget-ui.json"), JSON.stringify(result, null, 2)); console.log(JSON.stringify(result));

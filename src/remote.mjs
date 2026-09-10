@@ -10,11 +10,12 @@ export function allowedRoute(method, url) {
   if (method === "POST" && u.pathname === "/api/compatibility/probe") return true;
   if (
     method === "GET" &&
-    /^\/api\/(status|events|projects|threads|models|usage|updates|task-summary)$/.test(
+    /^\/api\/(status|events|projects|threads|models|usage|updates|task-summary|instance|notification-state)$/.test(
       u.pathname,
     )
   )
     return true;
+  if (method === 'POST' && /^\/api\/threads\/[a-f0-9-]{36}\/notification-reply$/.test(u.pathname)) return true;
   if (method === "POST" && /^\/api\/(connect|threads)$/.test(u.pathname))
     return true;
   if (

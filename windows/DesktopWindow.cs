@@ -21,6 +21,7 @@ public sealed class DesktopWindow : Form {
     private static readonly uint showMessage = RegisterWindowMessage("RemoteCodex.ShowDesktop.v1");
     private TaskCompletionSource<bool> draftSaved;
     private string draftNonce;
+    private readonly DesktopNotifications notifications;
     private readonly WindowPlacement placement;
     private readonly Timer placementTimer = new Timer { Interval = 400 };
     private bool placementReady;
@@ -57,6 +58,11 @@ public sealed class DesktopWindow : Form {
     }
     public void RequestExit() { exitRequested = true; EnsureExitDeadline(); Close(); }
     private async Task SaveDrafts() {
+        // A stalled notification save must not prevent the main composer from
+        // saving its independent drafts before the bounded exit deadline.
+        await Task.WhenAll(notifications.SaveDrafts(), SaveWebDrafts());
+    }
+    private async Task SaveWebDrafts() {
         if (web.CoreWebView2 == null || web.IsDisposed) return;
         draftNonce = "draft-saved-" + Guid.NewGuid().ToString("N");
         draftSaved = new TaskCompletionSource<bool>();
@@ -66,6 +72,7 @@ public sealed class DesktopWindow : Form {
         await Task.WhenAny(completion.Task, Task.Delay(1500));
     }
     protected override void Dispose(bool disposing) {
+        if (disposing && notifications != null) notifications.Dispose();
         if (disposing && !trayDisposed) { SavePlacement(); placementReady = false; placementTimer.Dispose(); }
         if (disposing && !trayDisposed) { trayDisposed = true; tray.Visible = false; tray.Dispose(); trayMenu.Dispose(); }
         base.Dispose(disposing);
@@ -96,6 +103,9 @@ public sealed class DesktopWindow : Form {
         tray.Text = "Remote Codex " + version;
         trayMenu.Items.Add("打开 Remote Codex", null, (sender, e) => RestoreWindow());
         trayMenu.Items.Add(new ToolStripSeparator());
+        notifications = new DesktopNotifications(this, address, trayMenu,
+            () => web.ExecuteScriptAsync("window.remoteCodexNotificationContext?.() ?? null"),
+            async destination => { RestoreWindow(); await web.ExecuteScriptAsync("window.remoteCodexOpenTask(" + destination + ").catch(e=>alert(e.message))"); });
         trayMenu.Items.Add("退出 Remote Codex", null, (sender, e) => RequestExit());
         tray.ContextMenuStrip = trayMenu;
         tray.MouseClick += (sender, e) => { if (e.Button == MouseButtons.Left) RestoreWindow(); };
@@ -131,7 +141,14 @@ public sealed class DesktopWindow : Form {
                     }));
                 };
                 web.CoreWebView2.WebMessageReceived += (s, args) => {
-                    try { if(args.TryGetWebMessageAsString()==draftNonce && draftSaved!=null)draftSaved.TrySetResult(true); } catch{}
+                    try {
+                        var value = args.TryGetWebMessageAsString();
+                        if(value==draftNonce && draftSaved!=null)draftSaved.TrySetResult(true);
+                        else {
+                            var dataMessage = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(value);
+                            if (DesktopNotifications.Text(dataMessage, "type") == "notifications-ready") notifications.Start(DesktopNotifications.Text(dataMessage, "csrf"));
+                        }
+                    } catch{}
                 };
                 web.CoreWebView2.NewWindowRequested += (s, args) => {
                     args.Handled = true;
