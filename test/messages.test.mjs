@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -94,6 +95,7 @@ test("sync replies target the verified question owner and reject a disappeared r
       },
     },
   };
+  fixtureEvidence(b.desktop);
   await assert.rejects(
     () =>
       b.answerQuestions(id, "question-001", {

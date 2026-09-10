@@ -1,5 +1,13 @@
 # Remote Codex 开发与发布约定
 
+## 当前兼容策略（2026-09-10，覆盖下方历史版本限制）
+
+用户要求“接口无异常就能用；有异常也不能停用正常部分”。运行时、状态接口和帮助页统一用 `official-desktop.json` 的实际 tools/ipc 名单与 features 依赖表判断。新版本号本身不再禁用操作；缺失、不匹配、未知只限制依赖该接口的功能。不能简单加版本白名单、绕过身份/owner/轮次/回执验证，或把只读接口匹配标为完整操作实测。
+
+`verifiedVersions` 仅记录历史行为验证。连接证据来自当前已核对的官方进程、实时 tools/list、同包静态 IPC 表和握手，绑定连接与目录，不接受客户端报告作为写入授权，不落盘。最新下载包只用于对照，不控制正在运行的版本。工具和 owner 管道分别判断；owner 握手失败可保留官方工具读取/文字新建等功能，未确认的管道不发送操作。缺少列表/项目/模型目录不能把设备整体判为断线或阻止默认设置发送。
+
+实现与复测见 COMPATIBILITY-VIEW.md、test/feature-compatibility.test.mjs、scripts/verify-feature-compatibility-ui.mjs。该修改保持 Remote 0.10.31，未构建、发布、安装或执行 APK；本机 26.903.9818.0 仅采集真实只读接口证据，没有执行真实任务写入。Chat/Work 的未实现功能仍不开放，未完成 Chat 工作单独保留。
+
 ## 打包发布的执行顺序（2026-09-10，优先于下方历史记录）
 
 用户要求减少失败和重复通知。**先验证最终版本，再等待同一提交的 Checks 成功，最后才派发正式构建。禁止 push 后把 Checks 和签名构建同时启动。** 只有用户明确要求打包/构建才生成APK/EXE；修改流程、文档或修复需求不构建，也不通过关闭Checks或通知来掩盖失败。
@@ -139,7 +147,7 @@
 - **每次发布必须在发布说明和最终交付中明确列出支持的官方 ChatGPT/Codex 桌面包版本、平台、Codex/Chat/Work 支持范围及未验证项。不能只写 Remote Codex 自身版本，也不能把“可以连接/读历史”当作新版完整兼容。**
 - 官方接口和已验证版本统一在 src/official-desktop.json 管理；运行代码使用 src/official-protocol.mjs，不得重新散落硬编码版本、IPC 方法及版本号。升级处理遵循 COMPATIBILITY.md；接口字段/适配位置和回归入口见自动生成的 COMPATIBILITY-INTERFACES.md。
 - `codex-ipc` 是共享转发管道，其 PID 可能属于已验证的 Microsoft VS Code；不能再要求它与官方 app-tools 同一 PID。官方 app-tools 身份、转发进程签名/产品、任务 owner 是三个不同检查，不能只按 Code.exe 文件名放行，也不能把 supportsUntrustedAppInput 当作 ChatGPT 身份证明。规则与已测组合集中在 discovery.sharedBroker；维护/复测见 VSCODE-COEXISTENCE.md。
-- 新官方版本必须先取得实际验证证据，再更新清单中的 verifiedVersions 和 validation；不得仅扩大版本范围、删除校验或自动放行。更新清单后执行 node scripts/compatibility-report.mjs --write 和 npm run compatibility。
+- 新官方版本按实际接口依赖逐功能启用；只有完整行为实测才更新 verifiedVersions 和 validation，不能将只读接口匹配当作实测。变动的接口只影响所依赖功能，未知不视为匹配。更新清单后执行 node scripts/compatibility-report.mjs --write 和 npm run compatibility。
 - 双端构建报告、签名更新清单及 RELEASE-NOTES.md 必须来自同一份兼容性清单。发布器必须拒绝缺失/过期元数据和混用旧产物；GitHub Release 内的说明哈希受更新签名保护。
 
 1. `package.json` 是唯一正式版本来源。APK versionCode 为 `major*1000000 + minor*1000 + patch`；minor、patch 必须小于 1000。

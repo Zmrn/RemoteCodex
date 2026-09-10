@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -23,6 +24,7 @@ test('fresh dedicated subscription ignores other owners/hosts, never sends read-
     });
   }});
   const desktop={identity:{appToolsPipe:{image:OFFICIAL.support.packagePrefix+'26.903.8094.0'+OFFICIAL.support.packageSuffix},brokerPipe:{path:'fixture'}}};
+  fixtureEvidence(desktop);
   const reader=new OfficialTaskState(desktop,{pipeFactory:()=>pipe});await reader.connect();
   assert.equal((await reader.read(id,50)).unread,true);mode='read';assert.equal((await reader.read(id,50)).unread,false);
   mode='timeout';await assert.rejects(reader.read(id,20),/timed out/);mode='disconnect';await assert.rejects(reader.read(id,50),/interrupted/);

@@ -51,10 +51,11 @@ export class QuestionsUI {
           .filter((q) => this.answers.has(q.id))
           .map((q) => [q.id, this.answers.get(q.id)]),
       );
+    const supported = context.capabilities?.[kind] !== false;
     const completed = questions.every((q) => Object.hasOwn(answers, q.id));
     if (completed) this.confirmed.add(key);
     card.questionKey = key;
-    card.questionSignature = JSON.stringify({ questions, answers, completed, connected: context.connected, sending: this.sending.has(key) });
+    card.questionSignature = JSON.stringify({ questions, answers, completed, connected: context.connected, supported, sending: this.sending.has(key) });
     let draft = this.drafts.get(key);
     if (!draft)
       this.drafts.set(
@@ -111,8 +112,10 @@ export class QuestionsUI {
         this.sending.has(key) ? "正在提交…" : "提交回答",
       );
       button.type = "button";
-      button.disabled = !context.connected || this.sending.has(key);
+      button.disabled = !context.connected || !supported || this.sending.has(key);
+      if (!supported) status.textContent = "此回答接口暂不可用，可保留草稿或在官方应用回答";
       button.onclick = async () => {
+        if (!supported) return;
         if (questions.some((q) => !draft[q.id]?.trim())) {
           status.textContent = "请回答所有问题";
           return;

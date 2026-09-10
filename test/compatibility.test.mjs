@@ -33,7 +33,7 @@ test("registered owner protocols preserve wire versions, payloads and target; ov
   assert.equal(calls.length, 3);
 });
 
-test("future desktop build blocks all task writes before IPC but permits read-only catalog", async t => {
+test("missing connection evidence blocks dependent writes before dispatch", async t => {
   fs.mkdirSync(path.join(ROOT, "test/scratch"), { recursive: true });
   const b = new Bridge(fs.mkdtempSync(path.join(ROOT, "test/scratch/compatibility-")));
   t.after(() => clearInterval(b.subscriptionTimer));
@@ -46,7 +46,7 @@ test("future desktop build blocks all task writes before IPC but permits read-on
     () => b.create("create-fixture", "test"), () => b.nativeSend(id, "send-fixture", "test"),
     () => b.updateSettings(id, "settings-fixture", {}), () => b.queue.mutate(id, "queue-fixture", { action: "delete" }),
     () => b.answerQuestions(id, "question-fixture", {}), () => b.interrupt(id, "interrupt-fixture", "turn"),
-  ]) await assert.rejects(action, /Unsupported desktop build/);
+  ]) await assert.rejects(action, /Unavailable official feature/);
   assert.equal(calls, 0); assert.deepEqual(b.db.requests, {});
   assert.equal(b.status().existingCodexWritable, false);
   assert.equal(b.status().desktopCompatibility.detectedVersion, "99.0.0.0");

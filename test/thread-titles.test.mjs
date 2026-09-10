@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -23,6 +24,7 @@ function fixture(t) {
       throw Error('Unexpected tool: ' + name);
     },
   };
+  fixtureEvidence(b.desktop);
   b.follow = async () => {}; b.connect = async () => b.status(); b.disconnect = () => {};
   fs.writeFileSync(path.join(dir, 'update-settings.json'), '{"automatic":false}');
   t.after(() => { clearInterval(b.subscriptionTimer); fs.rmSync(dir, { recursive: true, force: true }); });

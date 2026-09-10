@@ -1,5 +1,5 @@
 import { Pipe } from './transport.mjs';
-import { OFFICIAL, EVENTS, protocolBroadcast, protocolRequest, desktopCompatibility } from './official-protocol.mjs';
+import { OFFICIAL, EVENTS, protocolBroadcast, protocolRequest, desktopPolicy, requireInterface } from './official-protocol.mjs';
 import { runtimeStatus } from './state.mjs';
 
 export function officialTaskFlags(state, id) {
@@ -18,13 +18,14 @@ export class OfficialTaskState {
     this.desktop = desktop; this.identity = desktop.identity; this.pipeFactory = pipeFactory;
   }
   supported() {
-    return OFFICIAL.storage.readState.verifiedVersions.includes(desktopCompatibility(this.identity?.appToolsPipe?.image).detectedVersion);
+    return this.identity === this.desktop.identity && desktopPolicy(this.desktop).features.taskState.supported;
   }
   async connect() {
     if (!this.supported()) throw Error('Official task state unsupported');
     this.pipe = this.pipeFactory(this.identity.brokerPipe.path);
     await this.pipe.connect();
     if (this.identity !== this.desktop.identity) throw Error('Official connection changed');
+    this.pipe.assertInterface = key => requireInterface(this.desktop, key);
   }
   async read(id, timeoutMs = 2500, project = officialTaskFlags) {
     const pipe = this.pipe;

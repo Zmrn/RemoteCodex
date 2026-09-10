@@ -3,7 +3,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { OFFICIAL, desktopCompatibility, supportedBuild } from './official-protocol.mjs';
+import { OFFICIAL, desktopPolicy } from './official-protocol.mjs';
 import { PYTHON } from './runtime.mjs';
 
 const object = value => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -65,8 +65,7 @@ export class OfficialReadState {
     this.desktop = desktop; this.homeResolver = homeResolver; this.now = now;
   }
   supported() {
-    const image = this.desktop.identity?.appToolsPipe?.image;
-    return supportedBuild(image) && OFFICIAL.storage.readState.verifiedVersions.includes(desktopCompatibility(image).detectedVersion);
+    return desktopPolicy(this.desktop).features.readReceipt.supported;
   }
   async context() {
     if (!this.supported()) return null;

@@ -2,7 +2,7 @@ import { TOOLS } from './official-protocol.mjs';
 export async function renameThread(bridge, id, input) {
   const key = input?.requestId;
   try {
-    bridge.guard(id); bridge.requireConnection();
+    bridge.guard(id, "rename"); bridge.requireConnection();
     if (!input || Object.keys(input).some(k => !['requestId', 'title', 'expectedTitle'].includes(k)) ||
         typeof input.title !== 'string' || !input.title.trim() || input.title.trim().length > 200 || /[\r\n\x00-\x1f]/.test(input.title) ||
         !(input.expectedTitle === null || typeof input.expectedTitle === 'string') || !/^[\w-]{8,100}$/.test(key ?? ''))

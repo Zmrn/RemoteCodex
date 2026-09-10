@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -19,6 +20,7 @@ function fixture(t) {
     call: async (name, args) => { calls.push({ name, args }); return name === "list_projects" ? catalog : { threadId: id, cwd: project.path }; },
     close() {},
   };
+  fixtureEvidence(bridge.desktop);
   bridge.follow = async () => {};
   t.after(() => { bridge.disconnect(); clearInterval(bridge.subscriptionTimer); fs.rmSync(dir, { recursive: true }); });
   return { bridge, calls, catalog };

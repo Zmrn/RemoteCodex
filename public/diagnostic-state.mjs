@@ -24,7 +24,7 @@ export function diagnosticChecks(o){
   add('bridge','Remote Codex 桥接',b?'ok':config?'skipped':'error',b?'桥接状态接口可用'+(b.bridgeVersion?' · '+b.bridgeVersion:' · 旧端未提供版本')+'。':o.failure==='response-timeout'?'端口已连通，但状态响应超时。请检查目标电脑的 Remote Codex。':'未取得有效桥接状态；请核对目标软件和访问端口。','retry');
   add('official','官方桌面连接',!b?'skipped':b.connected?'ok':'error',!b?'等待桥接状态。':b.connected?'桥接已连接官方桌面。':'桥接可以访问，但尚未连接官方桌面。请在目标电脑确认官方应用已打开并登录，再重试。','retry');
   add('compatibility','版本与能力',!b?'skipped':!b.connected?'unknown':b.codexWritable?'ok':'warning',!b?'等待官方版本信息。':
-    (b.officialVersion?'官方版本 '+b.officialVersion+'。':'官方版本尚未确认。')+(b.codexWritable?' Codex 核心写入可用。':' Codex 写入当前不可用，请查看配置保护或版本支持情况。')+(b.officialOnly?' 统计使用官方状态，无法读取的任务仍为未知。':' 官方状态统计协议未确认，请检查目标更新。')+' Chat 新建'+(b.chatCreate?'可用':'未支持')+'，图片输入'+(b.chatImages?'可用':'未支持')+'；生成图片显示仍需独立验证。','updates');
+    (b.officialVersion?'官方版本 '+b.officialVersion+'。':'官方版本尚未确认。')+(b.codexWritable?' 部分 Codex 写入入口可用，具体功能见官方接口兼容性。':' Codex 写入当前不可用，请查看配置保护与具体接口原因。')+(b.officialOnly?' 统计使用官方状态，无法读取的任务仍为未知。':' 官方状态统计协议未确认，请检查目标更新。')+' Chat 新建'+(b.chatCreate?'可用':'未支持')+'，图片输入'+(b.chatImages?'可用':'未支持')+'；生成图片显示仍需独立验证。','updates');
   if(b?.storage?.some(s=>s.status!=='healthy'))add('storage','配置保护',b.storage.some(s=>!s.writable)?'error':'warning',b.storage.some(s=>!s.writable)?'部分配置处于保护状态，相关写入已暂停。原数据已保留，请重新启动 Remote Codex 读取；若仍失败请联系维护，勿清空数据。':'部分配置从校验副本恢复，原文件已保留。');
   if(o.failure==='target-changed')return [{key:'changed',title:'设备配置已变化',status:'warning',detail:'检测期间目标已改变，本次结果已丢弃，请重新检测。',action:'retry'}];
   return result;

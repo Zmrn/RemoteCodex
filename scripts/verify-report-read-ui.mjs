@@ -7,6 +7,7 @@ import { Bridge, ROOT } from '../src/bridge.mjs';
 import { startServer } from '../src/server.mjs';
 import { markOfficialReportRead } from '../src/official-report-read.mjs';
 import { OFFICIAL } from '../src/official-protocol.mjs';
+import { fixtureEvidence } from '../test/fixtures/interface-evidence.mjs';
 const { chromium } = await import(process.env.REMOTE_BRIDGE_PLAYWRIGHT || 'playwright-core');
 fs.mkdirSync(path.join(ROOT, 'work'), { recursive: true });
 const dir = fs.mkdtempSync(path.join(ROOT, 'work/report-read-ui-'));
@@ -32,6 +33,7 @@ bridge.desktop = { identity: { officialPid: 1 }, catalog: [],
  call: async method => { assert.equal(method, 'read_thread'); return data(); },
  owner: async () => { if (ownerFailures-- > 0) throw Error('owner snapshot not ready'); return { handledByClientId: owner }; },
  ipc: { broadcast(method, params) { assert.equal(method, OFFICIAL.ipc.readStateChanged.method); assert.equal(params.conversationId, id); sends++; if (!reject) unread = false; } } };
+fixtureEvidence(bridge.desktop);
 bridge.projects = async () => ({ data: { projects: [] } });
 bridge.threads = async () => ({ data: { threads: [{ id, title: 'Report read fixture', kind: 'codex', status: 'idle', hostId: 'local' }] } });
 bridge.models = async () => ({ models: [] }); bridge.usage = async () => ({ status: 'unavailable', weekly: [] });

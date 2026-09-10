@@ -1,48 +1,21 @@
 // Fixed, explicitly requested compatibility tests; never accepts task IDs or prompts.
-// Candidate versions remain read-only for normal operations until source + live
-// results are reviewed and the central verifiedVersions catalog is updated.
+// Dedicated live probes still require an explicitly listed test candidate.
+// Normal user operations use independent per-feature interface decisions.
 import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { Bridge } from "./bridge.mjs";
-import { OFFICIAL, desktopCompatibility } from "./official-protocol.mjs";
+import { OFFICIAL, desktopCompatibility, desktopPolicy } from "./official-protocol.mjs";
 import { activeTurnId } from "./state.mjs";
 import { parseModels } from "./settings.mjs";
 import { assertProbeTarget } from "./probe-safety.mjs";
 const images = JSON.parse(fs.readFileSync(new URL("./probe-images.json", import.meta.url)));
 const candidates = () => [...OFFICIAL.support.verifiedVersions, ...(OFFICIAL.probeCandidates ?? [])];
-export function sourceProtocols(image) {
-  const asar = path.join(path.dirname(image), "resources", "app.asar"), fd = fs.openSync(asar, "r");
-  try {
-    const prefix = Buffer.alloc(16); fs.readSync(fd, prefix, 0, 16, 0);
-    const size = prefix.readUInt32LE(12), offset = 8 + prefix.readUInt32LE(4);
-    if (size > 16 * 1024 * 1024 || size < 2) throw Error("Unexpected ASAR header");
-    const raw = Buffer.alloc(size); fs.readSync(fd, raw, 0, size, 16);
-    const tree = JSON.parse(raw), files = [];
-    const walk = (entries, prefix = "") => { for (const [name, item] of Object.entries(entries ?? {})) {
-      const key = prefix + name; if (item.files) walk(item.files, key + "/");
-      else if (/^\.vite\/build\/src-[\w-]+\.js$/.test(key)) files.push({ key, item });
-    } };
-    walk(tree.files);
-    const records = [];
-    for (const { key, item } of files) {
-      if (item.unpacked || item.size > 32 * 1024 * 1024 || !Number.isSafeInteger(Number(item.offset))) continue;
-      const buf = Buffer.alloc(item.size); fs.readSync(fd, buf, 0, buf.length, offset + Number(item.offset));
-      const text = buf.toString("utf8");
-      if (!text.includes('"' + OFFICIAL.ipc.start.method + '":')) continue;
-      const methods = {};
-      for (const spec of Object.values(OFFICIAL.ipc)) {
-        const at = text.indexOf('"' + spec.method + '":');
-        if (at >= 0) methods[spec.method] = Number(/^\d+/.exec(text.slice(at + spec.method.length + 3))?.[0]);
-      }
-      records.push({ file: key, sha256: createHash("sha256").update(buf).digest("hex"), methods });
-    }
-    return records;
-  } finally { fs.closeSync(fd); }
-}
+export { sourceProtocols } from "./source-protocols.mjs";
+import { sourceProtocols } from "./source-protocols.mjs";
 export async function inspectDesktop(desktop) {
-  const compatibility = desktopCompatibility(desktop.identity.appToolsPipe.image);
+  const compatibility = desktopPolicy(desktop);
   const catalog = await desktop.refreshCatalog();
   const tools = Object.values(OFFICIAL.tools).map(spec => {
     const tool = catalog.find(t => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === spec.name);

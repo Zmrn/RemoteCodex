@@ -1,3 +1,4 @@
+import { fixtureProtocols } from "./fixtures/interface-evidence.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Desktop, brokerKind } from "../src/desktop.mjs";
@@ -13,6 +14,7 @@ const catalog = [{ namespace: "codex_app", name: "list_threads" }];
 function fixture(pipes, options = {}) {
   const clients = [], discoveries = [];
   const desktop = new Desktop("fixture-context", {
+    readProtocols: fixtureProtocols,
     discoverPipes: async paths => {
       discoveries.push(paths);
       if (discoveries.length > 1 && options.closedDuringRecheck) clients.at(-1).socket = { destroyed: true };
@@ -56,7 +58,7 @@ test("official-hosted and verified VS Code-hosted IPC keep official app-tools id
   }
 });
 
-test("Code.exe name alone, unsigned, wrong publisher/product or unrecognized broker are rejected before connecting", async () => {
+test("untrusted brokers are never connected; verified official app-tools remain available", async () => {
   for (const bad of [
     { ...vscode, signature: undefined },
     ...[{ status: "NotSigned" }, { status: "Unknown" }, { publisherSimpleName: "Example" },
@@ -66,9 +68,10 @@ test("Code.exe name alone, unsigned, wrong publisher/product or unrecognized bro
   ]) {
     assert.equal(brokerKind(bad), null);
     const { desktop, clients } = fixture([bad, app]);
-    await assert.rejects(desktop.connect(), /Trusted desktop IPC broker unavailable/);
-    assert.equal(clients.length, 0);
-    assert.equal(desktop.identity, null);
+    await desktop.connect();
+    assert.equal(desktop.ipc, null);
+    assert.equal(clients.length, 1); assert.equal(clients[0].kind, 'tools');
+    assert.equal(desktop.identity.officialPid, app.pid); desktop.close();
   }
 });
 
@@ -87,7 +90,7 @@ test("VS Code broker cannot substitute for missing official app-tools or its cat
 test("diagnostic connection can inspect a missing list_threads without a task context or tool call", async () => {
   const tools = [{ namespace: 'codex_app', name: 'get_usage_limits' }];
   const normal = fixture([vscode, app], { catalog: tools });
-  await assert.rejects(normal.desktop.connect(), /Official app-tools pipe unavailable/);
+  await normal.desktop.connect(); normal.desktop.close();
   const f = fixture([vscode, app], { catalog: tools });
   f.desktop.context = null;
   try {
@@ -99,9 +102,8 @@ test("diagnostic connection can inspect a missing list_threads without a task co
   assert.ok(f.clients.every(c => c.closed));
 });
 
-test("replaced endpoints and failed broker handshake close all clients and clear trusted state", async () => {
+test("replaced endpoints close all clients and clear trusted state", async () => {
   for (const options of [
-    { brokerFails: true },
     { closedDuringRecheck: true },
     { recheck: [vscode, { ...app, pid: 999 }] },
     { recheck: [{ ...vscode, pid: 999 }, app] },

@@ -1,4 +1,5 @@
-import { OFFICIAL, TOOLS, protocolRequest, protocolBroadcast } from "./official-protocol.mjs";
+import { sourceProtocols } from "./source-protocols.mjs";
+import { observeDesktop, forgetDesktop, requireInterface, OFFICIAL, TOOLS, protocolRequest, protocolBroadcast } from "./official-protocol.mjs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
@@ -62,10 +63,11 @@ export function brokerKind(pipe) {
   return null;
 }
 export class Desktop {
-  constructor(context = null, { discoverPipes = discover, pipeFactory = (p, kind) => new Pipe(p, kind) } = {}) {
+  constructor(context = null, { discoverPipes = discover, pipeFactory = (p, kind) => new Pipe(p, kind), readProtocols = sourceProtocols } = {}) {
     this.context = context;
     this.discoverPipes = discoverPipes;
     this.pipeFactory = pipeFactory;
+    this.readProtocols = readProtocols;
     this.tools = null;
     this.ipc = null;
     this.identity = null;
@@ -82,7 +84,7 @@ export class Desktop {
     if (!owned.length) throw Error("Official ChatGPT app-tools process unavailable");
     const broker = identity.pipes.find(p => pipeName(p) === OFFICIAL.discovery.ownerPipe);
     const kind = brokerKind(broker);
-    if (!kind) throw Error("Trusted desktop IPC broker unavailable (requires official ChatGPT or verified Microsoft VS Code)");
+    // An unavailable owner transport must not disable healthy app-tools. Never connect to an untrusted broker.
     try {
       for (const p of owned) {
         const client = this.pipeFactory(p.path, "tools");
@@ -95,7 +97,7 @@ export class Desktop {
           );
           if (
             f.result?.tools?.some(
-              (t) => t.namespace === OFFICIAL.discovery.toolsNamespace && (inspectCatalog || t.name === TOOLS.listThreads),
+              (t) => t.namespace === OFFICIAL.discovery.toolsNamespace,
             )
           ) {
             this.tools = client;
@@ -108,24 +110,36 @@ export class Desktop {
         client.close();
       }
       if (!this.tools) throw Error("Official app-tools pipe unavailable");
-      this.ipc = this.pipeFactory(broker.path, "desktop");
-      await this.ipc.connect();
+      this.ipcError = kind ? null : "Trusted desktop IPC broker unavailable";
+      if (kind) {
+        this.ipc = this.pipeFactory(broker.path, "desktop");
+        try { await this.ipc.connect(); }
+        catch { this.ipc.close(); this.ipc = null; this.ipcError = "Official owner handshake unavailable"; }
+      }
       // Re-discover both endpoints after the handshake. If a process/pipe was
       // replaced, discard the connection; the normal reconnect loop starts fresh.
-      const confirmed = await this.discoverPipes([identity.appToolsPipe.path, broker.path]);
-      for (const expected of [identity.appToolsPipe, broker]) {
+      const endpoints = [identity.appToolsPipe, ...(this.ipc ? [broker] : [])];
+      const confirmed = await this.discoverPipes(endpoints.map(p => p.path));
+      for (const expected of endpoints) {
         const actual = confirmed.pipes.find(p => p.path === expected.path);
         if (actual?.pid !== expected.pid || actual.image !== expected.image ||
             (expected === broker && brokerKind(actual) !== kind))
           throw Error("Desktop pipe identity changed during connection; reconnect required");
       }
-      if (this.tools.socket?.destroyed || this.ipc.socket?.destroyed)
+      if (this.tools.socket?.destroyed || this.ipc?.socket?.destroyed)
         throw Error("Desktop pipe disconnected during identity verification; reconnect required");
-      identity.brokerPipe = broker;
+      identity.brokerPipe = this.ipc ? broker : null;
       identity.connection = { source: "Win32 pipe identity and live tools/list", officialPid: identity.officialPid,
-        brokerPid: broker.pid, brokerKind: kind, sharedBroker: broker.pid !== identity.officialPid,
-        brokerVersion: broker.signature?.version ?? null };
+        brokerPid: this.ipc ? broker.pid : null, brokerKind: this.ipc ? kind : null, sharedBroker: !!this.ipc && broker.pid !== identity.officialPid,
+        brokerVersion: this.ipc ? broker.signature?.version ?? null : null, ownerConnected: !!this.ipc };
       this.identity = identity;
+      try { this.protocols = this.readProtocols(identity.appToolsPipe.image); } catch { this.protocols = []; }
+      observeDesktop(this, this.protocols);
+      const ipc = this.ipc;
+      if (ipc) ipc.assertInterface = key => {
+        if (this.ipc !== ipc) throw Error("Official IPC connection changed");
+        requireInterface(this, key);
+      };
       return this.identity;
     } catch (error) {
       this.close();
@@ -135,6 +149,8 @@ export class Desktop {
     }
   }
   async call(tool, args = {}, context = this.context, { timeoutMs = 60000 } = {}) {
+    const key = Object.keys(OFFICIAL.tools).find(k => OFFICIAL.tools[k].name === tool);
+    requireInterface(this, key);
     if (
       !this.catalog.some((t) => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === tool)
     )
@@ -170,15 +186,20 @@ export class Desktop {
     }
   }
   async refreshCatalog() {
-    const f = await this.tools.request(
-      OFFICIAL.transport.toolsList,
-      OFFICIAL.transport.toolsListParams,
-      { timeoutMs: 10000 },
-    );
-    if (!Array.isArray(f.result?.tools))
-      throw Error("Official tool catalog unavailable");
-    this.catalog = f.result.tools;
-    return this.catalog;
+    const identity = this.identity, tools = this.tools, sequence = this.catalogSequence = (this.catalogSequence ?? 0) + 1;
+    try {
+      const f = await tools.request(OFFICIAL.transport.toolsList, OFFICIAL.transport.toolsListParams, { timeoutMs: 10000 });
+      if (identity !== this.identity || tools !== this.tools || tools.socket?.destroyed || sequence !== this.catalogSequence)
+        throw Error("Official connection changed during catalog refresh");
+      if (!Array.isArray(f.result?.tools)) throw Error("Official tool catalog unavailable");
+      this.catalog = f.result.tools;
+      observeDesktop(this, this.protocols);
+      return this.catalog;
+    } catch (error) {
+      // A failed older request must not invalidate a newer connection/catalog.
+      if (identity === this.identity && tools === this.tools && sequence === this.catalogSequence) forgetDesktop(this);
+      throw error;
+    }
   }
   async owner(id) {
     const result = await protocolRequest(this.ipc, "owner",
@@ -200,6 +221,8 @@ export class Desktop {
     return o;
   }
   close() {
+    forgetDesktop(this);
+    this.catalogSequence = (this.catalogSequence ?? 0) + 1;
     this.tools?.close();
     this.ipc?.close();
   }

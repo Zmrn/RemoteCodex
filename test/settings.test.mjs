@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -73,6 +74,7 @@ test("unloaded historical Codex text uses official resume route exactly once", a
       },
     },
   };
+  fixtureEvidence(b.desktop);
   b.follow = async () => {};
   const result = await b.nativeSend(id, "historical-send-001", "hello");
   assert.equal(result.status, "accepted");
@@ -113,6 +115,7 @@ test("loaded native write failure never retries through the desktop tool; Chat s
       },
     },
   };
+  fixtureEvidence(b.desktop);
   b.follow = async () => ({ handledByClientId: "official" });
   await assert.rejects(
     () => b.nativeSend(id, "native-lost-001", "hello"),
@@ -197,6 +200,7 @@ test("active settings use the existing owner once without starting or interrupti
       },
     },
   };
+  fixtureEvidence(b.desktop);
   b.follow = async () => ({ handledByClientId: "official-owner" });
   b.live.set(id, {
     state: { latestThreadSettings: { model: "gpt-5.4-mini", effort: "low" } },

@@ -46,6 +46,36 @@ Chat：列表/历史读取；文字续写待专用真实会话验证；新建/�
 | thread-read-state-changed | 3 | 用户读到当前回报后通知官方清除未读标记；broadcast，无逐轮条件回执 | hostId, conversationId, hasUnreadTurn, context.identity, context.executionHostKey |  | src/official-report-read.mjs | test/official-report-read.test.mjs |
 | thread-follower-submit-mcp-server-elicitation-response | 1 | 用户处理浏览器网站访问授权；不扩大为任意 MCP 表单或所有网站授权 | conversationId, requestId, response | handledByClientId, result.result.ok | src/approvals.mjs:answerApproval | test/approvals.test.mjs |
 
+## 功能与所需接口
+
+当前连接按这些依赖逐功能判断；历史已验证版本不作为运行白名单。异常/未知只影响依赖它的功能。任务身份、内容结构和回执仍在操作时核验。
+
+| 功能 | 所需接口 ID |
+| --- | --- |
+| 会话列表 | listThreads |
+| 项目列表 | listProjects |
+| 会话内容 | readThread |
+| 使用额度 | usage |
+| 在官方应用打开 | navigate |
+| 等待任务 | waitThreads |
+| 新建文字会话 | createThread |
+| 在项目中新建 | createThread, listProjects |
+| 继续未加载会话 | readThread, sendMessage |
+| Chat文字续写 | readThread, sendMessage |
+| 发送消息和图片 | initialize, readThread, owner, following, start |
+| 带图新建 | initialize, createThread, readThread, owner, following, start |
+| 修改会话设置 | initialize, readThread, owner, following, settings |
+| 新建时指定权限 | initialize, createThread, readThread, owner, following, start, settings, setTitle, navigate |
+| 重命名会话 | readThread, setTitle |
+| 消息入队、取回和删除 | initialize, readThread, owner, following, queueWrite |
+| 直接调整方向 | initialize, readThread, owner, following, steer |
+| 用排队消息调整方向 | initialize, readThread, owner, following, queueWrite, steer |
+| 停止回复 | initialize, readThread, owner, following, interrupt |
+| 回答阻塞问题 | initialize, readThread, owner, following, userInput |
+| 网站访问授权 | initialize, readThread, owner, following, mcpElicitation |
+| 实时状态、未读统计和通知 | initialize, owner, following |
+| 同步官方已读 | initialize, readThread, owner, following, readStateChanged |
+
 ## 事件和依赖结构
 
 | 事件 | 字段 | 消费位置 |

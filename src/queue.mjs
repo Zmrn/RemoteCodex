@@ -242,7 +242,7 @@ export class OfficialQueue {
         return { status: "accepted", result: { disposition: "recovery-cleared" } };
       });
     }
-    b.guard(id);
+    b.guard(id, body.action === "steer" ? "queueSteer" : "queue");
     b.requireConnection();
     if (!["enqueue", "take", "delete", "steer"].includes(body.action))
       throw Error("Invalid queue operation");

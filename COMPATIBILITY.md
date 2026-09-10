@@ -5,20 +5,20 @@
 ## 集中管理入口
 
 - src/official-desktop.json：唯一接口清单。包括已验证官方版本、验证依据、Win32 管道发现规则、只读磁盘位置、工具名称、IPC 方法及版本、事件字段、结构适配位置和相关回归。
-- src/official-protocol.mjs：运行时使用的统一入口。负责版本校验、IPC 方法/版本路由、工具和事件常量、脱敏兼容性状态。业务操作仍在 Bridge/OfficialQueue 中完成，原始输入和所有者校验不被清单替代。
+- src/official-protocol.mjs：运行时使用的统一入口。负责当前连接的接口证据、功能依赖判断、IPC 方法/版本路由、工具和事件常量、脱敏兼容性状态。业务操作仍在 Bridge/OfficialQueue 中完成，原始输入和所有者校验不被清单替代。
 - COMPATIBILITY-INTERFACES.md：从清单生成的可读接口表。请求/返回字段列是当前用到的摘要，不是完整官方 schema；需要改字段时同时核对表中列出的消费者源码。
 - public/official-events.mjs：从清单生成的浏览器事件常量，供 Windows 和 Android 共用。不要手改生成文件。
 - scripts/compatibility-report.mjs：生成/校验接口表、浏览器常量、发布支持信息。scripts/desktop_compatibility.py 供双端构建和发布调用。
 
-GET /api/status 的 desktopCompatibility 提供已验证版本、清单 SHA-256、检测到的官方版本、是否允许写入及各模式限制，不返回安装路径或凭据。原来的 existingCodexWritable 也依据同一清单；未验证版本不能显示为已支持写入。是否已连接仍需看 connected，不能只看版本号。
+GET /api/status 的 desktopCompatibility 提供历史已验证版本、清单 SHA-256、检测版本与 per-feature-interfaces 策略；capabilities 提供每项功能的 supported、依赖与具体原因。existingCodexWritable/writeSupported 是旧端摘要，新界面和服务端必须使用具体操作能力。版本号不能代替当前连接证据；每次重连、目录刷新、连接关闭后重新判定，旧证据不能授权新连接。
 
 帮助页的“官方接口兼容性”提供可截图、可复制的只读对照报告，见 [COMPATIBILITY-VIEW.md](COMPATIBILITY-VIEW.md)。按用户 2026-09-10 要求，只比较 Remote 实际使用的接口名单，忽略名单外变化；不会为了查看报告执行下面的真实任务测试。网上的官方更新清单提供版本号，运行版工具目录和已下载包分别提供工具参数及静态协议声明。
 
-网站访问授权新增 MCP elicitation 响应 v1，名单现含 20 项实际使用指令。仅 26.903.8094.0 的 Browser origin 请求开放窄范围响应，官方原文/协议与隔离回归已核对，真实授权往返尚未验证；所有网站权限和其他审批不扩大，见 [BROWSER-APPROVALS.md](BROWSER-APPROVALS.md)。
+网站访问授权新增 MCP elicitation 响应 v1，名单现含 20 项实际使用指令。依赖接口匹配时对 Browser origin 请求开放窄范围响应；原始实现核对版本为 26.903.8094.0，官方原文/协议与隔离回归已核对，真实授权往返尚未验证；所有网站权限和其他审批不扩大，见 [BROWSER-APPROVALS.md](BROWSER-APPROVALS.md)。
 
 ## 当前范围
 
-精确支持 Windows x64 官方包 26.901.6511.0、26.903.8094.0，证据见 CREATE-IMAGES.md 和清单 validation。记录的是已验证的 Codex 核心功能，不能据此宣称每种官方功能都可用：
+历史行为验证覆盖 Windows x64 官方包 26.901.6511.0、26.903.8094.0，证据见 CREATE-IMAGES.md 和清单 validation。其他版本按本机当前接口证据逐功能判断；26.903.9818.0 本轮只读接口一致，未冒充完整行为实测。记录的是已验证的 Codex 核心功能，不能据此宣称每种官方功能都可用：
 
 0.10.15 支持 VS Code 先运行并持有共享 IPC 管道的情况，官方 app-tools 仍须属于 ChatGPT.exe；不能把转发 PID 当作任务 owner。当前实测组合与签名校验、失败处理、专用任务证据见 [VSCODE-COEXISTENCE.md](VSCODE-COEXISTENCE.md)。GET /api/status 的 desktopConnection 返回脱敏的两类进程身份，失联时为 null。
 
@@ -35,7 +35,7 @@ GET /api/status 的 desktopCompatibility 提供已验证版本、清单 SHA-256�
 2. 在接口表定位受影响的方法及消费者；调整协议适配和实际观察到的参数/回执。禁止仅删除版本校验或猜测字段。
 3. 完成只读验证后，使用专用 Probe 目录和任务验证同一 owner 的新建、两次续写、队列、设置、问题、图片和断线恢复。按影响范围执行，未测试项明确保留；不向承载开发工作的任务写入或中断。
 4. 只有明确完成相应验证后，才将新版本加入 support.verifiedVersions，并在 validation 中记录日期、验证范围和不含私人内容的证据文档。JSON 记录不替代实际测试。
-5. 运行 node scripts/compatibility-report.mjs --write 更新生成文件；npm run compatibility 和 Node 回归均须通过，再构建双端。
+5. 运行 node scripts/compatibility-report.mjs --write 更新生成文件；Node22.19.0、npm run compatibility 与相关共享 UI 回归均须通过。只有用户明确要求构建时才按 AGENTS.md 的 GitHub 流程构建双端。
 6. 双端按 AGENTS.md 发布；面向用户明确说明 Remote Codex 版本、支持的官方包版本、Codex/Chat/Work 范围、未验证版本的处理及本次验证限制。
 
 ## 发布时强制核对

@@ -1,13 +1,14 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { OfficialReadState, parseOfficialReadState } from '../src/official-read-state.mjs';
-import { OFFICIAL } from '../src/official-protocol.mjs';
+import { OFFICIAL, forgetDesktop } from '../src/official-protocol.mjs';
 const key = OFFICIAL.storage.readState.key, account = 'a'.repeat(64), host = 'local:' + 'b'.repeat(64);
 const stored = (ids = []) => ({ [key]: { version: 1, unreadByIdentity: { [account]: { [host]: ids } } } });
-const desktop = version => ({ identity: { officialPid: 123, appToolsPipe: { image: OFFICIAL.support.packagePrefix + version + OFFICIAL.support.packageSuffix + '\\app\\ChatGPT.exe' } } });
+const desktop = version => fixtureEvidence({ identity: { officialPid: 123, appToolsPipe: { image: OFFICIAL.support.packagePrefix + version + OFFICIAL.support.packageSuffix + '\\app\\ChatGPT.exe' } } });
 test('only absence across all stored partitions excludes a task; no current account is guessed', () => {
   const value = stored(['task-a']); value[key].unreadByIdentity['c'.repeat(64)] = { ['other:' + 'd'.repeat(64)]: ['task-b'] };
   const before = JSON.stringify(value), state = parseOfficialReadState(value);
@@ -44,14 +45,16 @@ test('reader follows the verified desktop home, rereads changes and never modifi
   fs.writeFileSync(file, '{'); assert.equal((await reader.snapshot()).status, 'unavailable'); assert.equal(fs.readFileSync(file, 'utf8'), '{');
   fs.writeFileSync(file, Buffer.alloc(OFFICIAL.storage.readState.maxBytes + 1)); assert.equal((await reader.snapshot()).status, 'unavailable');
 });
-test('unverified versions never inspect a home; resolver failures, replacement and retry remain optional', async () => {
+test('missing connection evidence never inspects a home; resolver failures, replacement and retry remain optional', async () => {
   for (const version of ['26.901.6511.0', '99.1.1.1']) {
-    const reader = new OfficialReadState(desktop(version), { homeResolver: () => { throw Error('must not inspect'); } });
+    const d = desktop(version); forgetDesktop(d);
+    const reader = new OfficialReadState(d, { homeResolver: () => { throw Error('must not inspect'); } });
     assert.equal((await reader.snapshot()).status, 'unsupported');
   }
   const d = desktop('26.903.8094.0'); let calls = 0, now = 0;
   const reader = new OfficialReadState(d, { now: () => now, homeResolver: async () => { calls++; throw Error('denied'); } });
   assert.equal((await reader.snapshot()).status, 'unavailable'); await reader.snapshot(); assert.equal(calls, 1);
   now = 60001; await reader.snapshot(); assert.equal(calls, 2);
-  d.identity = { ...d.identity }; await reader.snapshot(); assert.equal(calls, 3);
+  d.identity = { ...d.identity }; assert.equal((await reader.snapshot()).status, "unsupported"); assert.equal(calls, 2);
+  fixtureEvidence(d); await reader.snapshot(); assert.equal(calls, 3);
 });

@@ -187,7 +187,7 @@ export class QueueUI {
       q = this.current;
     const signature = JSON.stringify([
       c.key,
-      c.writable,
+      c.writable, c.steerSupported, c.canRecover,
       c.connected,
       c.active,
       c.recoveryId,
@@ -241,7 +241,7 @@ export class QueueUI {
       steer.setAttribute("aria-label", "调整方向：" + m.text);
       steer.title = m.restriction ?? "立即发送到当前正在运行的任务";
       steer.disabled =
-        this.busy || !c.writable || !c.connected || !c.active || !m.editable;
+        this.busy || !c.writable || c.steerSupported === false || !c.connected || !c.active || !m.editable;
       steer.onclick = () => this.act("steer", m).catch(this.onError);
       row.append(steer);
       const remove = el("button", "icon-button queue-delete");
@@ -298,7 +298,7 @@ export class QueueUI {
         r.state === "draft" ? "继续编辑" : "状态未知",
       );
       b.type = "button";
-      b.disabled = r.state !== "draft" || !r.draft.editable || this.busy || !c.writable || !c.connected;
+      b.disabled = r.state !== "draft" || !r.draft.editable || this.busy || !(c.canRecover ?? c.writable) || !c.connected;
       b.onclick = () =>
         this.restoreRecovery(r, c).catch(this.onError);
       row.append(b);
@@ -322,7 +322,7 @@ export class QueueUI {
     this.pumpImages();
   }
   async restoreRecovery(recovery, c) {
-    if (this.busy || !c.connected || !c.writable) return;
+    if (this.busy || !c.connected || !(c.canRecover ?? c.writable)) return;
     if (c.hasDraft) { this.onToast("输入框已有草稿，请先发送或清空，再取回排队消息"); return; }
     this.busy = true;
     this.onChange();
@@ -350,6 +350,7 @@ export class QueueUI {
     });
   }
   async act(action, message) {
+    if (action === "steer" && this.getContext().steerSupported === false) return;
     const c = this.getContext(),
       revision = this.current?.revision;
     if (this.busy || !c.writable || !c.connected) return;

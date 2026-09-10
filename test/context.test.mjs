@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -21,6 +22,7 @@ test("per-call tool context does not change concurrent normal calls", async () =
       };
     },
   };
+  fixtureEvidence(desktop);
   await Promise.all([
     desktop.call("wait_threads", {}, "alternate-context"),
     desktop.call("wait_threads"),

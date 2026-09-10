@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -23,6 +24,7 @@ function fixture(t) {
       return { handledByClientId: "owner", result: { result: { turnId: "current-turn" } } };
     } },
   };
+  fixtureEvidence(b.desktop);
   b.follow = async () => {
     b.live.set(id, { owner: state.owner, state: { threadRuntimeStatus: { type: state.type },
       turns: [{ turnId: state.turnId, status: "inProgress" }] } });

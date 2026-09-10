@@ -13,7 +13,7 @@
 
 “允许所有网站”还需要官方 configRequirements/read 确认 browserUse.allowGlobalPersistentApproval 策略。现有桌面桥接入口无法取得这一确认，因此不提供全网站授权按钮；可点“在官方应用中处理”，打开目标电脑的同一任务。不能仅凭 persist=always 推导全网站授权可用。
 
-当前仅适配 Windows x64 官方 26.903.8094.0 的 Codex 浏览器 origin 申请。原 26.901.6511.0 核心支持范围保持，但不开放本轮新授权；26.903.9818.0 没有加入写入支持名单。Chat/Work、MCP 登录或任意表单、原始 CDP 权限、命令/文件等其他审批不因本功能获得通用批准入口。
+Windows x64 Codex 浏览器 origin 申请的原始实现核对来自 26.903.8094.0。当前源码按 readThread/owner/following/mcpElicitation 的实际匹配启用，版本号不再单独拦截；26.903.9818.0 只读接口一致，真实授权往返仍未验证。Chat/Work、MCP 登录或任意表单、原始 CDP 权限、命令/文件等其他审批不因本功能获得通用批准入口。
 
 ## 官方数据与提交
 

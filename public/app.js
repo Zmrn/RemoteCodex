@@ -195,6 +195,8 @@ const queueUI = new QueueUI({
     key: taskKey(),
     connected: !!status.connected,
     writable: queueWritable,
+    steerSupported: featureAvailable('queueSteer'),
+    canRecover: true,
     active: taskData?.thread?.status?.type === "active",
     hasDraft: !!$("prompt").value.trim() || !!composerImages[0],
     recoveryId: takenDrafts.get(taskKey())?.recoveryId,
@@ -674,6 +676,17 @@ function messageImage(ref) {
   messageImageObserver.observe(box);
   return box;
 }
+function featureAvailable(key, legacy = status.existingCodexWritable === true) {
+  return status.capabilities ? status.capabilities[key]?.supported === true : legacy;
+}
+function composerFeature() {
+  return selected === null ? composerImages.length ? 'createImages' : 'create'
+    : taskData?.thread?.status?.type === 'active' ? 'queue'
+    : taskData?.thread?.status?.type === 'notLoaded' ? 'resume' : 'send';
+}
+function questionAccess() {
+  return { request: featureAvailable('questions'), async: featureAvailable(taskData?.thread?.status?.type === 'active' ? 'steer' : 'send') };
+}
 function permissions() {
   const fresh = selected === null;
   const canDraft = fresh && mode === "codex" && !!currentAgent();
@@ -683,28 +696,28 @@ function permissions() {
   ).includes(selected);
   const chat = mode === "chat";
   const chatAccess = chatComposer(status, taskData?.thread);
-  const writable = chat ? !readOnlyTask && chatAccess.writable :
-    (fresh && !!currentAgent() && status.existingCodexWritable === true) ||
-    (!readOnlyTask && status.existingCodexWritable === true && taskData?.thread?.kind === "codex");
+  const writable = chat ? !readOnlyTask && chatAccess.writable : !readOnlyTask && featureAvailable(composerFeature()) &&
+    ((fresh && !!currentAgent()) || taskData?.thread?.kind === "codex");
+  const canEdit = chat ? chatAccess.writable : !readOnlyTask && !!currentAgent() && (fresh || !!taskData);
   const inFlight = busy.has(fresh ? agentId + ":create" : taskKey());
   projectPicker.update({ agentId, mode, fresh, projects, status, busy: inFlight, booting });
   const settingsAvailable =
     !chat && status.connected &&
-    writable &&
+    !readOnlyTask && featureAvailable(fresh ? 'create' : 'settings') &&
     (fresh ||
       ["idle", "active", "notLoaded"].includes(taskData?.thread?.status?.type));
   if (settingsTarget && !settingsAvailable) closeSettingsMenu(false);
   const submitting = inFlight || queueUI.busy;
-  queueWritable = !chat && writable && !booting;
+  queueWritable = !chat && !readOnlyTask && featureAvailable("queue") && !booting;
   const idle =
     fresh || ["idle", "notLoaded"].includes(taskData?.thread?.status?.type);
   $("create").disabled = $("mobile-new").disabled = busy.has(
     agentId + ":create",
   );
-  $("prompt").disabled = booting || !(writable || canDraft) || submitting;
+  $("prompt").disabled = booting || !(canEdit || canDraft) || submitting;
   $("image").disabled =
     chat || (!fresh && !status.connected) ||
-    !(writable || canDraft) ||
+    !(canEdit || canDraft) ||
     inFlight ||
     taskData?.thread?.status?.type === "notLoaded";
   $("attach-label").title = fresh && status.imageCreation?.supported !== true
@@ -726,7 +739,7 @@ function permissions() {
       ? "Enter 加入队列；Ctrl+Enter 立即调整方向"
       : "发送消息";
   $("send").setAttribute("aria-label", !idle && !chat ? "加入队列" : "发送消息");
-  $("open").disabled = !status.connected || fresh || readOnlyTask;
+  $("open").disabled = !status.connected || fresh || readOnlyTask || !featureAvailable("open", true);
   $("listfiles").disabled = chat || !status.connected || fresh;
   for (const id of ["permission-display", "effort-display", "settings-nav", "attach-label", "files-nav", "toggle-files", "mobile-files"]) {
     if ($(id)) $(id).hidden = chat;
@@ -741,7 +754,7 @@ function permissions() {
     ? ["running", "waiting-approval", "waiting-user-input"].includes(taskData.live.status.type)
     : taskData?.thread?.status?.type === "active";
   $("interrupt").hidden = !(
-    !chat && status.connected && writable && stopSupported &&
+    !chat && status.connected && stopSupported &&
     !readOnlyTask &&
     !fresh &&
     stopRunning
@@ -759,8 +772,8 @@ function permissions() {
         ? "此设备将该会话设为只读"
         : !fresh && !taskData
           ? "会话内容尚未读入，请等待或刷新重试"
-          : status.desktopCompatibility?.writeSupported === false
-            ? "目标官方桌面版本尚未验证，请在官方桌面操作"
+          : status.capabilities?.[composerFeature()]?.supported === false
+            ? status.capabilities[composerFeature()].reason
             : "当前仅支持 Codex 对话写入"
       : inFlight
         ? "正在提交…"
@@ -1166,14 +1179,15 @@ async function refresh(g = generation, options = {}) {
   // Apply the official task list as soon as it arrives; project discovery is independent.
   const projectRead = agentApi(id, "/projects", undefined, options).then(p => ({ p }), error => ({ error }));
   const [t, s] = await Promise.all([
-    agentApi(id, "/threads", undefined, options),
+    agentApi(id, "/threads", undefined, options).then(t => ({ t }), error => ({ error })),
     agentApi(id, "/status", undefined, options),
   ]);
   if (g !== generation) return;
   if (listSequence >= listAppliedSequence) {
     listAppliedSequence = listSequence;
     status = s;
-    threads = modeCatalog(t.data, mode);
+    if (t.t) threads = modeCatalog(t.t.data, mode);
+    else if (t.error) error(Error('会话列表暂不可用；其他功能保持连接。' + t.error.message));
     for (const thread of threads)
       rememberSidebarStatus(
         thread.id,
@@ -1211,7 +1225,7 @@ async function pollSidebar() {
     sequence = ++sidebarSequence, listSequence = ++listRequestSequence;
   try {
     const [list, snapshot] = await Promise.all([
-      agentApi(a, "/threads"),
+      agentApi(a, "/threads").then(list => ({ list }), error => ({ error })),
       agentApi(a, "/status"),
     ]);
     if (g !== generation || listSequence < listAppliedSequence) return;
@@ -1221,7 +1235,8 @@ async function pollSidebar() {
       return;
     }
     status = { ...status, ...snapshot };
-    threads = modeCatalog(list.data, mode);
+    if (list.list) threads = modeCatalog(list.list.data, mode);
+    else if (list.error) error(Error('会话列表暂不可用；其他功能保持连接。' + list.error.message));
     for (const t of threads)
       rememberSidebarStatus(
         t.id,
@@ -1426,7 +1441,7 @@ function renderItem(item, turnId) {
   const question = mode === "codex" && questionUI.render(item, {
     agent: agentId,
     id: selected,
-    connected: status.connected,
+    connected: status.connected, capabilities: questionAccess(),
   });
   if (question) return question;
   let text = "",
@@ -1628,7 +1643,7 @@ function displayTurns() {
           questions: request.params.questions,
           completed: false,
         },
-        { agent: agentId, id: selected, connected: status.connected },
+        { agent: agentId, id: selected, connected: status.connected, capabilities: questionAccess() },
       );
       if (card) wrapper.append(card);
     }
@@ -2188,7 +2203,10 @@ $("form").onsubmit = async (e) => {
   await submitMessage();
 };
 async function submitMessage({ steer = false } = {}) {
-  if ($("send").disabled) return;
+  const direct = steer && mode === 'codex' && selected !== null && taskData?.thread?.status?.type === 'active';
+  if (direct) {
+    if (booting || !status.connected || busy.has(taskKey()) || queueUI.busy) return;
+  } else if ($("send").disabled) return;
   if (!recoveryLoaded) { error(Error('草稿存储尚未读取，已暂停发送，请重新打开 Remote Codex')); return; }
   saveDraft();
   if(guardDraftTargets()){await backupDrafts();permissions();toast("原连接已变化，草稿已另外保留，请核对目标设备");return;}
@@ -2209,11 +2227,16 @@ async function submitMessage({ steer = false } = {}) {
   const expectedTurnId = steering ? taskData?.live?.activeTurnId : null;
   if (steering && (status.steer?.supported !== true || !expectedTurnId)) {
     error(Error(status.steer?.supported !== true
-      ? "目标设备尚不支持 Ctrl+Enter 调整方向，请先更新目标设备；草稿已保留"
+      ? status.capabilities?.steer?.reason || "目标设备尚不支持 Ctrl+Enter 调整方向，请先更新目标设备；草稿已保留"
       : "当前运行轮次尚未确认，请刷新后重试；草稿已保留"));
     return;
   }
   const sendSettings = pendingSettings.get(taskKey(a, t));
+  if (!steering && !enqueue && sendSettings && status.capabilities &&
+      ((fresh && sendSettings.permissionMode && sendSettings.permissionMode !== 'keep' && !featureAvailable('createPermissions')) ||
+       (!fresh && (sendSettings.permissionMode || sendSettings.serviceTier !== undefined) && !featureAvailable('settings')))) {
+    error(Error('所选设置接口暂不可用，请恢复默认设置后发送；草稿已保留')); return;
+  }
   const creationProject = fresh && m === "codex" ? projectPicker.selection() : null;
   busy.add(k);
   permissions();

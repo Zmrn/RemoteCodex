@@ -3,11 +3,17 @@ import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { startServer } from "../src/server.mjs";
 const { chromium } = await import(
   process.env.REMOTE_BRIDGE_PLAYWRIGHT || "playwright-core"
 );
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
-  base = process.env.REMOTE_BRIDGE_URL || "http://127.0.0.1:43127",
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+fs.mkdirSync(path.join(root, 'work'), { recursive: true });
+fs.mkdirSync(path.join(root, 'evidence'), { recursive: true });
+const dataDir = fs.mkdtempSync(path.join(root, 'work/queue-ui-host-'));
+fs.writeFileSync(path.join(dataDir, 'update-settings.json'), '{"automatic":false}');
+const app = await startServer({ port: 0, bridge: { dataDir, on() {}, off() {}, connect: async () => {}, disconnect() {} } });
+const base = app.address,
   id = "77777777-7777-4777-8777-777777777777";
 const developmentExcluded = process.argv.includes("--development-excluded");
 const image =
@@ -63,6 +69,8 @@ await page.route(base + "/api/**", async (route) => {
       ],
     });
   if (p === "/api/agents/select") return json({});
+  if (p.endsWith('/updates')) return json({ supported: false });
+  if (p.endsWith('/task-summary')) return json({ schemaVersion: 2, statePolicy: 'official-only', threads: [] });
   if (p.endsWith("/status"))
     return json({
       connected: true,
@@ -279,5 +287,6 @@ try {
     JSON.stringify(report, null, 2),
   );
   await browser.close();
+  app.server.closeAllConnections(); await new Promise(r => app.server.close(r));
   console.log(JSON.stringify(report, null, 2));
 }

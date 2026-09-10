@@ -1,4 +1,4 @@
-import { OFFICIAL, TOOLS, EVENTS, assertSupportedBuild, supportedBuild, desktopCompatibility, protocolRequest, protocolBroadcast } from "./official-protocol.mjs";
+import { OFFICIAL, TOOLS, EVENTS, requireFeature, desktopPolicy, protocolRequest, protocolBroadcast } from "./official-protocol.mjs";
 import { validateImageUrls, IMAGE_LIMITS } from "../public/image-input.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -19,7 +19,7 @@ import { markOfficialReportRead } from "./official-report-read.mjs";
 import { resolveOfficialHome } from "./official-read-state.mjs";
 import { renameThread } from "./thread-titles.mjs";
 import { SubscriptionLeases } from "./subscriptions.mjs";
-import { answerApproval, supportsBrowserApproval } from "./approvals.mjs";
+import { answerApproval } from "./approvals.mjs";
 import { Reconnector } from "../public/reconnect.mjs";
 import {
   ConversationPages,
@@ -94,7 +94,8 @@ export class Bridge extends EventEmitter {
       this.reconnector = new Reconnector(() => this.connect(), {
         delays: this.retryDelays,
       });
-    if (this.connected) return this.desktop.identity;
+    if (this.connected && this.desktop.ipc) return this.desktop.identity;
+    if (this.connected) this.connected = false;
     if (this.connecting) return this.connecting;
     const generation = this.connectionGeneration;
     const pending = this._connect(generation);
@@ -129,7 +130,7 @@ export class Bridge extends EventEmitter {
     }
     this.connected = true;
     this.reconnector.healthy();
-    desktop.ipc.on("frame", (f) => {
+    desktop.ipc?.on("frame", (f) => {
       if (this.desktop === desktop) this.frame(f);
     });
     const lost = (reason) => {
@@ -139,7 +140,7 @@ export class Bridge extends EventEmitter {
         this.reconnector.request();
       }
     };
-    desktop.ipc.on("disconnected", lost);
+    desktop.ipc?.on("disconnected", lost);
     desktop.tools.on("disconnected", lost);
     this.emitEvent("connected", { officialPid: desktop.identity.officialPid, connection: desktop.identity.connection ?? null });
     for (const id of this.watching) {
@@ -174,13 +175,13 @@ export class Bridge extends EventEmitter {
       typeof source?.home === "string" && path.isAbsolute(source.home) ? source.home : null;
   }
   markOfficialReportRead(id, token) { return markOfficialReportRead(this, id, token); }
-  requireSupportedBuild() {
-    assertSupportedBuild(this.desktop?.identity?.appToolsPipe?.image);
+  requireSupportedBuild(feature = "read") {
+    requireFeature(this.desktop, feature);
   }
-  guard(id) {
+  guard(id, feature = "read") {
     if (typeof id !== "string" || !/^[a-f0-9-]{36}$/.test(id))
       throw Error("Invalid official task ID");
-    this.requireSupportedBuild();
+    this.requireSupportedBuild(feature);
   }
   guardProbe(id) {
     this.guard(id);
@@ -220,6 +221,7 @@ export class Bridge extends EventEmitter {
     return accountUsage(raw);
   }
   async updateSettings(id, key, input) {
+    this.requireSupportedBuild("settings");
     const read = await this.codexThread(id);
     if (
       !input ||
@@ -251,12 +253,12 @@ export class Bridge extends EventEmitter {
         .map((k) => [k, input[k]]),
     );
     const settings = {
-      ...modelOverrides(modelInput, parseModels(this.desktop.catalog)),
+      ...modelOverrides(modelInput, Object.keys(modelInput).length ? parseModels(this.desktop.catalog) : []),
       ...permissionOverrides(input.permissionMode, current, read.thread.cwd),
       ...tierOverride(
         input.serviceTier,
         input.model ?? current.model,
-        withServiceTiers(parseModels(this.desktop.catalog), this.officialDataHome()),
+        input.serviceTier === undefined ? [] : withServiceTiers(parseModels(this.desktop.catalog), this.officialDataHome()),
       ),
     };
     if (!Object.keys(settings).length) throw Error("没有选择需要修改的设置");
@@ -515,6 +517,7 @@ export class Bridge extends EventEmitter {
   renameThread(id, input) { return renameThread(this, id, input); }
   answerApproval(id, key, input) { return answerApproval(this, id, key, input); }
   async answerQuestions(id, key, input) {
+    this.requireSupportedBuild(input?.kind === "request" ? "questions" : "read");
     await this.codexThread(id);
     const owner = await this.follow(id);
     for (let i = 0; i < 40 && !this.live.get(id)?.state; i++)
@@ -607,6 +610,7 @@ export class Bridge extends EventEmitter {
       return this.nativeSend(id, key, prompt);
     if (status.thread.status.type !== "active")
       throw Error("当前会话状态未知，请刷新");
+    this.requireSupportedBuild("steer");
     return this.once(key, "async-question-answer", { id, rows }, async () => {
       const r = await protocolRequest(this.desktop.ipc, "steer",
         {
@@ -646,7 +650,9 @@ export class Bridge extends EventEmitter {
     probe = false,
   ) {
     this.requireConnection();
-    this.requireSupportedBuild();
+    this.requireSupportedBuild("create");
+    if (projectInput) this.requireSupportedBuild("projectCreate");
+    if (options.permissionMode && options.permissionMode !== "keep") this.requireSupportedBuild("createPermissions");
     const images = validateImageUrls(imageDataUrls);
     if (images.length) return this.createWithImages(key, prompt, options, projectInput, images, probe);
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000)
@@ -655,7 +661,7 @@ export class Bridge extends EventEmitter {
       throw Error("官方新建接口未提供首轮加速参数；请创建后切换加速");
     const { permissionMode, ...modelInput } = options;
     const settings = {
-      ...modelOverrides(modelInput, parseModels(this.desktop.catalog)),
+      ...modelOverrides(modelInput, Object.keys(modelInput).length ? parseModels(this.desktop.catalog) : []),
       ...permissionOverrides(permissionMode),
     };
     const project = projectSelection(projectInput);
@@ -710,11 +716,12 @@ export class Bridge extends EventEmitter {
     }, { deferredDispatch: true });
   }
   async createWithImages(key, prompt, options, projectInput, images, probe = false) {
+    this.requireSupportedBuild("createImages");
     if (typeof key !== "string" || !/^[\w-]{8,100}$/.test(key)) throw Error("requestId required");
     if (typeof prompt !== "string" || prompt.length > 20000) throw Error("Invalid message");
     if (options.serviceTier !== undefined) throw Error("官方新建接口未提供首轮加速参数；请创建后切换加速");
     const { permissionMode, ...modelInput } = options;
-    modelOverrides(modelInput, parseModels(this.desktop.catalog)); permissionOverrides(permissionMode);
+    modelOverrides(modelInput, Object.keys(modelInput).length ? parseModels(this.desktop.catalog) : []); permissionOverrides(permissionMode);
     const project = projectSelection(projectInput);
     const hash = createHash("sha256").update(JSON.stringify({ prompt, options, project, images })).digest("hex");
     this.db.imageCreates ??= {};
@@ -835,6 +842,7 @@ export class Bridge extends EventEmitter {
     }
   }
   async send(id, key, prompt) {
+    this.requireSupportedBuild("resume");
     await this.codexThread(id);
     this.requireConnection();
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000)
@@ -858,10 +866,10 @@ export class Bridge extends EventEmitter {
   chatCapabilities() {
     const catalog = this.desktop?.catalog ?? [];
     let supported = false;
-    try { this.requireSupportedBuild(); supported = true; } catch {}
+    try { this.requireSupportedBuild("chatSend"); supported = true; } catch {}
     const has = name => catalog.some(t => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === name);
     return {
-      read: has(TOOLS.readThread) && has(TOOLS.listThreads),
+      read: desktopPolicy(this.desktop).features.read.supported,
       sendText: supported && this.stateStore.health.writable && has(TOOLS.sendMessage),
       sendValidation: "source-reviewed; dedicated-live-test-pending",
       create: false, models: false, images: false, queue: false, interrupt: false,
@@ -869,7 +877,7 @@ export class Bridge extends EventEmitter {
     };
   }
   async chatSend(id, key, prompt, imageDataUrl, settings) {
-    this.guard(id);
+    this.guard(id, "chatSend");
     this.requireConnection();
     if (!this.chatCapabilities().sendText) throw Error("此官方桌面版本尚未验证 Chat 文字入口");
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000) throw Error("Invalid message");
@@ -892,12 +900,12 @@ export class Bridge extends EventEmitter {
     }, { deferredDispatch: true });
   }
   async open(id) {
-    this.guard(id);
+    this.guard(id, "open");
     this.requireConnection();
     return this.desktop.call(TOOLS.navigate, { threadId: id });
   }
   async interrupt(id, key, expectedTurnId) {
-    this.guard(id);
+    this.guard(id, "interrupt");
     this.requireConnection();
     if (typeof expectedTurnId !== "string" || !expectedTurnId)
       throw Error("expectedTurnId required");
@@ -938,7 +946,7 @@ export class Bridge extends EventEmitter {
     }, { deferredDispatch: true });
   }
   async nativeSteer(id, key, prompt, imageDataUrl, expectedTurnId) {
-    this.guard(id);
+    this.guard(id, "steer");
     this.requireConnection();
     if (typeof expectedTurnId !== "string" || !expectedTurnId || expectedTurnId.length > 200)
       throw Error("调整方向需要确认当前运行轮次");
@@ -996,7 +1004,7 @@ export class Bridge extends EventEmitter {
       throw Error("Invalid settings");
     const { permissionMode, serviceTier, ...modelInput } = options;
     const settings = {
-      ...modelOverrides(modelInput, parseModels(this.desktop.catalog)),
+      ...modelOverrides(modelInput, Object.keys(modelInput).length ? parseModels(this.desktop.catalog) : []),
       ...permissionOverrides(permissionMode),
       ...(serviceTier === undefined ? {} : { serviceTier }),
     };
@@ -1037,6 +1045,7 @@ export class Bridge extends EventEmitter {
             throw Error("此会话尚未加载，请先发送文字或在官方桌面打开后再发图");
           // The desktop tool resumes its own existing task. Choose this route
           // before dispatch; never retry a failed native write through it.
+          this.requireSupportedBuild("resume");
           dispatch();
           const r = await this.desktop.call(TOOLS.sendMessage, {
             threadId: id,
@@ -1054,6 +1063,7 @@ export class Bridge extends EventEmitter {
         }
         if (status.thread?.status?.type !== "idle")
           throw Error("Task must be idle for native start; no automatic steer");
+        this.requireSupportedBuild("send");
         const owner = await this.follow(id);
         if (settings.permissions || serviceTier !== undefined) {
           const update = {
@@ -1121,7 +1131,8 @@ export class Bridge extends EventEmitter {
     );
   }
   status() {
-    const compatibility = desktopCompatibility(this.desktop?.identity?.appToolsPipe?.image);
+    const compatibility = desktopPolicy(this.connected ? this.desktop : null);
+    const can = key => this.connected && compatibility.features[key]?.supported === true && this.stateStore.health.writable;
     return {
       connected: this.connected,
       source: "official-desktop-IPC-live",
@@ -1133,21 +1144,23 @@ export class Bridge extends EventEmitter {
       protectedThreadId: null,
       protectedThreadIds: [],
       desktopCompatibility: compatibility,
-      existingCodexWritable: compatibility.writeSupported && this.stateStore.health.writable,
-      threadTitles: { rename: compatibility.writeSupported && this.stateStore.health.writable && this.desktop?.catalog?.some(t => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === TOOLS.setTitle), kinds: ["codex"] },
-      browserApprovals: { supported: compatibility.writeSupported && this.stateStore.health.writable && supportsBrowserApproval(this.desktop?.identity?.appToolsPipe?.image), source: 'official-desktop-owner-IPC', allSites: false },
+      capabilities: Object.fromEntries(Object.entries(compatibility.features).map(([key, f]) => [key,
+        ['list', 'projects', 'read', 'usage', 'wait', 'taskState', 'open'].includes(key) || this.stateStore.health.writable ? f
+          : { ...f, supported: false, reason: f.reason || '本地保护记录暂不能保存，请先修复存储；草稿已保留' }])),
+      existingCodexWritable: can('send') || can('resume') || can('create') || can('queue') || can('steer'),
+      threadTitles: { rename: can('rename'), kinds: ["codex"] },
+      browserApprovals: { supported: can('browserApproval'), source: 'official-desktop-owner-IPC', allSites: false },
       storageHealth: [this.stateStore.health],
-      taskSummary: { supported: true, schemaVersion: 2, statePolicy: 'official-only', readReceipts: true },
-      interrupt: { supported: compatibility.writeSupported, source: "official-desktop-owner-IPC" },
-      steer: { supported: compatibility.writeSupported && this.stateStore.health.writable, source: "official-desktop-owner-IPC" },
+      taskSummary: { supported: compatibility.features.taskState.supported, schemaVersion: 2, statePolicy: 'official-only', readReceipts: can('readReceipt') },
+      interrupt: { supported: can('interrupt'), source: "official-desktop-owner-IPC" },
+      steer: { supported: can('steer'), source: "official-desktop-owner-IPC" },
       projectCreation: {
-        local: supportedBuild(this.desktop?.identity?.appToolsPipe?.image) &&
-          [TOOLS.listProjects, TOOLS.createThread].every(name => this.desktop?.catalog?.some(t => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === name)),
+        local: can('projectCreate'),
         worktree: false,
         source: "official-desktop-list-projects-and-create-thread",
       },
       multiImageInput: true,
-      imageCreation: { supported: compatibility.writeSupported, mode: "official-text-setup-then-image-turn" },
+      imageCreation: { supported: can('createImages'), mode: "official-text-setup-then-image-turn" },
       viewerLeases: true,
       imageLimits: IMAGE_LIMITS,
       chat: this.chatCapabilities(),

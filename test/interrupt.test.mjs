@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -20,6 +21,7 @@ function fixture(t) {
     call: async () => ({ thread: { id, kind: "codex", status: { type: "active" } } }),
     ipc: { request: async (...args) => { calls.push(args); return { handledByClientId: "owner", requestId: "official-request", result: { ok: true, interruptedTurnId: "current-turn" } }; } },
   };
+  fixtureEvidence(b.desktop);
   b.follow = async () => {
     b.live.set(id, { owner: "owner", state: state() });
     return { handledByClientId: "owner" };

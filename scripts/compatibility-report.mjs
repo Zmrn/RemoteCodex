@@ -21,6 +21,11 @@ export function validateCatalog() {
         throw Error("Incomplete desktop interface entry: " + key);
     }
   }
+  const interfaces = new Set([...Object.keys(OFFICIAL.tools), ...Object.keys(OFFICIAL.ipc)]);
+  if (!Object.keys(OFFICIAL.features ?? {}).length) throw Error("Feature dependencies required");
+  for (const [key, feature] of Object.entries(OFFICIAL.features)) {
+    if (!feature.label || !feature.requires?.length || feature.requires.some(k => !interfaces.has(k))) throw Error("Invalid feature dependencies: " + key);
+  }
   return supportManifest();
 }
 export function eventModule() {
@@ -60,6 +65,14 @@ export function interfaceMarkdown() {
     "| --- | --- | --- | --- | --- | --- | --- |",
     ...Object.values(OFFICIAL.ipc).map(r => "| " + [r.method, r.version, r.purpose, r.request, r.response, r.consumer, r.test].map(cell).join(" | ") + " |"),
     "",
+    "## 功能与所需接口",
+    "",
+    "当前连接按这些依赖逐功能判断；历史已验证版本不作为运行白名单。异常/未知只影响依赖它的功能。任务身份、内容结构和回执仍在操作时核验。",
+    "",
+    "| 功能 | 所需接口 ID |",
+    "| --- | --- |",
+    ...Object.values(OFFICIAL.features).map(r => "| " + [r.label, r.requires].map(cell).join(" | ") + " |"),
+    "",
     "## 事件和依赖结构",
     "",
     "| 事件 | 字段 | 消费位置 |",
@@ -86,7 +99,7 @@ export function releaseNotes(version) {
     "- Codex：" + OFFICIAL.support.codex + "。",
     "- Chat：" + OFFICIAL.support.chat + "。",
     "- Work：" + OFFICIAL.support.work + "。",
-    "- 未列出的版本不视为已支持；可以尝试只读发现，写入仍拒绝，必须完成协议复测后再放行。",
+    "- 上述为历史行为实测版本；其他版本按当前运行接口逐功能判断，缺失/不匹配/未知只停用依赖功能。接口声明匹配不等于真实操作已验证。",
     "- EXE/APK 同步发布；安装路径自动发现和自动重连不代表协议自动兼容。", "",
     "- VS Code 共存：共享 IPC 转发已在官方 " + shared.officialVersion + "、Microsoft VS Code " + shared.brokerVersion + " 和 Codex 扩展 " + shared.extensionVersion + " 实测；其他组合没有由此验证。未重启官方应用或关闭 VS Code。", "",
     "接口清单 SHA-256：" + supportManifest().catalogSha256, "",

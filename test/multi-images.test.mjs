@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -33,6 +34,7 @@ test("native multi-image send uses one official owner turn with ordered images a
   b.connected=true;b.follow=async()=>({handledByClientId:owner});
   b.codexThread=async()=>({thread:{id,kind:"codex",status:{type:"idle"}}});
   b.desktop={identity:{appToolsPipe:{image:"OpenAI.Codex_26.901.6511.0_x64__"}},catalog:[{namespace:"codex_app",name:"send_message_to_thread",inputSchema:{properties:{model:{description:"gpt-5.4-mini (Fixture; supported reasoning efforts: low, medium)."}}}}],ipc:{request:async(method,params,options)=>{calls.push({method,params,options});return {handledByClientId:owner,result:{result:{turn:{id:"same-turn"}}}};}}};
+  fixtureEvidence(b.desktop);
   const urls=["data:image/png;base64,AAAA","data:image/jpeg;base64,AQID"];
   await b.nativeSend(id,"image-send-001","describe in order",urls);
   await b.nativeSend(id,"image-send-001","describe in order",urls);

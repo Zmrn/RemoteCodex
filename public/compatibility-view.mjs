@@ -10,7 +10,9 @@ export function compatibilityExport(report) {
       writeSupported: report.active.writeSupported, readStateSupported: report.active.readStateSupported },
     latest: { version: report.latest.version, source: report.latest.source, writeSupported: report.latest.writeSupported,
       readStateSupported: report.latest.readStateSupported }, supportedVersions: report.supportedVersions,
-    checkScope: report.checkScope,
+    checkScope: report.checkScope, policy: report.policy,
+    features: Object.fromEntries(Object.entries(report.features ?? {}).map(([key, f]) => [key,
+      { label: f.label, supported: f.supported, requires: f.requires, blocked: f.blocked, reason: f.reason }])),
     rows: report.rows.map(r => ({ kind: r.kind, name: r.name, purpose: r.purpose, expected: { version: r.expected?.version, request: r.expected?.request },
       running: observation(r.running), latest: observation(r.latest) })), limits: report.limits, taskWrites: 0 }, null, 2);
 }
@@ -77,15 +79,27 @@ export class CompatibilityView {
     }
     const timestamp = new Date(r.checkedAt);
     if (Number.isFinite(timestamp.getTime())) this.versions.append(node('p', '检查时间：' + timestamp.toLocaleString('zh-CN', { hour12: false }), 'field-help'));
-    for (const [label, value] of [['当前官方版', r.active], ['官方最新版', r.latest]]) {
-      if (value.version && !value.writeSupported) this.versions.append(node('p', `${label} ${value.version} 尚未加入支持版本，现有版本保护会限制任务写入。`, 'compatibility-pending'));
-      if (value.version && !value.readStateSupported) this.versions.append(node('p', `${label}的官方已读同步尚未验证。`, 'compatibility-pending'));
+    for (const [label, value] of r.active.version === r.latest.version ? [['当前官方版', r.active]] : [['当前官方版', r.active], ['官方最新版', r.latest]]) {
+      if (value.version && !value.behaviorVerified) this.versions.append(node('p', `${label} ${value.version} 尚无完整操作实测记录；当前可用性按所需接口逐项判断。`, 'field-help'));
+      if (!r.features && value.version && !value.readStateSupported) this.versions.append(node('p', `${label}的官方已读同步尚未验证。`, 'compatibility-pending'));
       if (value.error) this.versions.append(node('p', value.error, 'compatibility-pending'));
     }
     this.note.textContent = r.limits; this.renderRows();
   }
   renderRows() {
     this.rows.replaceChildren(); if (!this.report) return;
+    if (this.report.features) {
+      const entries = Object.entries(this.report.features), available = entries.filter(([,f]) => f.supported).length;
+      const group = node('section', '', 'compatibility-features'); group.id = 'compatibility-features';
+      group.append(node('h3', `当前功能 · ${available}/${entries.length} 项接口可用`));
+      group.append(node('p', '只停用依赖异常或未知接口的操作。最新版对照不影响当前运行版；实际操作仍核对官方状态与回执。', 'field-help'));
+      for (const [id, f] of entries.sort((a,b) => Number(a[1].supported) - Number(b[1].supported))) {
+        if (this.filter.checked && f.supported) continue;
+        const row = node('p', f.supported ? f.label + ' · 接口可用' : f.reason, f.supported ? 'field-help' : f.blocked.some(k => bad(this.report.rows.find(r => r.id === k)?.running)) ? 'compatibility-blocked' : 'compatibility-pending');
+        row.dataset.feature = id; row.dataset.supported = String(f.supported); group.append(row);
+      }
+      this.rows.append(group);
+    }
     const ordered = this.report.rows.map((r, i) => ({ r, i })).sort((a,b) => ({error:0,warning:1,ok:2})[rowStatus(a.r)] - ({error:0,warning:1,ok:2})[rowStatus(b.r)] || a.i-b.i);
     for (const { r } of ordered) {
       const status = rowStatus(r); if (this.filter.checked && status === 'ok') continue;
@@ -103,6 +117,6 @@ export class CompatibilityView {
       if (r.expected.request?.length) row.append(node('p', '所用参数：' + r.expected.request.join('、'), 'compatibility-parameters'));
       this.rows.append(row);
     }
-    if (!this.rows.childElementCount) this.rows.append(node('p', '没有异常或待验证的指令。', 'field-help'));
+    if (!this.rows.querySelector('.compatibility-row')) this.rows.append(node('p', '没有异常或待验证的指令。', 'field-help'));
   }
 }

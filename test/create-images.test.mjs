@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -24,6 +25,7 @@ function fixture(t) {
       return { handledByClientId: "owner", result: { result: { turn: { id: "image-turn" } } } };
     } },
   };
+  fixtureEvidence(b.desktop);
   b.follow = async () => ({ handledByClientId: "owner" });
   return { b, calls, dir };
 }

@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -10,7 +11,7 @@ import { startServer } from "../src/server.mjs";
 import { assertProbeTarget } from "../src/probe-safety.mjs";
 const root = path.join(ROOT, "test", "scratch");
 fs.mkdirSync(root, { recursive: true });
-test("user may continue development task; automated Probes and unsupported builds stay guarded", (t) => {
+test("user may continue development task; automated Probes and missing interface evidence stay guarded", (t) => {
   const PROTECTED = "55555555-5555-4555-8555-555555555555";
   const previous = process.env.REMOTE_BRIDGE_DEVELOPMENT_THREAD_ID;
   process.env.REMOTE_BRIDGE_DEVELOPMENT_THREAD_ID = PROTECTED;
@@ -23,15 +24,16 @@ test("user may continue development task; automated Probes and unsupported build
   const old = "11111111-1111-4111-8111-111111111111",
     probe = "22222222-2222-4222-8222-222222222222";
   b.db.tests[PROTECTED] = {};
-  assert.throws(() => b.guard(PROTECTED), /Unsupported desktop build/);
+  assert.throws(() => b.guard(PROTECTED), /Unavailable official feature/);
   assert.throws(() => b.guard("malformed"), /Invalid official task ID/);
   b.db.tests[probe] = {};
-  assert.throws(() => b.guard(old), /Unsupported desktop build/);
+  assert.throws(() => b.guard(old), /Unavailable official feature/);
   b.desktop = {
     identity: { appToolsPipe: { image: "OpenAI.Codex_99.0.0.0_x64__" } },
   };
-  assert.throws(() => b.guard(probe), /Unsupported desktop build/);
+  assert.throws(() => b.guard(probe), /Unavailable official feature/);
   b.desktop.identity.appToolsPipe.image = "OpenAI.Codex_26.901.6511.0_x64__";
+  fixtureEvidence(b.desktop);
   assert.doesNotThrow(() => b.guard(old));
   assert.doesNotThrow(() => b.guard(PROTECTED));
   assert.throws(() => b.guardProbe(PROTECTED), /protected/);

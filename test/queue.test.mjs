@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -53,6 +54,7 @@ function fixture(taskId = id) {
       },
     },
   };
+  fixtureEvidence(b.desktop);
   return { b, q, file, requests, setActive: (v) => (active = v) };
 }
 test("queue bootstrap is disk only; live owner snapshot wins over delayed disk; unknown stays unknown", () => {

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { OFFICIAL, EVENTS, desktopCompatibility, protocolRequest } from './official-protocol.mjs';
+import { OFFICIAL, EVENTS, protocolRequest } from './official-protocol.mjs';
 import { browserApproval } from '../public/approval-content.mjs';
 
 const canonical = v => Array.isArray(v) ? '[' + v.map(canonical).join(',') + ']'
@@ -13,7 +13,6 @@ export function approvalView(request, threadId) {
     supported: !!parsed, ...(parsed ?? { message: String(request.params.message ?? '此请求需要在官方应用处理').slice(0, 4000), decisions: [] }) };
 }
 export const pendingApprovals = state => (state?.requests ?? []).map(r => approvalView(r, state.id)).filter(Boolean);
-export const supportsBrowserApproval = image => OFFICIAL.browserApprovals.implementationVersions.includes(desktopCompatibility(image).detectedVersion);
 export function approvalResponse(view, decision) {
   if (!view?.supported || !view.decisions.includes(decision)) throw Error('此授权选项不受支持，请在官方应用处理');
   return decision === 'deny' ? { action: 'decline', content: null, _meta: null }
@@ -23,8 +22,7 @@ export function approvalResponse(view, decision) {
 export async function answerApproval(bridge, id, key, input) {
   let operationKey;
   try {
-    bridge.guard(id); bridge.requireConnection();
-    if (!supportsBrowserApproval(bridge.desktop?.identity?.appToolsPipe?.image)) throw Error('此官方版本的网站授权尚未适配，请在官方应用处理');
+    bridge.guard(id, "browserApproval"); bridge.requireConnection();
     if (!/^[\w-]{8,100}$/.test(key ?? '') || typeof input?.approvalRequestId !== 'string' || input.approvalRequestId.length > 250 ||
         !/^[a-f0-9]{64}$/.test(input.token ?? '') || !['deny', 'once', 'session', 'site'].includes(input.decision) ||
         Object.keys(input).some(k => !['requestId', 'approvalRequestId', 'token', 'decision'].includes(k)))

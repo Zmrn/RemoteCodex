@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -18,6 +19,7 @@ function fixture(t) {
     catalog: ["read_thread","list_threads","send_message_to_thread"].map(name => ({namespace:"codex_app",name})),
     call: async (name, args) => { calls.push({name,args}); return name === "read_thread" ? structuredClone(data) : {threadId:id}; },
   };
+  fixtureEvidence(bridge.desktop);
   return { bridge, data, calls };
 }
 test("mode lists partition official kinds, deduplicate and never inject Codex probes into Chat", () => {

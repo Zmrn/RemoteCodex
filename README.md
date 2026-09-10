@@ -1,5 +1,7 @@
 # Remote Codex · ChatGPT 桌面会话桥接器
 
+2026-09-10 当前源码按实际接口依赖逐功能判断兼容性，不再因新官方版本号全局禁用；已读仍只服从官方数据和现有身份/回报核验，不新增本地已读状态。26.903.9818.0 本轮仅只读接口核对，历史实测记录和 Chat/Work 范围不变。细节见 COMPATIBILITY-VIEW.md；尚未构建发布。
+
 源码：[GitHub](https://github.com/Zmrn/RemoteCodex)。只有用户明确要求构建/打包时，才通过 AI 对话触发 GitHub Actions 双端打包、查询进度和下载 EXE/APK；不再本地构建，日常源码提交仅自动回归。设置与命令见 [GITHUB-ACTIONS.md](GITHUB-ACTIONS.md)。
 
 Windows / Android 原型，当前版本以 package.json 和发布说明为准。连接已经运行的官方 ChatGPT 桌面端，通过它管理的同一个 Codex 任务收发消息、查看实时状态和操作队列。Windows 可自由调整窗口大小；Android 竖屏使用侧栏抽屉，横屏使用桌面布局。

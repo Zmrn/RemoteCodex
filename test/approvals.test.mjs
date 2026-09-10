@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -30,6 +31,7 @@ function fixture(t) {
       return { handledByClientId: 'owner', result: { method, result: { ok: true } } };
     } },
   };
+  fixtureEvidence(b.desktop);
   b.follow = async () => { b.live.set(id, { owner: state.owner, state: { id: state.threadId, requests: structuredClone(state.requests) } }); return { handledByClientId: 'owner' }; };
   b.connect = async () => b.status(); b.disconnect = () => {};
   fs.writeFileSync(path.join(dir, 'update-settings.json'), '{"automatic":false}');

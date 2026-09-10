@@ -1,3 +1,4 @@
+import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -28,6 +29,7 @@ function fixture(t, kind) {
       return { handledByClientId: 'fixture-owner' };
     } },
   };
+  fixtureEvidence(bridge.desktop);
   t.after(() => { bridge.connected = false; bridge.disconnect(); fs.rmSync(dir, { recursive: true }); });
   return { bridge, state, calls, send: () => kind === 'chatgpt' ? bridge.chatSend(id, 'send-once-001', 'synthetic prompt') : bridge.nativeSend(id, 'send-once-001', 'synthetic prompt') };
 }

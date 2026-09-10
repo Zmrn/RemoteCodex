@@ -39,7 +39,7 @@
     ],
     "packagePrefix": "OpenAI.Codex_",
     "packageSuffix": "_x64__",
-    "unknownVersionPolicy": "read-only; write requests rejected before dispatch",
+    "unknownVersionPolicy": "按当前连接的实际接口名单逐功能判断；缺失、不匹配或未知只禁用依赖该接口的操作。verifiedVersions仅记录历史行为验证，不是运行放行名单。",
     "codex": "核心读写已验证；具体范围及限制见 COMPATIBILITY.md",
     "chat": "列表/历史读取；文字续写待专用真实会话验证；新建/模型/图片未支持",
     "work": "没有独立验证；列表可能与 Chat 混合"
@@ -518,5 +518,201 @@
     ],
     "scope": "Browser origin approval only; source protocol and isolated regressions verified, live submission not tested; all-sites policy unavailable",
     "evidence": "BROWSER-APPROVALS.md"
+  },
+  "features": {
+    "list": {
+      "label": "会话列表",
+      "requires": [
+        "listThreads"
+      ]
+    },
+    "projects": {
+      "label": "项目列表",
+      "requires": [
+        "listProjects"
+      ]
+    },
+    "read": {
+      "label": "会话内容",
+      "requires": [
+        "readThread"
+      ]
+    },
+    "usage": {
+      "label": "使用额度",
+      "requires": [
+        "usage"
+      ]
+    },
+    "open": {
+      "label": "在官方应用打开",
+      "requires": [
+        "navigate"
+      ]
+    },
+    "wait": {
+      "label": "等待任务",
+      "requires": [
+        "waitThreads"
+      ]
+    },
+    "create": {
+      "label": "新建文字会话",
+      "requires": [
+        "createThread"
+      ]
+    },
+    "projectCreate": {
+      "label": "在项目中新建",
+      "requires": [
+        "createThread",
+        "listProjects"
+      ]
+    },
+    "resume": {
+      "label": "继续未加载会话",
+      "requires": [
+        "readThread",
+        "sendMessage"
+      ]
+    },
+    "chatSend": {
+      "label": "Chat文字续写",
+      "requires": [
+        "readThread",
+        "sendMessage"
+      ]
+    },
+    "send": {
+      "label": "发送消息和图片",
+      "requires": [
+        "initialize",
+        "readThread",
+        "owner",
+        "following",
+        "start"
+      ]
+    },
+    "createImages": {
+      "label": "带图新建",
+      "requires": [
+        "initialize",
+        "createThread",
+        "readThread",
+        "owner",
+        "following",
+        "start"
+      ]
+    },
+    "settings": {
+      "label": "修改会话设置",
+      "requires": [
+        "initialize",
+        "readThread",
+        "owner",
+        "following",
+        "settings"
+      ]
+    },
+    "createPermissions": {
+      "label": "新建时指定权限",
+      "requires": [
+        "initialize",
+        "createThread",
+        "readThread",
+        "owner",
+        "following",
+        "start",
+        "settings",
+        "setTitle",
+        "navigate"
+      ]
+    },
+    "rename": {
+      "label": "重命名会话",
+      "requires": [
+        "readThread",
+        "setTitle"
+      ]
+    },
+    "queue": {
+      "label": "消息入队、取回和删除",
+      "requires": [
+        "initialize",
+        "readThread",
+        "owner",
+        "following",
+        "queueWrite"
+      ]
+    },
+    "steer": {
+      "label": "直接调整方向",
+      "requires": [
+        "initialize",
+        "readThread",
+        "owner",
+        "following",
+        "steer"
+      ]
+    },
+    "queueSteer": {
+      "label": "用排队消息调整方向",
+      "requires": [
+        "initialize",
+        "readThread",
+        "owner",
+        "following",
+        "queueWrite",
+        "steer"
+      ]
+    },
+    "interrupt": {
+      "label": "停止回复",
+      "requires": [
+        "initialize",
+        "readThread",
+        "owner",
+        "following",
+        "interrupt"
+      ]
+    },
+    "questions": {
+      "label": "回答阻塞问题",
+      "requires": [
+        "initialize",
+        "readThread",
+        "owner",
+        "following",
+        "userInput"
+      ]
+    },
+    "browserApproval": {
+      "label": "网站访问授权",
+      "requires": [
+        "initialize",
+        "readThread",
+        "owner",
+        "following",
+        "mcpElicitation"
+      ]
+    },
+    "taskState": {
+      "label": "实时状态、未读统计和通知",
+      "requires": [
+        "initialize",
+        "owner",
+        "following"
+      ]
+    },
+    "readReceipt": {
+      "label": "同步官方已读",
+      "requires": [
+        "initialize",
+        "readThread",
+        "owner",
+        "following",
+        "readStateChanged"
+      ]
+    }
   }
 }
