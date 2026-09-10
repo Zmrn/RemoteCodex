@@ -15,6 +15,8 @@ const probe = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : { projec
 assert.equal(probe.projectId, projectId, "Do not retarget an existing probe journal");
 const save = () => fs.writeFileSync(file, JSON.stringify(probe, null, 2)); save();
 const b = new Bridge(path.join(dir, "bridge"));
+// This isolated test server explicitly creates probes; the production route does not.
+b.create = b.createProbe.bind(b);
 fs.writeFileSync(path.join(b.dataDir, "update-settings.json"), '{"automatic":false}');
 const report = { source: "official-app-tools-pipe-and-owner-IPC", time: new Date().toISOString(), projectId, chain: [] };
 let server;

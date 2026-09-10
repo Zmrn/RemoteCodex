@@ -57,7 +57,7 @@ let server, browser, page, id, initial, failure;
 try {
   await b.connect();
   report.officialPid = b.desktop.identity.officialPid;
-  const created = await b.create(
+  const created = await b.createProbe(
     "running-settings-create-" + randomUUID(),
     "这是运行中设置测试。请调用 clock.sleep 等待 45 秒，然后只回复 RUNNING_SETTINGS_OK。不要访问文件、网络或其他工具。",
     { model: "gpt-6-astra", effort: "low", permissionMode: "read-only" },

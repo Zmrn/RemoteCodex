@@ -93,11 +93,11 @@ export class CompatibilityProbes {
       const model = parseModels(b.desktop.catalog).find(m => m.id === "gpt-5.6-luna");
       check("test model exists in live catalog", model?.efforts.includes("low"));
       const key = report.requestId;
-      const initial = await b.create(key + "-text", "RemoteBridge-Probe 兼容性文字创建测试，只回复 TEXT_CREATE_OK。不要使用工具。", { model: model.id, effort: "low" });
+      const initial = await b.createProbe(key + "-text", "RemoteBridge-Probe 兼容性文字创建测试，只回复 TEXT_CREATE_OK。不要使用工具。", { model: model.id, effort: "low" });
       const textId = initial.result?.threadId; check("official text task created", !!textId);
       report.textThreadId = textId; save();
       await until(async () => { const r = await b.read(textId); return r.data.thread.status?.type === "idle" && r.data.turns.some(t => t.items?.some(i => i.type === "agentMessage" && i.text?.includes("TEXT_CREATE_OK"))); });
-      const created = await b.create(key + "-images", "不要使用工具。按顺序描述两张图片的背景颜色和中间图形的形状、颜色。", { model: model.id, effort: "low" }, undefined, images);
+      const created = await b.createProbe(key + "-images", "不要使用工具。按顺序描述两张图片的背景颜色和中间图形的形状、颜色。", { model: model.id, effort: "low" }, undefined, images);
       const id = created.result?.threadId; check("image task created with one submitted image batch", created.status === "accepted" && !!id);
       report.imageThreadId = id; save(); b.guard(id);
       const imageRead = await until(async () => { const r = await b.read(id); return r.data.thread.status?.type === "idle" && r.data.turns.some(t => t.id === created.result.imageTurnId && t.status === "completed") ? r : null; });

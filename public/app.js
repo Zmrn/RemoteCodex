@@ -9,6 +9,7 @@ import { icon, markdown, copyMarkdown } from "./ui.mjs";
 import { QueueUI } from "./queue-ui.mjs";
 import { DraftDiscards } from "./draft-discards.mjs";
 import { DeviceSettings, accessSummary } from "./device-settings.mjs";
+import { ThreadMenu } from "./thread-menu.mjs";
 import { ApprovalsUI } from "./approvals-ui.mjs";
 import { QuestionsUI } from "./questions-ui.mjs";
 import { questionReply, userContent } from "./message-content.mjs";
@@ -112,6 +113,7 @@ function refreshSidebarReports(invalidate = false) {
 }
 let sidebarSequence = 0,
   sidebarPolling = false;
+let listRequestSequence = 0, listAppliedSequence = 0, projectRequestSequence = 0, sidebarPending = false, sidebarTimer = null, pendingCreated = null;
 const currentAgent = () => agents.find((a) => a.id === agentId);
 const endpoint = (a) =>
   a.kind === "local"
@@ -566,6 +568,24 @@ const approvalUI = new ApprovalsUI({
     ? agentApi(context.agent, '/threads/' + context.id + '/open', {}) : Promise.reject(Error('查看目标已变化')),
   refresh: context => { if (approvalContextCurrent(context)) { headHash = null; scheduleRead(); } },
 });
+const threadMenu = new ThreadMenu({
+  current: () => ({ agent: agentId, generation, deviceName: currentAgent()?.name ?? '', connected: !!status.connected, canRename: status.threadTitles?.rename === true }),
+  submit: async (target, payload) => {
+    const current = () => target.agent === agentId && target.generation === generation && status.connected && status.threadTitles?.rename === true;
+    if (!current()) return { status: 'not-sent', error: '目标设备或连接已变化，改名未发送。' };
+    let j;
+    try { j = await journal(target.agent, target.id, 'rename-thread', payload); }
+    catch { return { status: 'not-sent', error: '无法保存提交保护记录，改名未发送。' }; }
+    if (!current()) return { status: 'not-sent', error: '目标设备已变化，改名未发送。' };
+    return agentApi(target.agent, '/threads/' + target.id + '/title', { ...payload, requestId: j.id });
+  },
+  refresh: target => { if (target.agent === agentId && target.generation === generation) { toast('已提交改名，正在读取官方列表'); scheduleSidebar(); } },
+});
+function scheduleSidebar() {
+  if (sidebarTimer !== null) return;
+  const g = generation;
+  sidebarTimer = setTimeout(() => { sidebarTimer = null; if (g === generation) pollSidebar(); }, 200);
+}
 const messageImageCache = new Map();
 const messageImageObserver = new IntersectionObserver(
   (entries) => {
@@ -1041,6 +1061,12 @@ function renderAgents() {
   }
 }
 function renderThreads() {
+  if (pendingCreated?.generation === generation && threads.some(t => t.id === pendingCreated.id)) pendingCreated = null;
+  const synchronizing = pendingCreated?.generation === generation;
+  $('thread-list-sync').hidden = !synchronizing;
+  $('thread-list-sync').textContent = synchronizing ? '新会话已创建，正在等待官方列表同步。内容已可直接查看。' : '';
+  const currentTitle = threads.find(t => t.id === selected)?.title;
+  if (currentTitle) $('title').textContent = currentTitle;
   const query = $("search").value.toLocaleLowerCase(),
     project = $("project-filter").value;
   const filtered = threads.filter(
@@ -1057,6 +1083,7 @@ function renderThreads() {
     b.dataset.threadId = t.id;
     b.append(node("strong", "", t.title ?? "未命名对话"));
     renderThreadIndicator(b, t);
+    threadMenu.bind(b, t);
     b.onclick = () => selectThread(t.id).catch(error);
     return b;
   };
@@ -1135,22 +1162,30 @@ function renderThreads() {
 }
 async function refresh(g = generation, options = {}) {
   const id = agentId,
-    sequence = ++sidebarSequence;
-  const [p, t, s] = await Promise.all([
-    agentApi(id, "/projects", undefined, options),
+    sequence = ++sidebarSequence, listSequence = ++listRequestSequence, projectSequence = ++projectRequestSequence;
+  // Apply the official task list as soon as it arrives; project discovery is independent.
+  const projectRead = agentApi(id, "/projects", undefined, options).then(p => ({ p }), error => ({ error }));
+  const [t, s] = await Promise.all([
     agentApi(id, "/threads", undefined, options),
     agentApi(id, "/status", undefined, options),
   ]);
   if (g !== generation) return;
-  status = s;
-  threads = modeCatalog(t.data, mode);
+  if (listSequence >= listAppliedSequence) {
+    listAppliedSequence = listSequence;
+    status = s;
+    threads = modeCatalog(t.data, mode);
+    for (const thread of threads)
+      rememberSidebarStatus(
+        thread.id,
+        sidebarStatus(thread.status, s.threads?.[thread.id]?.status),
+        sequence,
+      );
+    renderThreads(); permissions(); refreshSidebarReports();
+  }
+  const { p, error: projectError } = await projectRead;
+  if (g !== generation || projectSequence !== projectRequestSequence) return;
+  if (projectError) { toast('项目列表读取失败，会话列表已更新'); return; }
   projects = (p.data.projects ?? []).filter(p => mode === "chat" ? (p.projectKind ?? p.kind) === "chatgpt" || threads.some(t => t.projectId === p.projectId) : (p.projectKind ?? p.kind) !== "chatgpt");
-  for (const thread of threads)
-    rememberSidebarStatus(
-      thread.id,
-      sidebarStatus(thread.status, s.threads?.[thread.id]?.status),
-      sequence,
-    );
   const filter = $("project-filter").value;
   $("project-filter").replaceChildren(
     new Option("所有项目", "all"),
@@ -1167,18 +1202,20 @@ async function refresh(g = generation, options = {}) {
   refreshSidebarReports();
 }
 async function pollSidebar() {
-  if (sidebarPolling || booting || document.hidden || !status.connected) return;
+  if (booting || document.hidden || !status.connected) return;
+  if (sidebarPolling) { sidebarPending = true; return; }
   const polling = {};
   sidebarPolling = polling;
   const a = agentId,
     g = generation,
-    sequence = ++sidebarSequence;
+    sequence = ++sidebarSequence, listSequence = ++listRequestSequence;
   try {
     const [list, snapshot] = await Promise.all([
       agentApi(a, "/threads"),
       agentApi(a, "/status"),
     ]);
-    if (g !== generation) return;
+    if (g !== generation || listSequence < listAppliedSequence) return;
+    listAppliedSequence = listSequence;
     if (!snapshot.connected) {
       setConnection(false);
       return;
@@ -1195,9 +1232,9 @@ async function pollSidebar() {
     permissions();
     refreshSidebarReports();
   } catch {
-    if (g === generation) setConnection(false, "状态读取失败 · 状态未知");
+    if (g === generation && listSequence >= listAppliedSequence) setConnection(false, "状态读取失败 · 状态未知");
   } finally {
-    if (sidebarPolling === polling) sidebarPolling = false;
+    if (sidebarPolling === polling) { sidebarPolling = false; if (sidebarPending) { sidebarPending = false; scheduleSidebar(); } }
   }
 }
 function saveDraft() {
@@ -1221,6 +1258,8 @@ async function switchAgent(id, record = true, resumeId = null, nextMode = mode) 
   localStorage.setItem("remote-codex-mode", mode);
   modeUI();
   const g = ++generation;
+  threadMenu.reset();
+  clearTimeout(sidebarTimer); sidebarTimer = null; sidebarPending = false; pendingCreated = null;
   agentReads.abort();
   agentReads = new AbortController();
   resetTaskReads();
@@ -1770,19 +1809,13 @@ async function readTask(job, older) {
       return;
     }
     const entry = threads.find((t) => t.id === id);
-    const listChanged = !entry || entry.title !== taskData.thread.title;
-    if (entry) {
-      entry.title = taskData.thread.title;
-      entry.status = taskData.thread.status.type;
-    }
     rememberSidebarStatus(
       id,
       sidebarStatus(taskData.thread.status, r.live?.status),
       sidebarSeq,
     );
-    if (listChanged) renderThreads();
-    else updateThreadIndicators();
-    $("title").textContent = taskData.thread.title;
+    updateThreadIndicators();
+    $("title").textContent = entry?.title ?? taskData.thread.title;
     $("task-project").textContent =
       projects.find(
         (p) => p.projectId === threads.find((t) => t.id === id)?.projectId,
@@ -1911,6 +1944,8 @@ async function stream(id, g) {
           viewerRecovery?.request(true);
         }
         if (e.kind === 'report-read') refreshSidebarReports(true);
+        if (['created', 'thread-title-submitted'].includes(e.kind) ||
+            e.kind === 'thread-state' && e.patchPaths?.some(p => /title|generatedTitle/.test(String(p)))) scheduleSidebar();
         if (status.connected && ["thread-state", "unknown"].includes(e.kind)) {
           rememberSidebarStatus(e.threadId, {
             ...(e.kind === "thread-state"
@@ -2239,9 +2274,10 @@ async function submitMessage({ steer = false } = {}) {
       setImages([]);
       renderAttachment();
       if (fresh) {
-        await refresh(g);
-        if (g === generation && v === viewEpoch)
-          await selectThread(r.result.threadId);
+        pendingCreated = { id: r.result.threadId, generation: g };
+        // The official create ID can open content immediately, even before its index catches up.
+        scheduleSidebar();
+        if (g === generation && v === viewEpoch) await selectThread(r.result.threadId);
       } else await read();
       if (enqueue) toast("已加入官方队列");
       if (steering) toast("已提交调整方向");
@@ -2393,7 +2429,7 @@ setInterval(() => {
     resetUsage("unknown", "额度已过期，请刷新");
   if (!document.hidden) refreshUsage();
 }, 60000);
-setInterval(pollSidebar, 15000);
+setInterval(pollSidebar, 5000);
 setInterval(() => sidebarReports.expire(), 1000);
 setInterval(() => {
   if (!booting && !document.hidden && mode === "codex" && selected)

@@ -32,7 +32,7 @@ const snapshot = async (id) => {
 try {
   await b.connect();
   report.officialPid = b.desktop.identity.officialPid;
-  const created = await b.create(
+  const created = await b.createProbe(
     "features-create-" + randomUUID(),
     "请调用 functions.request_user_input_async，问：桥接测试选择哪个颜色？选项为蓝色、绿色。然后调用 clock.sleep 等待 30 秒，让我测试运行中的回答。收到回答后只回复已收到和颜色。不要访问文件，不要调用其他工具。",
     { model: "gpt-6-astra", effort: "low", permissionMode: "read-only" },

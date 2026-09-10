@@ -3079,3 +3079,11 @@ dialog textarea,
 .approval-card>.field-help:last-child{display:block;line-height:1.6}
 .approval-history{background:transparent;border-color:#2e3947;padding:14px 18px}
 @media(max-width:520px){.approval-card{padding:16px}.approval-actions button{flex:1 1 110px}}
+
+.thread-context-menu{position:fixed;z-index:1200;padding:6px;min-width:150px;max-width:calc(100vw - 16px);border:1px solid #3a4b60;border-radius:12px;background:#202c3a;box-shadow:0 8px 30px #0008}
+.thread-context-menu button{display:block;width:100%;text-align:left;padding:10px 16px;background:transparent;border:0;color:#e5ecf7;border-radius:8px;cursor:pointer}
+.thread-context-menu button:hover{background:#314158}.thread-context-menu button:disabled{opacity:.5;cursor:default}
+.thread-rename-dialog{width:min(420px,calc(100vw - 32px));border-radius:16px;border:1px solid #3a4b60;background:#172230;color:#e5ecf7;padding:24px}
+.thread-rename-dialog h2{font-size:19px;margin:0 0 12px}.thread-rename-dialog input{width:100%;box-sizing:border-box;padding:12px;margin:12px 0;border:1px solid #425670;border-radius:10px;background:#0f1722;color:#e5ecf7}
+.thread-rename-actions{display:flex;gap:8px;justify-content:flex-end}.thread-rename-actions button{padding:10px 20px;border-radius:10px}.thread-rename-dialog::backdrop{background:#0008}
+#thread-list-sync{margin:10px 14px;padding:10px;border-radius:10px;background:#202e40;line-height:1.6}

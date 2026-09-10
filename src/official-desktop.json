@@ -166,10 +166,10 @@
         "threadId",
         "title"
       ],
-      "response": "official tool result",
-      "purpose": "专用测试任务命名",
-      "consumer": "src/bridge.mjs:permissionContext",
-      "test": "test/settings.test.mjs"
+      "response": "threadId, title (submission acknowledgement; display uses subsequent official list)",
+      "purpose": "用户主动修改 Codex 会话名；专用测试权限上下文命名",
+      "consumer": "src/thread-titles.mjs:renameThread, src/bridge.mjs:permissionContext",
+      "test": "test/thread-titles.test.mjs"
     },
     "navigate": {
       "name": "navigate_to_codex_page",

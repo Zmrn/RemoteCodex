@@ -22,7 +22,7 @@ try {
   report.officialVersion = b.status().desktopCompatibility.detectedVersion;
   const model = parseModels(b.desktop.catalog).find(m => m.id === "gpt-5.6-luna");
   assert.ok(model?.efforts.includes("low"));
-  const created = await b.create("interrupt-create-" + randomUUID(),
+  const created = await b.createProbe("interrupt-create-" + randomUUID(),
     "这是 RemoteBridge 专用停止功能测试。请使用 clock.sleep 等待 45 秒，若没有该工具则用一次 PowerShell Start-Sleep -Seconds 45。等待后只回复 STOP_PROBE_FINISHED。不要访问网络、读取或修改文件，不要调用其他工具。",
     { model: model.id, effort: "low" });
   id = report.threadId = created.result.threadId;

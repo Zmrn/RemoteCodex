@@ -22,7 +22,7 @@ try {
   if (!probe.id) {
     const models = parseModels(b.desktop.catalog), model = models.find(m => m.id === 'gpt-5.6-luna') ?? models.find(m => m.efforts.includes('low'));
     assert.ok(model);
-    const created = await b.create(probe.createKey, '只回复 READY。不要使用工具。', { model: model.id, effort: 'low', permissionMode: 'read-only' });
+    const created = await b.createProbe(probe.createKey, '只回复 READY。不要使用工具。', { model: model.id, effort: 'low', permissionMode: 'read-only' });
     probe.id = created.result?.threadId; assert.ok(probe.id); save();
   }
   b.guardProbe(probe.id); result.threadId = probe.id;

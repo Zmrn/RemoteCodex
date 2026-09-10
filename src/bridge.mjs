@@ -17,6 +17,7 @@ import { TaskReports } from "./task-reports.mjs";
 import { DurableJson } from "./durable-json.mjs";
 import { markOfficialReportRead } from "./official-report-read.mjs";
 import { resolveOfficialHome } from "./official-read-state.mjs";
+import { renameThread } from "./thread-titles.mjs";
 import { SubscriptionLeases } from "./subscriptions.mjs";
 import { answerApproval, supportsBrowserApproval } from "./approvals.mjs";
 import { Reconnector } from "../public/reconnect.mjs";
@@ -376,12 +377,14 @@ export class Bridge extends EventEmitter {
   }
   async threads(limit = 50, options) {
     this.requireConnection();
+    const desktop = this.desktop;
+    const data = await desktop.call(TOOLS.listThreads, { limit: Math.min(limit, 50) }, undefined, options);
+    this.requireConnection();
+    if (desktop !== this.desktop) throw Error('列表读取期间官方连接已变化，请重新读取');
     return {
       source: "official-desktop-tool-live",
       observedAt: new Date().toISOString(),
-      data: await this.desktop.call(TOOLS.listThreads, {
-        limit: Math.min(limit, 50),
-      }, undefined, options),
+      data,
     };
   }
   async read(id, cursor, { compact = false } = {}) {
@@ -509,6 +512,7 @@ export class Bridge extends EventEmitter {
     try { return await pending; }
     finally { if (this.requestFlights.get(key) === pending) this.requestFlights.delete(key); }
   }
+  renameThread(id, input) { return renameThread(this, id, input); }
   answerApproval(id, key, input) { return answerApproval(this, id, key, input); }
   async answerQuestions(id, key, input) {
     await this.codexThread(id);
@@ -627,17 +631,24 @@ export class Bridge extends EventEmitter {
       };
     });
   }
-  async create(
+  create(key, prompt, options, projectInput, imageDataUrls) {
+    return this.createTask(key, prompt, options, projectInput, imageDataUrls, false);
+  }
+  createProbe(key, prompt, options, projectInput, imageDataUrls) {
+    return this.createTask(key, prompt, options, projectInput, imageDataUrls, true);
+  }
+  async createTask(
     key,
-    prompt = "只回复：REMOTE_BRIDGE_FIRST_OK。不要使用工具，不要创建或修改任何文件。",
+    prompt,
     options = {},
     projectInput,
     imageDataUrls,
+    probe = false,
   ) {
     this.requireConnection();
     this.requireSupportedBuild();
     const images = validateImageUrls(imageDataUrls);
-    if (images.length) return this.createWithImages(key, prompt, options, projectInput, images);
+    if (images.length) return this.createWithImages(key, prompt, options, projectInput, images, probe);
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000)
       throw Error("Invalid message");
     if (options.serviceTier !== undefined)
@@ -656,11 +667,11 @@ export class Bridge extends EventEmitter {
         permissionMode && permissionMode !== "keep"
           ? await this.permissionContext(permissionMode)
           : this.desktop.context;
-      const name =
+      const name = probe ?
         "RemoteBridge-Probe-" +
         new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) +
         "-" +
-        randomUUID().slice(0, 6);
+        randomUUID().slice(0, 6) : undefined;
       const projectTarget = project
         ? savedProjectTarget(project, await desktop.call(TOOLS.listProjects))
         : null;
@@ -670,17 +681,17 @@ export class Bridge extends EventEmitter {
       const r = await this.desktop.call(
         TOOLS.createThread,
         {
-          title: name,
+          ...(probe ? { title: name } : {}),
           prompt,
           ...(settings.model ? { model: settings.model } : {}),
           ...(settings.effort ? { thinking: settings.effort } : {}),
-          target: projectTarget ?? { type: "projectless", directoryName: name },
+          target: projectTarget ?? { type: "projectless", ...(probe ? { directoryName: name } : {}) },
         },
         context,
       );
       if (!r.threadId)
         throw Error("create-outcome-unknown: " + JSON.stringify(r));
-      this.db.tests[r.threadId] = {
+      if (probe) this.db.tests[r.threadId] = {
         title: name,
         createdAt: new Date().toISOString(),
         cwd: r.cwd ?? null,
@@ -698,7 +709,7 @@ export class Bridge extends EventEmitter {
       return r;
     }, { deferredDispatch: true });
   }
-  async createWithImages(key, prompt, options, projectInput, images) {
+  async createWithImages(key, prompt, options, projectInput, images, probe = false) {
     if (typeof key !== "string" || !/^[\w-]{8,100}$/.test(key)) throw Error("requestId required");
     if (typeof prompt !== "string" || prompt.length > 20000) throw Error("Invalid message");
     if (options.serviceTier !== undefined) throw Error("官方新建接口未提供首轮加速参数；请创建后切换加速");
@@ -720,9 +731,9 @@ export class Bridge extends EventEmitter {
     const pending = (async () => {
       // Official create_thread is text-only. Do not send the user's real request
       // without its images: prepare one official task, then send the full input.
-      const created = await this.create("image-create-" + suffix,
+      const created = await this.createTask("image-create-" + suffix,
         "Remote Codex 正在为用户准备带图会话，实际文字和图片将在下一条消息一起发送。只回复 READY，不要使用工具，不要读取或修改文件。",
-        options, projectInput);
+        options, projectInput, undefined, probe);
       if (created.status !== "accepted" || !created.result?.threadId)
         return { status: "outcome-unknown", phase: "creating", error: "创建回执未知；不会重新创建，请核对官方桌面" };
       const id = created.result.threadId;
@@ -753,7 +764,7 @@ export class Bridge extends EventEmitter {
       if (!id) {
         const models = parseModels(this.desktop.catalog),
           model = models.find((m) => m.id === "gpt-5.4-mini") ?? models.at(-1);
-        const created = await this.create(
+        const created = await this.createProbe(
           "permission-context-" + randomUUID(),
           "这是 Remote Bridge 的专用权限配置测试会话。只回复 READY，不要使用工具，不要访问或修改文件。",
           { model: model.id, effort: model.efforts[0] },
@@ -1123,6 +1134,7 @@ export class Bridge extends EventEmitter {
       protectedThreadIds: [],
       desktopCompatibility: compatibility,
       existingCodexWritable: compatibility.writeSupported && this.stateStore.health.writable,
+      threadTitles: { rename: compatibility.writeSupported && this.stateStore.health.writable && this.desktop?.catalog?.some(t => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === TOOLS.setTitle), kinds: ["codex"] },
       browserApprovals: { supported: compatibility.writeSupported && this.stateStore.health.writable && supportsBrowserApproval(this.desktop?.identity?.appToolsPipe?.image), source: 'official-desktop-owner-IPC', allSites: false },
       storageHealth: [this.stateStore.health],
       taskSummary: { supported: true, schemaVersion: 2, statePolicy: 'official-only', readReceipts: true },

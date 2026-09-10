@@ -25,7 +25,7 @@ Chat：列表/历史读取；文字续写待专用真实会话验证；新建/�
 | read_thread | 历史读取 | threadId, turnLimit, includeOutputs, maxOutputCharsPerItem, cursor, hostId | thread, turns, nextCursor | src/bridge.mjs:read, src/task-reports.mjs:collect | test/conversation-pages.test.mjs |
 | create_thread | 新建真实任务 | prompt, target, model, thinking, title | threadId required; clientThreadId-only response treated as outcome-unknown | src/bridge.mjs:create | test/projects.test.mjs |
 | send_message_to_thread | 继续已有任务；Chat 分支未完成实测 | threadId, prompt, model, thinking | official tool result | src/bridge.mjs:send, nativeSend, chatSend | test/send-lifecycle.test.mjs |
-| set_thread_title | 专用测试任务命名 | threadId, title | official tool result | src/bridge.mjs:permissionContext | test/settings.test.mjs |
+| set_thread_title | 用户主动修改 Codex 会话名；专用测试权限上下文命名 | threadId, title | threadId, title (submission acknowledgement; display uses subsequent official list) | src/thread-titles.mjs:renameThread, src/bridge.mjs:permissionContext | test/thread-titles.test.mjs |
 | navigate_to_codex_page | 打开官方窗口同一任务 | threadId | official tool result | src/bridge.mjs:open | test/core.test.mjs |
 | wait_threads | 等待任务状态 | targets, timeoutMs | official tool result | src/bridge.mjs:wait | test/context.test.mjs |
 | get_usage_limits | 目标账号额度 |  | rateLimitsByLimitId, rateLimits | src/bridge.mjs:usage | test/usage.test.mjs |

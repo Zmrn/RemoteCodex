@@ -15,7 +15,7 @@ async function until(fn){const end=Date.now()+120000;while(Date.now()<end){const
 const result={source:"official-desktop-owner-IPC",time:new Date().toISOString()};
 try{
   await b.connect();result.officialPid=b.desktop.identity.officialPid;
-  if(!probe.id){const models=parseModels(b.desktop.catalog);const model=models.find(m=>m.id==="gpt-5.6-luna")??models.find(m=>m.efforts.includes("low"));assert.ok(model);const created=await b.create(probe.createKey,"只回复 READY。不要使用工具。",{model:model.id,effort:"low",permissionMode:"read-only"});probe.id=created.result?.threadId;assert.ok(probe.id);save();}
+  if(!probe.id){const models=parseModels(b.desktop.catalog);const model=models.find(m=>m.id==="gpt-5.6-luna")??models.find(m=>m.efforts.includes("low"));assert.ok(model);const created=await b.createProbe(probe.createKey,"只回复 READY。不要使用工具。",{model:model.id,effort:"low",permissionMode:"read-only"});probe.id=created.result?.threadId;assert.ok(probe.id);save();}
   b.guardProbe(probe.id);result.threadId=probe.id;
   await until(async()=> (await b.codexThread(probe.id)).thread.status.type==="idle");
   const urls=["multi-image-a.png","multi-image-b.png"].map(n=>"data:image/png;base64,"+fs.readFileSync(path.join(ROOT,"fixtures",n)).toString("base64"));

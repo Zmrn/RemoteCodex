@@ -29,7 +29,8 @@ test("project create resolves the target desktop catalog and sends the saved ID 
   assert.equal(first.result.threadId, id);
   assert.deepEqual(calls[0], { name: "list_projects", args: undefined });
   assert.deepEqual(calls[1].args.target, { type: "project", projectId: project.projectId, environment: { type: "local" } });
-  assert.equal(bridge.db.tests[id].projectId, project.projectId);
+  assert.equal(Object.hasOwn(bridge.db.tests, id), false, "ordinary creation is not a test target");
+  assert.equal(Object.hasOwn(calls.find(c => c.name === "create_thread").args, "title"), false);
   catalog.projects = [];
   assert.equal((await bridge.create("project-create-001", "synthetic probe", {}, selection)).deduplicated, true);
   assert.equal(calls.length, 2);

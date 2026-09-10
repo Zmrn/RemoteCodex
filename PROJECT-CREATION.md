@@ -14,6 +14,8 @@ Windows 与 Android 共用项目下拉。各设备分别保存选择，并随草
 
 ## 复测
 
+2026-09-10 修复：普通创建由官方自动命名，不再登记为Probe；拿到官方ID后不等待项目/列表刷新就打开内容。列表每5秒及事件刷新，索引等待有提示，右键可向官方提交重命名。数据与验证边界见 [THREAD-LIST.md](THREAD-LIST.md)。
+
 ```powershell
 node --test test/projects.test.mjs test/send-lifecycle.test.mjs test/chat.test.mjs
 node scripts/verify-project-ui.mjs

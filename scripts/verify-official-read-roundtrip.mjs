@@ -23,7 +23,7 @@ try {
   check('exact supported official build', report.version === '26.903.8094.0');
   const reader = new OfficialReadState(b.desktop), context = await reader.context();
   check('login identity and default local execution partition available without exposing tokens', context && await reader.marked(context, randomUUID()) === false);
-  const created = await b.create('read-sync-create-' + randomUUID(), 'Remote Codex 已读同步专用验证任务。只回复 READ_SYNC_FIRST_OK，不要使用工具，不要修改文件。');
+  const created = await b.createProbe('read-sync-create-' + randomUUID(), 'Remote Codex 已读同步专用验证任务。只回复 READ_SYNC_FIRST_OK，不要使用工具，不要修改文件。');
   id = created.result?.threadId; assertProbeTarget({ testThreads: b.db.tests }, id);
   report.taskId = id; report.taskMessages++; save();
   const guarded = b.markOfficialReportRead.bind(b);
