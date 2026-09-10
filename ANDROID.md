@@ -42,23 +42,21 @@ Codex 的消息、项目、任务、队列、问答、模型和权限界面共�
 
 更新验证独立 RSA 签名清单、APK 大小与 SHA-256、包名、versionCode 和当前安装证书，拒绝篡改、降级和其他签名的 APK。设备列表与加密访问密钥留在应用数据中，正常覆盖安装不清除。不要先卸载旧版：卸载会删除设备、密钥和草稿。
 
-## 本地构建与发布
+## 按需云端构建与发布
 
-构建使用 Python 3.10+、Node.js 22+、Android SDK platform 35 / build-tools 35.0.1 和 JDK 17+；原开发设备使用 JDK 21，接手笔记本最终合并包使用 JDK 17。通过 SDK 自带 aapt2、javac、D8、zipalign、apksigner 构建，无 Gradle 下载依赖。接手笔记本的工具链来自已校验的 Microsoft/Google 官方资源，没有修改 Unity SDK 或现有 Android 虚拟设备。
+2026-09-10 用户要求 APK/EXE 统一由 GitHub Actions 构建，且只有明确要求构建/打包时才触发。普通迭代只开发、测试和提交，不在本地构建或自动发布。云端工具链、原签名身份和下载验签见 [GITHUB-ACTIONS.md](GITHUB-ACTIONS.md)。本地历史工具链继续保留供诊断，不作为日常产物来源。
 
 ```powershell
-Copy-Item release.example.json release.local.json
-# 编辑 release.local.json，填入本机 SDK/JDK 路径、SSH 地址、目标目录和公共资源 baseUrl。
-python scripts/build-release.py
-# 确认 Android 行为测试后，同时发布 APK、EXE 和两个签名清单：
-python scripts/publish-update.py
-# 后续迭代的一步构建发布入口：
-python scripts/build-release.py --publish
+# 仅在用户明确要求构建后；先提交源码，使用与 GitHub main 一致的干净工作树
+node scripts/github-actions.mjs build
+# 使用该次返回的 runId 查询进度并下载；未知派发结果不能重复构建
+node scripts/github-actions.mjs watch <runId>
+node scripts/github-actions.mjs download <runId>
 ```
 
 `release.local.json` 被 Git 忽略；实际 SSH 配置不写入应用，只有公共更新资源 URL 会注入构建产物。服务端使用 `scripts/serve-updates.py`，仅提供四个固定资源，不接收用户对话或账号信息。第一次从仅支持 EXE 的资源服务升级时，需要替换此脚本并重启资源服务。发布器在两个构建的版本、大小、哈希全部一致后才上传，服务端再验签并覆盖；远端每个平台只保留一份正式程序。
 
-已有 RSA 发布身份不能重新生成。首次 Android 构建创建 `data/android-signing.p12` 和 DPAPI 加密的 `data/android-signing-password.json`。签名文件不入 Git、不打包；安全备份该身份，否则无法为已安装 APK 继续签发可覆盖安装的更新。
+已有 RSA 发布身份和 Android 安装证书不能重新生成。GitHub signing 环境已安全配置原身份；本地 `data/android-signing.p12` 与 DPAPI 加密副本继续保留，不入 Git、不打包。正式发布使用同次云构建的 APK/EXE 并核对签名、版本、哈希及兼容清单，不在本地重建替代。
 
 ## 复测
 

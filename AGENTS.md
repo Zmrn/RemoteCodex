@@ -4,7 +4,7 @@
 
 ## 新会话接手
 
-- 先确认实际操作系统、主机、工作目录、Git 远端/分支及工作区状态，不能把云端/沙箱测试说成本机验证。本机原工作区中的仓库位于 `outputs/remote-codex/`；直接克隆时以包含本文件与 package.json 的 Git 根目录为准。GitHub 仓库为 `https://github.com/Zmrn/RemoteCodex.git`，迁移期保留 Gitee `https://gitee.com/Anso/remote-codex.git`；本工作区分别使用 github/origin，其他克隆必须重新核对，不按远端名字推测地址。当前分支 main。
+- 先确认实际操作系统、主机、工作目录、Git 远端/分支及工作区状态，不能把云端/沙箱测试说成本机验证。本机原工作区中的仓库位于 `outputs/remote-codex/`；直接克隆时以包含本文件与 package.json 的 Git 根目录为准。正式仓库为 `https://github.com/Zmrn/RemoteCodex.git`，默认 origin 与 main 上游指向 GitHub。原 Gitee 仅保留为本地 gitee-archive 历史参考，不再双推；其他克隆必须重新核对实际 URL，不按远端名字猜测。
 - 当前源码基线（2026-09-09）：Remote Codex **0.10.16**，部分历史优先显示可读内容，双端发布、笔记本内置更新和 Android 隔离横竖屏通过，见 [HISTORY-READ.md](HISTORY-READ.md)。0.10.15 新增 VS Code 持有共享 IPC 管道时的官方 ChatGPT 桥接，真实专用任务的 12 项检查通过，见 [VSCODE-COEXISTENCE.md](VSCODE-COEXISTENCE.md)。Windows x64 官方包 **26.901.6511.0、26.903.8094.0** 的 Codex 核心读写已验证。软件版本以 package.json 为准，官方支持范围以 src/official-desktop.json 的 validation 为准；交接快照不是实时状态，也不代表所有功能均已验证。
 - 2026-09-09 接手笔记本已重建并发布最终合并 0.10.15 EXE/APK，包含 VS Code 共存和设备保护；笔记本内置更新及配置保留验收通过。130 项 Node、13 项窗口、最终 EXE 自检和包内旧版→新版强制重启测试通过。最终哈希及两台机器各自的验证范围见 VSCODE-COEXISTENCE.md、DEVICE-STORAGE.md；本机没有做最终合并 APK 的模拟器/真机行为测试。
 - 最近修复及证据见 [CREATE-IMAGES.md](CREATE-IMAGES.md)：新建文字/多图、失败草稿保留、正式控制端跨设备发送；115 项 Node 回归、13 项窗口检查、Android API 35 横竖屏及真实官方 owner 测试已通过。新官方版本、Chat 写入、原生生图等不能由这些结果推定成功。
@@ -90,9 +90,11 @@
 - 0.10.15 起，设备增删改必须在同一系统锁下保留独立历史，普通保存不能删改其他设备；重复启动/选择不整份重写配置。升级前保全设备与接入设置，升级后核对一致性，失败不得记作成功。不得清理或覆盖用户数据目录、独立历史与升级前快照。涉及数据保护时同时运行 `scripts/verify-agent-restart.mjs`；安装包验收必须检查不含用户配置。用户于 2026-09-09 表示旧设备自行重新配对，本次不继续恢复旧备份。
 - 物理手机必须确认目标后才能安装测试；默认使用项目 `work/` 下的隔离模拟器，不修改用户现有 AVD。
 
-## 同步发布（每次更新必须遵守）
+## 构建与发布（2026-09-10 用户最新约定）
 
-- GitHub Actions 和对话式构建入口见 [GITHUB-ACTIONS.md](GITHUB-ACTIONS.md)。用户说“打包当前版本”时，先确认源码与 GitHub main 一致，再执行 `node scripts/github-actions.mjs build`，使用返回的 runId watch/download；不要让用户必须手动打开网页，派发结果未知不能重复提交。本地不必重建。迁移期同时推送 GitHub/Gitee，合并保留其他设备提交，不能强推或删除旧远端。
+- **只有用户明确要求构建/打包时才生成 APK/EXE，统一使用 GitHub Actions，不在本地构建。** 普通需求、修复、review、源码提交或“确认能否构建”只做相关开发/测试/提交，不自动构建、发布或升级客户端。这条覆盖旧文档中“每次迭代必须构建发布”和本地构建流程。明确要求发布但没有可用云端产物时，先说明需要构建，不能把发布或测试需求自动当作构建指令。
+- GitHub Actions 和对话式构建入口见 [GITHUB-ACTIONS.md](GITHUB-ACTIONS.md)。收到明确构建指令后，先将本次完成的源码提交到 GitHub main，并从与远端一致的干净工作树执行 `node scripts/github-actions.mjs build`，使用返回的 runId watch/download。未完成修改保留在原工作区；不能混入构建或因其未提交就覆盖/丢弃。派发结果未知不能重复提交，云端失败也不能擅自回退本地构建。源码只推 GitHub，合并保留其他设备提交，不能强推。
+- push/PR 的 Checks 自动回归继续保留，但不生成正式 APK/EXE 或发布资源。Build EXE and APK 仅 workflow_dispatch。已核对 GitHub 读写权限、active 工作流、signing 三项 Secrets/两项变量，以及成功双端构建 34437906384；本次远端切换没有触发新构建。
 - CI Checks 无正式密钥；正式双端 build 只用 main 的 signing 环境和原签名身份。不得上传本地 DPAPI 登录凭据、SSH 凭据、用户数据或整个 work/data；签名材料只通过获授权的 GitHub 加密 Secrets 配置，缺失时报错，不生成替代证书。产物仅白名单文件，保留 3 天，固定标准 windows-2022，不启用付费规格。云端构建不代表真实官方桥接验证，不登录 ChatGPT/执行 APK，不自动改现有更新入口或部署资源；构建与正式发布是两个操作。
 - 2026-09-10 用户已授权并完成 signing 环境原签名配置，通常无需再次迁移或上传。首次双端云端构建 `34437906384`（源码 `20d782f`、0.10.27）及对话式下载验签通过：198 Node、49 主机 JVM、原 APK 证书和双端清单/哈希；详情、产物哈希及官方支持范围见 GITHUB-ACTIONS.md。本轮未安装/运行 APK、更新现有客户端或发布更新资源。同版本云端重建不能覆盖已发布的正式资源。
 
@@ -103,7 +105,7 @@
 - 双端构建报告、签名更新清单及 release-notes.md 必须来自同一份兼容性清单。发布器必须拒绝缺失/过期元数据和混用旧产物；发布时同时覆盖固定 release-notes.md，其哈希受更新签名保护。
 
 1. `package.json` 是唯一正式版本来源。APK versionCode 为 `major*1000000 + minor*1000 + patch`；minor、patch 必须小于 1000。
-2. **每次正式更新同时构建、验证并发布 Android APK 和 Windows EXE，不允许只更新其中一端。** 运行 `python scripts/build-release.py --publish`；该脚本先构建双端，再发布。
+2. **明确构建时由同一次 GitHub Actions 生成 Android APK 和 Windows EXE。** 正式发布继续由本会话负责，使用该次云端产物完成双端验证与发布，不允许只发布一端或用本地重建替代。下载后的源码、版本、提交、兼容清单、双端签名与哈希必须相符；已有同版本正式资源不能被同版重建覆盖。
 3. 固定文件名为 `RemoteCodex.exe`、`RemoteCodex.apk`，版本显示在程序左下角；不要在文件名中加版本。
 4. 实际远端 SSH 地址、目标目录和更新资源 URL 统一配置在 **被 Git 忽略的 `release.local.json`**。从 `release.example.json` 复制；禁止在发布脚本中硬编码真实地址。构建产物只注入公共资源 URL，不注入 SSH 设置或签名私钥。
 5. 发布到该配置的 `remoteDirectory`，同时覆盖两个程序及 `latest.json`、`android-latest.json`。远端只保留各平台一份正式资源。发布器必须验证双端版本、大小、哈希与签名；上传完成并校验后才替换正式资源。
@@ -113,7 +115,7 @@
 8. 发布前运行 Node 回归与 Android 构建验证；Android 行为改动在隔离模拟器验证。记录具体通过项和未测试项，不把模拟器结果称作真机验证。
 9. 更新 `ANDROID.md` 或相关复测说明。交付 APK/EXE 链接并提交推送源码、文档（包括本文件）。不提交 `dist/`、`work/`、`data/`、本机配置或原始私人证据。
 
-行为验证未完成时先运行 `python scripts/build-release.py`，完成相应 UI/Android 验证后再用 `python scripts/publish-update.py` 同步发布；`--publish` 不是跳过行为验收的捷径。正常迭代沿用本会话已授权的固定资源目标，不修改网络或另建服务器；目标配置缺失/变化、官方应用需重启/升级等超出授权范围时再说明具体影响。
+行为验证未完成时继续相关测试，不自行构建。明确要求构建后下载对应云端产物，完成适用的包/行为验证后再按发布安排使用现有发布器；发布器不应重新构建。沿用本会话已授权的固定资源目标，不修改网络或另建服务器；目标配置缺失/变化、官方应用需重启/升级等超出授权范围时再说明具体影响。
 
 纯文档交接不改变软件行为或兼容性清单时，只校对引用、事实和 Git diff 后提交推送，不为此递增软件版本、重装客户端或发布双端产物。
 

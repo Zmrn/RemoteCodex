@@ -48,16 +48,15 @@ EXE 内置 Node.js 22.19.0、Python 3.13.2、WebView2 SDK Loader 和托管组件
 
 更新先校验发布签名、平台、版本、长度和 SHA-256，再保存草稿、退出旧窗口、替换 EXE、打开新版窗口。更新助手只在安装期间短暂运行，不作为常驻服务。安装失败会尝试回退本机备份。更新源只分发软件，不接收任务、图片或账号数据。
 
-资源服务地址和目标目录由被忽略的 `release.local.json` 配置，要求能连接该地址的 Tailscale 网络。远端只保留一个 `RemoteCodex.exe`、一个 `RemoteCodex.apk`，以及各自的签名清单。每次更新提高版本号，同时构建并覆盖发布双端；详细约定见 `AGENTS.md`。
+资源服务地址和目标目录由被忽略的 `release.local.json` 配置，要求能连接该地址的 Tailscale 网络。远端只保留一个 `RemoteCodex.exe`、一个 `RemoteCodex.apk`，以及各自的签名清单。仅在用户明确要求构建时由 GitHub Actions 生成双端产物，正式发布按版本与签名验证后进行；日常迭代不自动构建或发布，详细约定见 `AGENTS.md`。
 
 ## 开发与诊断
 
 ```powershell
-# 先从 release.example.json 创建并填写 release.local.json
-python scripts/build-release.py
-# 发布到本机配置指定的资源目录，必须同时具备 APK 和 EXE
-python scripts/publish-update.py
-# 只读诊断
+# 仅在用户明确要求构建后；先提交源码，并确认干净工作树与 GitHub main 一致
+node scripts/github-actions.mjs build
+# 按返回的运行编号 watch/download，见 GITHUB-ACTIONS.md；不要本地重建
+# 对已下载并验签的 EXE 只读诊断
 .\dist\RemoteCodex.exe --self-test
 # 可选：停止本桌面实例（平时使用托盘右键退出）
 .\dist\RemoteCodex.exe --stop
@@ -65,4 +64,4 @@ python scripts/publish-update.py
 
 `--home <目录>` 隔离缓存和设备数据；`--port <端口>` 固定本地 UI 回环端口。`--headless` 仅为兼容 0.8.x 更新助手保留，普通启动调用会转到可见桌面，不再留下无窗口后台。`--prepare-only` 只校验解压，用于更新预检。
 
-发布私钥仍为开发电脑 `data/release-signing-key.json`，以当前 Windows 用户 DPAPI 加密。不要提交、上传、打包或重新生成；公钥随客户端分发。EXE 未做 Windows Authenticode 签名，更新清单使用独立 RSA-SHA256 签名。包内第三方许可证见 `THIRD_PARTY_NOTICES.md`。
+原发布私钥在开发电脑的 DPAPI 保护副本继续保留，获授权的 GitHub signing 环境已配置原签名身份，见 `GITHUB-ACTIONS.md`。不导出登录凭据，不提交或打包私钥，不重新生成身份。公钥随客户端分发。EXE 未做 Windows Authenticode 签名，更新清单使用独立 RSA-SHA256 签名。包内第三方许可证见 `THIRD_PARTY_NOTICES.md`。

@@ -1,6 +1,6 @@
 # Remote Codex · ChatGPT 桌面会话桥接器
 
-源码：[GitHub](https://github.com/Zmrn/RemoteCodex)（迁移中，保留 Gitee 副本）。支持通过 AI 对话直接触发 GitHub Actions 双端打包、查询进度和下载 EXE/APK，设置与命令见 [GITHUB-ACTIONS.md](GITHUB-ACTIONS.md)。
+源码：[GitHub](https://github.com/Zmrn/RemoteCodex)。只有用户明确要求构建/打包时，才通过 AI 对话触发 GitHub Actions 双端打包、查询进度和下载 EXE/APK；不再本地构建，日常源码提交仅自动回归。设置与命令见 [GITHUB-ACTIONS.md](GITHUB-ACTIONS.md)。
 
 Windows / Android 原型，当前版本以 package.json 和发布说明为准。连接已经运行的官方 ChatGPT 桌面端，通过它管理的同一个 Codex 任务收发消息、查看实时状态和操作队列。Windows 可自由调整窗口大小；Android 竖屏使用侧栏抽屉，横屏使用桌面布局。
 
@@ -16,7 +16,7 @@ Windows 会记住上次的窗口大小、位置与最大化状态，退出、更
 
 左上角现在可切换 **Codex / Chat**，分别显示会话并保留草稿。Chat 历史读取已通过本机验证，已有 Chat 的文字续写作为试验性功能转交官方桌面；普通 Chat 新建、模型切换和图片暂需在官方桌面操作。官方 ChatGPT 列表可能包含 Work，界面明确提示。详细验证与限制见 [CHAT-MODE.md](CHAT-MODE.md)。
 
-Android APK 的安装、自动下载更新、系统确认安装和复测方法见 [ANDROID.md](ANDROID.md)。每次正式迭代必须同时构建并发布 `RemoteCodex.apk` 和 `RemoteCodex.exe`；发布地址配置在被忽略的 `release.local.json`，模板是 `release.example.json`，开发发布约定见 [AGENTS.md](AGENTS.md)。
+Android APK 的安装、自动下载更新、系统确认安装和复测方法见 [ANDROID.md](ANDROID.md)。明确要求构建后，同一次 GitHub Actions 生成 `RemoteCodex.apk` 和 `RemoteCodex.exe`；正式发布使用验签通过的云端双端产物。发布地址配置在被 Git 忽略的 `release.local.json`，模板是 `release.example.json`，开发发布约定见 [AGENTS.md](AGENTS.md)。
 
 现已支持**单 EXE 分发及在线更新**：`RemoteCodex.exe` 内置运行依赖，文件名固定，当前软件版本显示在界面左下角设备名旁。左下角问号直接打开检查更新、安装更新和自动更新设置；下载期间问号变成下载进度。编辑本机设备可读取 Tailscale IP、设置端口和访问密钥、开关远程访问。更新只替换桥接程序，官方任务继续运行。详见 [PORTABLE.md](PORTABLE.md)。以下启动命令适用于源码调试版；仓库根目录的 `RemoteBridge.exe` 现在转到已构建的单 EXE 桌面。
 
@@ -46,7 +46,7 @@ cd RemoteCodex
 .\Open-UI.cmd
 ```
 
-源码需从 `release.example.json` 创建并填写本机 `release.local.json`，构建 `python scripts/build-release.py`，随后可双击单 EXE 或目录中的 `RemoteBridge.exe`。Windows UI 使用内嵌 WebView2，由主程序持有窗口和运行组件。关闭窗口隐藏到托盘，右键托盘退出整个桥接程序；异常退出时 Windows Job Object 清理其子进程。
+正式桌面程序使用 GitHub Actions 生成并验签的单 EXE，获取方式见 [GITHUB-ACTIONS.md](GITHUB-ACTIONS.md)。`Open-UI.cmd`/`RemoteBridge.exe` 需要目录中的已有产物；没有产物时不会把源码调试当成正式构建。Windows UI 使用内嵌 WebView2，由主程序持有窗口和运行组件。关闭窗口隐藏到托盘，右键托盘退出整个桥接程序；异常退出时 Windows Job Object 清理其子进程。
 
 只启动网页服务：
 

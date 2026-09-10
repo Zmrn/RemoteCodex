@@ -1,10 +1,12 @@
-# GitHub 副本与对话式云端构建
+# GitHub 主仓库与按需云端构建
 
-GitHub 仓库：[Zmrn/RemoteCodex](https://github.com/Zmrn/RemoteCodex)。2026-09-10 从 Gitee 最新 `ee308ef`（0.10.27）迁入完整 main 历史，同时保留新 GitHub 仓库的 MIT LICENSE。当前保留 Gitee，尚未删除或废弃其远端。
+正式仓库：[Zmrn/RemoteCodex](https://github.com/Zmrn/RemoteCodex)。2026-09-10 用户明确将默认远端从 Gitee 改为 GitHub。切换前 GitHub main 与本地已提交的 `df50d0b`（0.10.28）一致，包含双方历史与 MIT LICENSE，无需覆盖远端或回退代码。Gitee 仅保留为历史参考，不再同步推送。
+
+用户最新约定：**只有明确要求构建/打包时，才在 GitHub Actions 生成 APK 和 EXE；不在本地构建。** 日常需求、修复、review、提交或构建能力查询不触发正式构建、发布或客户端升级。源码 push/PR 的 Checks 可以自动运行回归，但不会生成正式安装包。云端构建失败时报告失败，不擅自改成本地构建。
 
 ## 在 AI 对话中操作
 
-用户说“打包当前版本”时，AI 可以直接执行以下脚本，无需用户打开网页点击：
+用户明确说“构建”或“打包当前版本”后，AI 才执行以下脚本，无需用户打开网页点击。先提交本次已完成的修改；存在其他未完成工作时保留原工作区，使用与 GitHub main 一致的干净工作树：
 
 ```powershell
 # 先确认本地提交已与 GitHub main 一致；不得覆盖其他设备的新提交
@@ -64,7 +66,7 @@ python -X utf8 scripts/configure-github-signing.py --apply
 
 ## 现有克隆的远端
 
-本工作区暂保留 `origin` 指向 Gitee，新增 `github` 指向 GitHub。迁移期间源码同时推送两处；未来用户确认正式废弃 Gitee 后再调整默认远端。新克隆建议直接使用 GitHub：
+本工作区 `origin` 指向 GitHub，main 跟踪 `origin/main`，默认 push 也指向 origin。旧 Gitee 改名为 `gitee-archive`，仅供历史查阅，不再自动双推；原 github 别名已更名为 origin。其他克隆先核对实际 URL 再切换，不强推。新克隆使用 GitHub：
 
 ```powershell
 git clone https://github.com/Zmrn/RemoteCodex.git
@@ -74,6 +76,8 @@ cd RemoteCodex
 仓库不包含签名材料、release.local.json、已保存设备或用户会话。MIT LICENSE 与已有第三方许可证分别保留，EXE/APK 打包包含本项目许可证。
 
 ## 2026-09-10 实测记录
+
+切换主仓库时已只读复核：当前账号具有读取/推送权限，Build EXE and APK 为 active，signing 环境及三项 Secrets/两项非空构建变量存在，下面的双端成功运行及其未过期产物可访问。本次只查询历史运行和配置，未派发新构建、未改签名或部署权限、未发布或安装软件。历史构建使用 0.10.27；不能把它描述为本次重新构建 0.10.28。
 
 用户已明确授权配置原签名并验证双端云端打包。构建源码为 `20d782f662bd6215879719ed233d325be78eeb64`，版本保持 **0.10.27**；之后的记录提交只修改文档，不代表重新打包。
 
