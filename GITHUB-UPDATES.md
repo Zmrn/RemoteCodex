@@ -1,8 +1,27 @@
 # GitHub 直接更新
 
-更新页版本展示的源码修复见 [UPDATE-STATUS.md](UPDATE-STATUS.md)：当前安装、远端最新和已校验包分开显示，包含检查时间和旧包提示；尚未进入已发布的 0.10.30。
+## 0.10.31 正式发布（2026-09-10）
 
-最新发布为 [0.10.30](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.30)，包含图片加载/重试、Ctrl+Enter 调整方向与官方已读通知修复；详细验证见本文末尾。0.10.29 是首次迁移到 GitHub 直接更新的版本。
+[GitHub Release v0.10.31](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.31) 已公开，同次八项资源均由标准发布器上传并读回核验。构建为 [34483037972](https://github.com/Zmrn/RemoteCodex/actions/runs/34483037972)，源码 `9bdd09d03bbbeec6337d60331d3c245cdd988dbb`；同提交 [Checks34483033637](https://github.com/Zmrn/RemoteCodex/actions/runs/34483033637) 成功，包含243项Node和相关共享UI、Windows窗口/通知、主机JVM检查。
+
+首次构建34482830222及Checks34482813790因更新测试将0.10.31写死为“新版”失败，未产出安装包。9bdd09d只将该测试候选版本改为相对当前版本生成，产品代码未因此改变；随后重新在GitHub构建成功。首次发布请求遇网络失败，只读确认已建立同运行空草稿后恢复标准发布器，未创建重复版本或重建安装包。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44145664 | `b95a8b376419e729e76578e296db9a329e02ee68a84c2f69cc9d07497cbbeb28` |
+| RemoteCodex.apk | 274371 | `3adbae4489f07025db2c30868f1189e4eada5010d2a901646c7a2884119b703e` |
+
+原RSA签名、APK v2/v3签名/原证书、包名及版本10031通过；APK证书SHA-256仍为 `3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`。双端兼容清单SHA-256为 `5dec8b5911151268db501c43a75220ac95274fb28403e91a55675261f37fe771`。包内源码/界面、GitHub更新源和发布说明与本次提交一致，无用户配置或签名私钥。发布后匿名生产下载函数读取latest双清单、按v0.10.31下载完整双端包及说明，签名/长度/哈希与云产物一致。
+
+EXE隔离home的Node22.19.0、Python3.13.2、DPAPI和界面资源检查通过；官方只读自检报 `Official app-tools pipe unavailable`，没有完成真实项目/任务读取，不能标作完整自检通过。系统安装包登记仍为官方26.903.8094.0，但未由成功连接确认当前owner。隔离0.10.30云包到0.10.31云包的设备保存、升级、强制重启和显式删除通过；已安装客户端设备与接入配置未改动。
+
+支持范围仍为Windows x64官方26.901.6511.0、26.903.8094.0的既有Codex核心；网站授权、已读与通知仅有后者适配。Chat列表/历史可读，文字续写待专用真实验证，新建/模型/生成图片未完成；Work未独立验证。本轮新建/改名/授权行为为既有隔离回归，未做真实写入往返；未执行APK/模拟器、升级现有客户端、重启官方应用、访问旧服务器或本地构建。8份未完成Chat改动未纳入。GITHUB-BUILD.json保留云端产出时的published/liveDesktopTested=false。
+
+现场证据在会话 `work/release-031/work/`：package-verification.json、agent-restart.log、online-verification.json；EXE真实连接未完成的原始自检在cloud-package-self-test-34483037972/data/self-test.json。
+
+更新页版本展示见 [UPDATE-STATUS.md](UPDATE-STATUS.md)：当前安装、远端最新和已校验包分开显示，包含检查时间和旧包提示，已随 0.10.31 发布。
+
+最新发布为 [0.10.31](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.31)，新增更新版本展示、接口兼容性页面、网站授权，以及会话自动命名/重命名/列表同步修复；详细验证见本文末尾。0.10.29 是首次迁移到 GitHub 直接更新的版本。
 
 2026-09-10 用户要求不再经原远端服务器分发更新。Windows 和 Android 更新入口改为 GitHub Releases，公开配置统一在 `src/update-source.json`。客户端不需要 GitHub 登录或访问密钥；设备互连仍沿用原连接方式。
 

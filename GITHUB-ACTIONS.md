@@ -79,6 +79,8 @@ cd RemoteCodex
 
 ## 2026-09-10 实测记录
 
+最新发布为0.10.31：构建34483037972从9bdd09d同次生成双端，Checks34483033637成功；原签名/证书、包内容与匿名完整下载通过，正式发布GitHub Releases/v0.10.31。包内运行时/DPAPI通过，实际官方app-tools管道不可用，真实桥接自检未完成；未运行APK或升级现有客户端。首次34482830222因测试写死新版号失败，仅修正测试后再次云构建。完整记录见GITHUB-UPDATES.md，下面为历史发布。
+
 最新发布：0.10.30已从 `5f1d660` 经 [34463415359](https://github.com/Zmrn/RemoteCodex/actions/runs/34463415359) 同次生成双端产物，完成验签、包自检/配置保护和GitHub正式发布，匿名生产下载核验通过；同提交Checks34463387667成功。详情见 GITHUB-UPDATES.md 的0.10.30记录。未执行APK、未更新现有客户端，原Chat开发差异未纳入。下面0.10.29/0.10.27为历史记录。
 
 最新一次：用户明确要求最新版构建后，[34443633443](https://github.com/Zmrn/RemoteCodex/actions/runs/34443633443) 从 `9c9080e` 成功构建 0.10.29 双端。产物已通过下载验签、APK 原证书检查和 EXE 包内只读自检，并另行发布到 [GitHub Releases/v0.10.29](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.29)，公开匿名清单/完整包下载核验通过。没有运行 APK、升级本机客户端或访问旧服务器。哈希、兼容范围及验证边界见 [GITHUB-UPDATES.md](GITHUB-UPDATES.md#2026-09-10-正式云构建与发布)。下面 0.10.27 是首次构建设施验证的历史记录。
