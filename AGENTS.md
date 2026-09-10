@@ -6,7 +6,7 @@
 
 `verifiedVersions` 仅记录历史行为验证。连接证据来自当前已核对的官方进程、实时 tools/list、同包静态 IPC 表和握手，绑定连接与目录，不接受客户端报告作为写入授权，不落盘。最新下载包只用于对照，不控制正在运行的版本。工具和 owner 管道分别判断；owner 握手失败可保留官方工具读取/文字新建等功能，未确认的管道不发送操作。缺少列表/项目/模型目录不能把设备整体判为断线或阻止默认设置发送。
 
-实现与复测见 COMPATIBILITY-VIEW.md、test/feature-compatibility.test.mjs、scripts/verify-feature-compatibility-ui.mjs。该修改保持 Remote 0.10.31，未构建、发布、安装或执行 APK；本机 26.903.9818.0 仅采集真实只读接口证据，没有执行真实任务写入。Chat/Work 的未实现功能仍不开放，未完成 Chat 工作单独保留。
+实现与复测见 COMPATIBILITY-VIEW.md、test/feature-compatibility.test.mjs、scripts/verify-feature-compatibility-ui.mjs。源码修复完成时保持 Remote 0.10.31；用户随后明确要求发布，本轮准备 0.10.32，同提交 Checks 通过后才派发 GitHub 双端构建，正式结果以 GITHUB-UPDATES.md 发布记录为准。本机 26.903.9818.0 仅采集真实只读接口证据，没有执行真实任务写入。Chat/Work 的未实现功能仍不开放，未完成 Chat 工作单独保留；不执行 APK 或升级现有客户端。
 
 ## 打包发布的执行顺序（2026-09-10，优先于下方历史记录）
 
