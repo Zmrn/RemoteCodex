@@ -1,4 +1,5 @@
 import { zoomableImage } from "./image-viewer.mjs";
+import { imageLoadState } from "./image-load-state.mjs";
 
 // Read a Markdown image without interpreting HTML or executing task content.
 export function markdownImageAt(text, start) {
@@ -54,24 +55,20 @@ export function webImageUrl(value) {
 }
 
 export function remoteMarkdownImage(url, alt) {
-  const box = document.createElement("span"), image = document.createElement("img"), fallback = document.createElement("span");
+  const box = document.createElement("span"), image = document.createElement("img");
   box.className = "remote-message-image";
   image.alt = alt || "会话图片";
   image.loading = "lazy";
   image.decoding = "async";
   image.referrerPolicy = "no-referrer";
   zoomableImage(image, image.alt);
-  fallback.className = "remote-image-error";
-  fallback.hidden = true;
-  const label = document.createElement("span"), link = document.createElement("a"), retry = document.createElement("button");
-  label.textContent = "图片暂时无法加载";
+  const link = document.createElement("a");
   link.href = url; link.textContent = "打开原图"; link.target = "_blank"; link.rel = "noopener noreferrer";
-  retry.type = "button"; retry.textContent = "重试";
-  fallback.append(label, link, retry);
-  image.onload = () => { image.hidden = false; fallback.hidden = true; };
-  image.onerror = () => { image.hidden = true; fallback.hidden = false; };
-  retry.onclick = () => { fallback.hidden = true; image.hidden = false; image.removeAttribute("src"); image.src = url; };
+  const state = imageLoadState(image, { errorClass: "remote-image-error", retry: () => {
+    state.loading(); image.removeAttribute("src"); image.src = url;
+  } });
+  state.element.append(link);
   image.src = url;
-  box.append(image, fallback);
+  box.append(image, state.element);
   return box;
 }

@@ -281,8 +281,8 @@
         "result.result.turnId"
       ],
       "purpose": "向同一个运行中任务调整方向",
-      "consumer": "src/bridge.mjs:answerQuestions, src/queue.mjs:mutate",
-      "test": "test/queue.test.mjs"
+      "consumer": "src/bridge.mjs:answerQuestions/nativeSteer, src/queue.mjs:mutate",
+      "test": "test/steer.test.mjs"
     },
     "queueWrite": {
       "method": "thread-follower-set-queued-follow-ups-state",

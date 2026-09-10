@@ -925,6 +925,47 @@ export class Bridge extends EventEmitter {
       return r;
     }, { deferredDispatch: true });
   }
+  async nativeSteer(id, key, prompt, imageDataUrl, expectedTurnId) {
+    this.guard(id);
+    this.requireConnection();
+    if (typeof expectedTurnId !== "string" || !expectedTurnId || expectedTurnId.length > 200)
+      throw Error("调整方向需要确认当前运行轮次");
+    if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000)
+      throw Error("Invalid message");
+    const images = validateImageUrls(imageDataUrl);
+    return this.once(key, "native-steer", {
+      id, prompt, expectedTurnId,
+      imageHash: images.length ? createHash("sha256").update(JSON.stringify(images)).digest("hex") : null,
+    }, async dispatch => {
+      const desktop = this.desktop;
+      const current = await this.codexThread(id);
+      if (current.thread.status?.type !== "active")
+        throw Error("当前轮已结束或状态未知，调整方向未发送；草稿已保留");
+      const previous = this.live.get(id), owner = await this.follow(id);
+      for (let i = 0; i < 40 && this.live.get(id) === previous; i++)
+        await new Promise(resolve => setTimeout(resolve, 100));
+      this.requireConnection();
+      const live = this.live.get(id);
+      if (desktop !== this.desktop || !live || live === previous || live.owner !== owner.handledByClientId)
+        throw Error("官方实时运行状态尚未确认，调整方向未发送，请刷新后重试");
+      if (activeTurnId(live.state) !== expectedTurnId)
+        throw Error("运行轮次已变化，调整方向未发送；草稿已保留");
+      const input = [{ type: "text", text: prompt, text_elements: [] }, ...images.map(url => ({ type: "image", url }))];
+      const restoreMessage = composeQueuedMessage(key, prompt, current.thread.cwd, images);
+      // The owner protocol has no expectedTurnId parameter. Check the latest
+      // snapshot immediately before dispatch and require the same turn in its
+      // acknowledgement; never fall back to queue/start after uncertainty.
+      dispatch();
+      const result = await protocolRequest(desktop.ipc, "steer", {
+        conversationId: id, input, restoreMessage, clientUserMessageId: key, attachments: [],
+      }, { targetClientId: owner.handledByClientId, timeoutMs: 60000 });
+      if (result.handledByClientId !== owner.handledByClientId || result.result?.result?.turnId !== expectedTurnId)
+        throw Error("调整方向回执未确认同一运行轮次，结果未知；请核对官方任务，不要重复发送");
+      this.emitEvent("native-steered", { threadId: id, ownerClientId: owner.handledByClientId,
+        turnId: expectedTurnId, requestId: result.requestId });
+      return { threadId: id, disposition: "steered", turnId: expectedTurnId };
+    }, { deferredDispatch: true });
+  }
   async nativeSend(id, key, prompt, imageDataUrl, options = {}, beforeDispatch) {
     this.guard(id);
     this.requireConnection();
@@ -1084,6 +1125,7 @@ export class Bridge extends EventEmitter {
       storageHealth: [this.stateStore.health],
       taskSummary: { supported: true, schemaVersion: 2, statePolicy: 'official-only', readReceipts: true },
       interrupt: { supported: compatibility.writeSupported, source: "official-desktop-owner-IPC" },
+      steer: { supported: compatibility.writeSupported && this.stateStore.health.writable, source: "official-desktop-owner-IPC" },
       projectCreation: {
         local: supportedBuild(this.desktop?.identity?.appToolsPipe?.image) &&
           [TOOLS.listProjects, TOOLS.createThread].every(name => this.desktop?.catalog?.some(t => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === name)),

@@ -1,5 +1,7 @@
 # Remote Codex 开发与发布约定
 
+- 2026-09-10：正文/Markdown/放大图片统一加载占位，HTTP/解码失败可显式重试；Codex 运行中 Ctrl+Enter 直接经既有 owner steer v1 调整方向，普通发送仍入队。必须核对目标能力与新 owner 快照/当前轮次，未知不重放或回退；草稿和全部图片保留，预选设置留待下一轮。见 IMAGE-PREVIEW-VALIDATION.md、QUEUE-PREVIEW.md，复测 test/steer.test.mjs、scripts/verify-image-steer-ui.mjs。当前仅源码开发与隔离测试，未构建/发布/安装、未写入真实官方任务、未执行 APK；未完成 Chat 修改独立保留，官方版本范围不扩大。
+
 本项目通过 Windows 上已运行的官方 ChatGPT/Codex 会话所有者转发操作。Android 是控制端，共用 `public/` 界面；不得启动独立 Codex 后端并将其称为桌面桥接。Chat 模式已实现列表与历史读取；文字续写通过官方 app-tools 的 Chat 分支，尚待专用真实会话验证，见 `CHAT-MODE.md`。
 
 ## 新会话接手

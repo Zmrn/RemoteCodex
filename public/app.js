@@ -16,6 +16,7 @@ import { clipboardImages } from "./clipboard-images.mjs";
 import { HelpUpdates } from "./help-updates.mjs";
 import { DeviceConnections } from "./device-connections.mjs";
 import { zoomableImage } from "./image-viewer.mjs";
+import { imageLoadState } from "./image-load-state.mjs";
 import { ProjectPicker } from "./project-picker.mjs";
 import { renderQuota, updateQuotaCountdowns } from "./usage-view.mjs";
 import {
@@ -551,19 +552,31 @@ function messageImage(ref) {
     link = node("a", "image-download", "下载原图");
   img.alt = ref.name ?? "图片附件";
   zoomableImage(img, ref.name ?? "image.png");
-  img.loading = "lazy";
+  img.decoding = "async";
   link.download = ref.name ?? "image.png";
-  box.append(img, link);
+  link.hidden = true;
   const imageAgent = agentId,
-    imageThread = selected;
+    imageThread = selected,
+    imageSignals = [agentReads.signal, taskReads.signal];
   if (ref.id) img.dataset.downloadRoute = link.dataset.downloadRoute = base(imageAgent) + '/threads/' + imageThread + '/media?id=' + encodeURIComponent(ref.id);
-  let started = false;
-  img.style.minHeight = "100px";
+  const key = imageAgent + ":" + imageThread + ":" + (ref.id ?? ref.src);
+  let started = false, ready;
+  const forget = () => {
+    if (messageImageCache.get(key) !== ready) return;
+    messageImageCache.delete(key);
+    ready?.then(url => { if (url.startsWith("blob:")) URL.revokeObjectURL(url); }).catch(() => {});
+  };
+  const state = imageLoadState(img, {
+    ready: () => { link.href = img.src; link.hidden = false; },
+    failed: () => { started = false; link.hidden = true; link.removeAttribute("href"); forget(); },
+    retry: () => { img.removeAttribute("src"); box.loadImage(); },
+  });
+  box.append(img, state.element, link);
   box.loadImage = () => {
-    if (started) return;
+    if (started || imageSignals.some(signal => signal.aborted)) return;
     started = true;
-    const key = imageAgent + ":" + imageThread + ":" + (ref.id ?? ref.src);
-    let ready = messageImageCache.get(key);
+    state.loading();
+    ready = messageImageCache.get(key);
     if (!ready) {
       ready = ref.src
         ? Promise.resolve(ref.src)
@@ -576,8 +589,7 @@ function messageImage(ref) {
             {
               headers: { "X-Bridge-CSRF": csrf },
               signal: AbortSignal.any([
-                agentReads.signal,
-                taskReads.signal,
+                ...imageSignals,
                 AbortSignal.timeout(75000),
               ]),
             },
@@ -599,24 +611,14 @@ function messageImage(ref) {
     }
     ready
       .then((src) => {
+        if (imageSignals.some(signal => signal.aborted)) return;
         img.src = src;
-        link.textContent = "下载原图";
-        link.href = src;
         link.rel = "noopener";
       })
-      .catch((e) => {
-        img.hidden = true;
-        link.removeAttribute("href");
-        link.textContent = e.message;
-        messageImageCache.delete(key);
+      .catch(() => {
+        forget();
+        if (!imageSignals.some(signal => signal.aborted)) state.error();
       });
-  };
-  link.textContent = "加载原图";
-  link.onclick = (event) => {
-    if (!link.href) {
-      event.preventDefault();
-      box.loadImage();
-    }
   };
   messageImageObserver.observe(box);
   return box;
@@ -670,7 +672,7 @@ function permissions() {
   $("send").title = submitting
     ? "提交中…"
     : !idle && !chat
-      ? "加入队列，当前任务完成后发送"
+      ? "Enter 加入队列；Ctrl+Enter 立即调整方向"
       : "发送消息";
   $("send").setAttribute("aria-label", !idle && !chat ? "加入队列" : "发送消息");
   $("open").disabled = !status.connected || fresh || readOnlyTask;
@@ -712,7 +714,7 @@ function permissions() {
       : inFlight
         ? "正在提交…"
         : !fresh && !idle
-          ? "发送后排队 · 可在队列中调整方向"
+          ? status.steer?.supported === true ? "Enter 排队 · Ctrl+Enter 调整方向" : "发送后排队 · 可在队列中调整方向"
           : taskData?.thread?.status?.type === "notLoaded"
             ? "发送文字时由官方桌面继续此会话"
             : "";
@@ -2107,6 +2109,9 @@ function newConversation(record = true, { preserveDrawer = false } = {}) {
 }
 $("form").onsubmit = async (e) => {
   e.preventDefault();
+  await submitMessage();
+};
+async function submitMessage({ steer = false } = {}) {
   if ($("send").disabled) return;
   if (!recoveryLoaded) { error(Error('草稿存储尚未读取，已暂停发送，请重新打开 Remote Codex')); return; }
   saveDraft();
@@ -2117,12 +2122,21 @@ $("form").onsubmit = async (e) => {
     v = viewEpoch,
     fresh = t === null,
     m = mode,
-    enqueue = m === "codex" && !fresh && taskData?.thread?.status?.type === "active",
+    running = m === "codex" && !fresh && taskData?.thread?.status?.type === "active",
+    steering = steer && running,
+    enqueue = running && !steering,
     k = fresh ? a + ":create" : taskKey(),
     prompt = $("prompt").value,
     files = [...composerImages],
     multiImageSupported = status.multiImageInput === true;
   if (!prompt.trim() && !files.length) return;
+  const expectedTurnId = steering ? taskData?.live?.activeTurnId : null;
+  if (steering && (status.steer?.supported !== true || !expectedTurnId)) {
+    error(Error(status.steer?.supported !== true
+      ? "目标设备尚不支持 Ctrl+Enter 调整方向，请先更新目标设备；草稿已保留"
+      : "当前运行轮次尚未确认，请刷新后重试；草稿已保留"));
+    return;
+  }
   const sendSettings = pendingSettings.get(taskKey(a, t));
   const creationProject = fresh && m === "codex" ? projectPicker.selection() : null;
   busy.add(k);
@@ -2140,6 +2154,9 @@ $("form").onsubmit = async (e) => {
   }
   try {
     if (m === "chat" && fresh) throw Error(chatEmpty);
+    // Persist the complete draft before any message can leave the controller.
+    // A fast failed/unknown reply followed by reload must not beat the debounce.
+    await backupDrafts();
     const images = imagePayload(await Promise.all(files.map(fileData)), multiImageSupported),
       payload = {
         mode: m,
@@ -2149,12 +2166,12 @@ $("form").onsubmit = async (e) => {
           ? { recoveryId: takenDrafts.get(taskKey(a, t)).recoveryId }
           : {}),
         ...images,
-        ...(sendSettings ? { settings: sendSettings } : {}),
+        ...(steering ? { delivery: "steer", expectedTurnId } : sendSettings ? { settings: sendSettings } : {}),
       };
     const j = await journal(
       a,
       fresh ? "new" : t,
-      fresh ? "create" : enqueue ? "enqueue" : "send",
+      fresh ? "create" : steering ? "steer" : enqueue ? "enqueue" : "send",
       payload,
     );
     const r = enqueue
@@ -2175,7 +2192,7 @@ $("form").onsubmit = async (e) => {
     const sameImages = candidate => candidate.length === files.length && candidate.every((f, i) => f === files[i]);
     const unchanged = atOrigin ? $("prompt").value === prompt && sameImages(composerImages) : draft.get(originKey) === prompt && sameImages(savedFiles);
     if (unchanged) { takenDrafts.delete(originKey); draft.delete(originKey); }
-    pendingSettings.delete(taskKey(a, t, m));
+    if (!steering) pendingSettings.delete(taskKey(a, t, m));
     if (atOrigin && unchanged) {
       setPromptValue("");
       setImages([]);
@@ -2186,6 +2203,7 @@ $("form").onsubmit = async (e) => {
           await selectThread(r.result.threadId);
       } else await read();
       if (enqueue) toast("已加入官方队列");
+      if (steering) toast("已提交调整方向");
     } else
       toast("已发送到 " + (agents.find((x) => x.id === a)?.name ?? "原设备"));
     await backupDrafts();
@@ -2203,7 +2221,7 @@ $("form").onsubmit = async (e) => {
     busy.delete(k);
     permissions();
   }
-};
+}
 function resizePrompt() {
   const input = $("prompt");
   input.style.height = "";
@@ -2232,7 +2250,9 @@ $("prompt").oninput = () => {
 $("prompt").onkeydown = (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
     e.preventDefault();
-    $("form").requestSubmit();
+    if (e.repeat) return;
+    if (e.ctrlKey) void submitMessage({ steer: true });
+    else $("form").requestSubmit();
   }
 };
 $("image").onchange = () => {

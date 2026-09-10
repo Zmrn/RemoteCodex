@@ -1,5 +1,15 @@
 # 队列渐进加载（0.10.10）
 
+## 2026-09-10：Ctrl+Enter 直接调整方向（源码完成，未构建发布）
+
+Codex 运行中，普通 Enter/发送按钮仍入官方队列，Ctrl+Enter 直接发送文字及全部图片到同一任务的官方 `thread-follower-steer-turn`，不先入队再取回。空闲/新建任务中的 Ctrl+Enter 仍为普通发送；Shift+Enter 换行，输入法确认和长按重复键不提交。Chat 继续使用原 Chat 发送能力，不套用 Codex 调整方向。运行中的提示同时展示两种快捷键。
+
+目标 Windows 接入端上报 `steer.supported`；旧端或未知运行轮次明确保留草稿并提示，不能静默改成入队。`POST /threads/{id}/messages` 的 `delivery: "steer"` 携带 `expectedTurnId`，目标端重新确认官方本机 Codex 类型、连接身份、最新 owner 快照及同一活动轮次，通过后调用原已验证 steer v1 接口。模型/权限等预选设置留待下一轮，不声称在运行轮次中生效。
+
+发送前等待完整草稿快照写入，再持久化请求标识和内容哈希；修复快速失败后立即刷新可能赶在原有 200ms 草稿保存之前的窗口，存储失败时不发送。同一请求的并发、断线后重试和进程重启均不重复写入。未知/失败保留文字、全部图片及原恢复记录，不回退到 start 或 enqueue。官方回执必须包含同一 owner 和同一 turnId 才视为已接收；当前官方 steer 协议没有轮次 CAS 参数，所以发送前校验不能消除官方在最后瞬间换轮的竞争，回执不匹配时保持未知，不自动重放。
+
+复测：`node --test test/steer.test.mjs test/queue.test.mjs test/send-lifecycle.test.mjs`、`node scripts/verify-image-steer-ui.mjs`、`node scripts/verify-queue-progressive.mjs`。隔离 HTTP/owner 协议测试覆盖文字双图、直接派发、回执丢失/错误 owner/错误轮次、连接替换、结束换轮、Chat 拒绝、CSRF、恢复草稿保护；共享 UI 覆盖 Enter/Ctrl+Enter、输入法、刷新恢复、旧端阻止、空闲与 Chat 普通发送。支持版本仍 Windows x64 官方 26.901.6511.0/26.903.8094.0；本轮未做真实任务写入或 APK 行为验收，不扩大 Chat/Work 范围。
+
 ## 0.10.22：清空取回草稿
 
 2026-09-10。取回官方排队消息后，Remote 会保留独立恢复记录。旧版仅清空输入框没有删除这份记录，因此再次加载时仍提示“继续编辑”。现在用户将文字和全部图片清空时，同步清理对应记录；仅删文字但还有图片、切换任务/设备、初始化时的临时空输入框均不触发删除。已有残留的 draft 记录可点垃圾桶删除，不影响新输入内容；结果未知的取回/调整方向记录不能按普通草稿删除。

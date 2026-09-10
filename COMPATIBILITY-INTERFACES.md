@@ -39,7 +39,7 @@ Chat：列表/历史读取；文字续写待专用真实会话验证；新建/�
 | thread-stream-following-changed | 1 | 订阅/取消订阅；broadcast | hostId, conversationId, following |  | src/desktop.mjs, src/bridge.mjs | test/subscriptions.test.mjs |
 | thread-follower-update-thread-settings | 1 | 设置下一轮模型/权限/速度 | conversationId, threadSettings | handledByClientId | src/bridge.mjs:updateSettings | test/settings.test.mjs |
 | thread-follower-submit-user-input | 1 | 回答官方待处理问题 | conversationId, requestId, response.answers | handledByClientId | src/bridge.mjs:answerQuestions | test/messages.test.mjs |
-| thread-follower-steer-turn | 1 | 向同一个运行中任务调整方向 | conversationId, input, restoreMessage, clientUserMessageId, attachments | handledByClientId, result.result.turnId | src/bridge.mjs:answerQuestions, src/queue.mjs:mutate | test/queue.test.mjs |
+| thread-follower-steer-turn | 1 | 向同一个运行中任务调整方向 | conversationId, input, restoreMessage, clientUserMessageId, attachments | handledByClientId, result.result.turnId | src/bridge.mjs:answerQuestions/nativeSteer, src/queue.mjs:mutate | test/steer.test.mjs |
 | thread-follower-set-queued-follow-ups-state | 1 | 替换该任务完整队列 | conversationId, state | handledByClientId, result.ok | src/queue.mjs:write | test/queue.test.mjs |
 | thread-follower-interrupt-turn | 4 | 用户停止当前 Codex 轮次；核对实时轮次和同一官方所有者；自动测试仍仅专用任务 | conversationId, mode=user-stop, expectedTurnId | handledByClientId, result.ok, result.interruptedTurnId | src/bridge.mjs:interrupt | test/interrupt.test.mjs |
 | thread-follower-start-turn | 2 | 空闲任务中启动下一轮 | conversationId, turnStart.request.threadId, turnStart.request.input, turnStart.request.clientUserMessageId | handledByClientId, result.result.turn.id | src/bridge.mjs:nativeSend | test/multi-images.test.mjs |

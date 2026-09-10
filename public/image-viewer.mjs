@@ -1,3 +1,4 @@
+import { imageLoadState } from "./image-load-state.mjs";
 let viewer;
 
 function createViewer() {
@@ -22,7 +23,12 @@ function createViewer() {
   const canvas = element("div", "image-viewer-canvas");
   const image = element("img");
   image.draggable = false;
-  canvas.append(image);
+  const loading = imageLoadState(image, { retry: () => {
+    const src = image.getAttribute("src");
+    if (!src) return;
+    loading.loading(); image.removeAttribute("src"); image.src = src;
+  } });
+  canvas.append(image, loading.element);
   stage.append(canvas);
   toolbar.append(title, size, download, close);
   dialog.append(toolbar, stage);
@@ -58,6 +64,7 @@ function createViewer() {
     title.textContent = name;
     title.title = name;
     image.alt = name;
+    loading.loading();
     image.src = src;
     image.referrerPolicy = "no-referrer";
     download.href = src;
@@ -98,7 +105,7 @@ export function zoomableImage(image, name = image.alt || "image.png") {
   image.title = "点击放大查看";
   image.onclick = () => {
     const src = image.currentSrc || image.getAttribute("src");
-    if (!src || image.hidden) return;
+    if (!src || image.hidden || image.classList.contains("image-pending")) return;
     (viewer ??= createViewer())(src, name, image.dataset.downloadRoute);
   };
   image.onkeydown = (event) => {

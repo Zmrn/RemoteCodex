@@ -58,6 +58,7 @@ export async function startServer({
     ["/clipboard-images.mjs", "text/javascript; charset=utf-8"],
     ["/help-updates.mjs", "text/javascript; charset=utf-8"],
     ["/image-viewer.mjs", "text/javascript; charset=utf-8"],
+    ["/image-load-state.mjs", "text/javascript; charset=utf-8"],
     ["/project-picker.mjs", "text/javascript; charset=utf-8"],
     ["/usage-view.mjs", "text/javascript; charset=utf-8"],
     ["/questions-ui.mjs", "text/javascript; charset=utf-8"],
@@ -433,11 +434,16 @@ export async function startServer({
           );
         if (match[2] === "messages") {
           const images = imagesFromBody(body);
+          if (body.delivery !== undefined && body.delivery !== "steer") throw Error("Unknown message delivery");
+          if (body.delivery === "steer" && (body.mode === "chat" || body.settings !== undefined))
+            throw Error("调整方向仅用于 Codex 当前运行轮次；模型和权限设置保留到下一轮");
           if (body.mode === "chat") return json(res, 200, await bridge.chatSend(id, body.requestId, body.prompt, images, body.settings));
           if (body.mode && body.mode !== "codex") throw Error("Unknown conversation mode");
           bridge.guard(id);
           for (const url of images) saveUpload(path.join(bridge.dataDir, "uploads"), url);
-          const result = await bridge.nativeSend(
+          const result = body.delivery === "steer"
+            ? await bridge.nativeSteer(id, body.requestId, body.prompt, images, body.expectedTurnId)
+            : await bridge.nativeSend(
             id,
             body.requestId,
             body.prompt,
