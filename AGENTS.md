@@ -1,5 +1,7 @@
 # Remote Codex 开发与发布约定
 
+- 2026-09-10：用户明确要求打包发布，本轮准备 0.10.30，包含 6a01f4d 图片加载/重试与 Ctrl+Enter 调整方向、f88b318 官方已读通知修复。只通过 GitHub Actions 同次构建 APK/EXE，按 GITHUB-UPDATES.md 验签后发布；8 份未完成 Chat 修改隔离保留。releases/0.10.30.md 说明交互、兼容与未测范围。此条是发布准备记录，不代表已完成构建/发布或安装；后续结果见 GITHUB-UPDATES.md。
+
 - 2026-09-10：已读回执与显示内容必须来自同一份官方 owner 合并结果；不能先用可能为空的原始历史生成回执。同步仍经官方 readStateChanged v3、身份/owner/最新回报/idle 核对并读回确认，绝不本地清点。最新回复末尾可见 800ms 即可，不要求滚完后续记录卡片；仅明确发送前失败可在仍可见时最多校验 3 次，发送异常/未确认/HTTP 丢失不重发。见 OFFICIAL-READ-STATE.md、scripts/verify-report-read-ui.mjs。当前源码修复待构建；实际问题任务仅只读，未修改官方数据、未执行 APK、未发布或安装。未完成 Chat 差异继续保留。
 
 - 2026-09-10：正文/Markdown/放大图片统一加载占位，HTTP/解码失败可显式重试；Codex 运行中 Ctrl+Enter 直接经既有 owner steer v1 调整方向，普通发送仍入队。必须核对目标能力与新 owner 快照/当前轮次，未知不重放或回退；草稿和全部图片保留，预选设置留待下一轮。见 IMAGE-PREVIEW-VALIDATION.md、QUEUE-PREVIEW.md，复测 test/steer.test.mjs、scripts/verify-image-steer-ui.mjs。当前仅源码开发与隔离测试，未构建/发布/安装、未写入真实官方任务、未执行 APK；未完成 Chat 修改独立保留，官方版本范围不扩大。
