@@ -8,6 +8,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { verifyBuildManifest } from './github-manifest.mjs';
 import { verifyReleaseBundle, publishRelease } from './github-release.mjs';
+import { requireSuccessfulChecks } from './github-checks.mjs';
 import { updateSource, fetchUpdateAsset, readUpdateBytes } from '../src/update-channel.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repository = updateSource.repository;
@@ -26,7 +27,7 @@ function credential() {
 }
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 function id(value) { if (!/^\d+$/.test(value ?? '')) throw Error('Numeric run ID required'); return value; }
-function describe(run) { return { runId: run.id, status: run.status, conclusion: run.conclusion, commit: run.head_sha, url: run.html_url }; }
+function describe(run) { return { runId: run.id, name: run.display_title, workflow: run.name, attempt: run.run_attempt, status: run.status, conclusion: run.conclusion, commit: run.head_sha, url: run.html_url }; }
 async function main() {
   const [action = 'status', value] = process.argv.slice(2), token = credential();
   const api = async (route, method = 'GET', body, redirect = 'error') => {
@@ -38,13 +39,19 @@ async function main() {
     if (!response.ok) throw Error(`GitHub API ${response.status} for ${route.split('?')[0]}`);
     return response.status === 204 ? null : response.json();
   };
-  if (action === 'build') {
+  if (action === 'check-commit') {
+    console.log(JSON.stringify(await requireSuccessfulChecks(api, value), null, 2));
+  } else if (action === 'build' || action === 'preflight') {
     const branch = await api('branches/main');
     const local = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, windowsHide: true, encoding: 'utf8' }).trim();
-    const changes = execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: root, windowsHide: true, encoding: 'utf8' }).trim();
+    const changes = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal'], { cwd: root, windowsHide: true, encoding: 'utf8' }).trim();
     if (local !== branch.commit.sha || changes) throw Error('Commit and push tracked changes, then synchronize GitHub main before building');
+    const readiness = await requireSuccessfulChecks(api, local);
+    if (action === 'preflight') { console.log(JSON.stringify({ ...readiness, clean: true, matchesMain: true }, null, 2)); return; }
     const requestId = randomUUID();
-    await api(`actions/workflows/${workflow}/dispatches`, 'POST', { ref: 'main', inputs: { request_id: requestId } });
+    console.log(JSON.stringify({ requestId, commit: local, checksRunId: readiness.checksRunId, phase: 'dispatching' }));
+    try { await api(`actions/workflows/${workflow}/dispatches`, 'POST', { ref: 'main', inputs: { request_id: requestId } }); }
+    catch { throw Error(`Build dispatch outcome unconfirmed. Inspect status for Build ${requestId} at ${local}; do not dispatch again until resolved`); }
     for (let attempt = 0; attempt < 15; attempt++) {
       const { workflow_runs: runs } = await api(`actions/workflows/${workflow}/runs?event=workflow_dispatch&branch=main&per_page=20`);
       const run = runs.find(x => x.display_title === 'Build '+requestId && x.head_sha === local);
@@ -127,6 +134,6 @@ async function main() {
       },
     };
     console.log(JSON.stringify(await publishRelease(client, bundle), null, 2));
-  } else throw Error('Usage: node scripts/github-actions.mjs build | status [runId] | watch runId | download runId | publish runId');
+  } else throw Error('Usage: node scripts/github-actions.mjs preflight | check-commit SHA | build | status [runId] | watch runId | download runId | publish runId');
 }
 main().catch(error => { console.error(error.message); process.exitCode = 1; });

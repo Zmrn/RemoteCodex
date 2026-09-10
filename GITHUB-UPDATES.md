@@ -37,7 +37,7 @@ EXE隔离home的Node22.19.0、Python3.13.2、DPAPI和界面资源检查通过；
 
 ## 构建和正式发布
 
-只有用户明确要求构建/打包时才运行 `node scripts/github-actions.mjs build`，随后用同一个 runId `watch`、`download`。日常 push/PR 只运行 Checks；构建工作流仍仅由 workflow_dispatch 启动，不因为提交而生成 APK/EXE。
+只有用户明确要求构建/打包时才运行 `node scripts/github-actions.mjs build`，随后用同一个 runId `watch`、`download`。必须先按AGENTS.md在最终版本工作树验证、提交并等待同SHA的Checks成功，再通过只读`preflight`；CLI和云端准备签名前均复核Checks。日常push/PR只运行Checks；构建工作流仍仅由workflow_dispatch启动，不因为提交而生成APK/EXE。
 
 正式发布使用已经下载并验签的云端产物：
 

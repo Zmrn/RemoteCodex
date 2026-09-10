@@ -6,17 +6,24 @@
 
 ## 在 AI 对话中操作
 
-用户明确说“构建”或“打包当前版本”后，AI 才执行以下脚本，无需用户打开网页点击。先提交本次已完成的修改；存在其他未完成工作时保留原工作区，使用与 GitHub main 一致的干净工作树：
+用户明确说“构建”或“打包当前版本”后，AI 才执行以下脚本，无需用户打开网页点击。完整顺序必须遵守 [AGENTS.md](AGENTS.md) 顶部“打包发布的执行顺序”：先确定版本，再以Node22.19.0跑最终版本测试与接口清单，提交推送，等待同一SHA的Checks成功，最后才构建。存在其他未完成工作时保留原工作区，使用干净隔离工作树。
 
 ```powershell
-# 先确认本地提交已与 GitHub main 一致；不得覆盖其他设备的新提交
+# 找到最终提交对应的Checks，等待通过；CHECKS_RUN_ID和BUILD_RUN_ID不能混用
+node scripts/github-actions.mjs status
+node scripts/github-actions.mjs watch <CHECKS_RUN_ID>
+# 只读检查工作区干净、与main一致和同提交Checks成功
+node scripts/github-actions.mjs preflight
+# 仅在用户已明确要求构建且前面通过后派发
 node scripts/github-actions.mjs build
 # build 返回稳定 runId，此后不要重复派发相同请求
-node scripts/github-actions.mjs watch <runId>
-node scripts/github-actions.mjs download <runId>
+node scripts/github-actions.mjs watch <BUILD_RUN_ID>
+node scripts/github-actions.mjs download <BUILD_RUN_ID>
 ```
 
-`build` 仅派发 GitHub main 的 `.github/workflows/build.yml`，用唯一 request_id 找到本次运行。它拒绝未提交的受跟踪文件和与远端不同的提交；派发结果不明确时先 status 查询，不能盲目重复。`status` 可列最近运行，`status <runId>` 查询一次，`watch` 等待状态并在失败时返回非零退出码。
+`build` 仅派发 GitHub main 的 `.github/workflows/build.yml`，用唯一request_id找到本次运行。它拒绝未提交/未跟踪文件、与远端不同的提交、以及没有同提交成功Checks的状态；`preflight`只做这些读取，不派发构建。`check-commit SHA`仅检查指定完整SHA的main Checks，供已固定GITHUB_SHA的云端工作流在准备签名前复核，不因main后来新增文档提交而改用其他源码。查询失败、最新尝试失败/取消/未完成均阻止构建。
+
+派发前输出requestId、SHA和Checks runId；派发结果不明确时先status查Build名称与SHA，不能盲目重复。`status`提供运行名称、workflow、attempt和SHA；`status RUN_ID`查询一次，`watch RUN_ID`等待状态并在确定失败时返回非零。Checks失败先修复检查，不同时启动Build。下载/上传中断只恢复同一次已成功构建，不为网络问题重建；恢复草稿规则见GITHUB-UPDATES.md。接口检查只能降低可避免的失败，不能保证GitHub或网络永不失败。
 
 脚本优先使用安全环境中的 GH_TOKEN/GITHUB_TOKEN，否则使用已有 Git Credential Manager 登录；凭据仅在内存中发送到 api.github.com，不写入文件、日志、命令参数或对话。另一台电脑没有 GitHub 登录时，需先由用户完成登录，不能从此电脑导出登录令牌。
 
