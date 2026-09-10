@@ -40,6 +40,9 @@ test('downloaded version follows its verified candidate, independently of latest
   assert.equal(restarted.status().downloadedVersion, '0.10.30');
   assert.equal(restarted.status().latestVersion, null);
   assert.equal(restarted.status().checkedAt, null);
+  // Model coarse hosted Windows clocks deterministically, without sleeps.
+  const realStat = fs.statSync.bind(fs), frozen = new Map([f.file, f.metadata].map(p => [p, realStat(p, { bigint: true })]));
+  t.mock.method(fs, 'statSync', (p, options) => frozen.get(p) || realStat(p, options));
   f.save(latest); assert.equal(f.updater.status().downloadedVersion, '0.10.31');
   restarted.close();
 });

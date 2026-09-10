@@ -98,12 +98,16 @@ export class Updater {
     const file = path.join(this.dir, "ready.exe"), metadata = path.join(this.dir, "ready-manifest.json");
     try {
       const stat = fs.statSync(file, { bigint: true }), meta = fs.statSync(metadata, { bigint: true });
-      const stamp = [stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs, meta.ino, meta.size, meta.mtimeNs, meta.ctimeNs].join(":");
+      if (meta.size > 24000n) throw Error("更新清单过大");
+      // Small signed metadata is read each time: filesystem clocks can give two
+      // same-size replacements identical timestamps, even in nanosecond fields.
+      const envelopeText = fs.readFileSync(metadata, "utf8");
+      const stamp = [stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs, meta.ino, meta.size, meta.mtimeNs, meta.ctimeNs, envelopeText].join(":");
       if (this.readyStamp !== stamp || Date.now() - this.readyVerifiedAt >= 60000) {
         this.readyStamp = stamp;
         this.readyPackage = { version: null, state: "unverified" };
         try {
-          const manifest = this.verifyUpdateManifest(JSON.parse(fs.readFileSync(metadata, "utf8")));
+          const manifest = this.verifyUpdateManifest(JSON.parse(envelopeText));
           if (stat.size !== BigInt(manifest.bytes)) throw Error("更新文件大小不符");
           verifyExecutable(file, manifest);
           this.readyPackage = { version: manifest.version, state: "verified" };
