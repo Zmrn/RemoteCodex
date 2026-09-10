@@ -64,30 +64,31 @@ test('missing, forged, mismatched and damaged cached candidates never report a v
 });
 
 test('production download records its signed version only after validation and preserves old package on failure', async t => {
-  const f = fixture(t), old = candidate('0.10.30'), next = candidate('0.10.31', 1), later = candidate('0.10.32', 2);
+  const f = fixture(t), nextMajor = Number(f.updater.status().currentVersion.split('.')[0]) + 1;
+  const old = candidate('0.10.30'), next = candidate(`${nextMajor}.0.0`, 1), later = candidate(`${nextMajor}.0.1`, 2);
   f.save(old); f.updater.latest = next.manifest; f.updater.envelope = next.envelope;
   const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
   let release;
   globalThis.fetch = async url => {
-    assert.match(String(url), /\/v0\.10\.31\/RemoteCodex\.exe$/);
+    assert.equal(new URL(url).pathname, `/Zmrn/RemoteCodex/releases/download/v${next.manifest.version}/RemoteCodex.exe`);
     await new Promise(resolve => { release = resolve; });
     return new Response(next.raw);
   };
   let state = f.updater.install();
-  assert.equal(state.downloadVersion, '0.10.31'); assert.equal(state.downloadedVersion, '0.10.30');
+  assert.equal(state.downloadVersion, next.manifest.version); assert.equal(state.downloadedVersion, old.manifest.version);
   release();
   for (let i=0; f.updater.installing && i<100; i++) await new Promise(r => setTimeout(r, 10));
   assert.equal(f.updater.installing, false);
-  assert.equal(f.updater.status().downloadedVersion, '0.10.31');
+  assert.equal(f.updater.status().downloadedVersion, next.manifest.version);
   assert.equal(f.updater.status().downloadVersion, null);
-  assert.equal(f.create().status().downloadedVersion, '0.10.31');
+  assert.equal(f.create().status().downloadedVersion, next.manifest.version);
   f.updater.latest = later.manifest; f.updater.envelope = later.envelope;
   globalThis.fetch = async () => new Response('incomplete');
   f.updater.install();
   for (let i=0; f.updater.installing && i<100; i++) await new Promise(r => setTimeout(r, 10));
   state = f.updater.status();
   assert.equal(state.phase, 'error'); assert.equal(state.downloadVersion, null);
-  assert.equal(state.latestVersion, '0.10.32'); assert.equal(state.downloadedVersion, '0.10.31');
+  assert.equal(state.latestVersion, later.manifest.version); assert.equal(state.downloadedVersion, next.manifest.version);
   assert.match(updateView(state).relation, /较旧/);
 });
 
