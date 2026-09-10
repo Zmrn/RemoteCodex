@@ -1,0 +1,89 @@
+name: Build EXE and APK
+run-name: Build ${{ inputs.request_id || github.run_number }}
+
+# Signing material is available only to an explicitly dispatched main build.
+# PR checks never receive signing secrets; no pull_request_target workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Optional correlation ID for conversational build requests
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signed-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'Zmrn/RemoteCodex' && github.ref == 'refs/heads/main'
+    runs-on: windows-2022
+    environment: signing
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.19.0'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Require build configuration
+        env:
+          REMOTE_CODEX_UPDATE_BASE_URL: ${{ vars.REMOTE_CODEX_UPDATE_BASE_URL }}
+          REMOTE_CODEX_ANDROID_CERT_SHA256: ${{ vars.REMOTE_CODEX_ANDROID_CERT_SHA256 }}
+        run: node scripts/github-build.mjs configure
+      - name: Install pinned Android SDK components
+        shell: pwsh
+        run: |
+          & "$env:ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat" 'platforms;android-35' 'build-tools;35.0.1'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Restore original signing identities for this runner
+        env:
+          REMOTE_CODEX_ANDROID_KEYSTORE_BASE64: ${{ secrets.REMOTE_CODEX_ANDROID_KEYSTORE_BASE64 }}
+          REMOTE_CODEX_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.REMOTE_CODEX_ANDROID_KEYSTORE_PASSWORD }}
+          REMOTE_CODEX_UPDATE_PRIVATE_KEY_PEM: ${{ secrets.REMOTE_CODEX_UPDATE_PRIVATE_KEY_PEM }}
+        run: node scripts/github-build.mjs restore
+      - name: Build both platforms and run regressions
+        run: python -X utf8 scripts/build-release.py
+      - name: Android host-JVM regressions
+        run: python -X utf8 scripts/verify-device-connections.py
+      - name: Sign manifests and verify deliverables
+        env:
+          REMOTE_CODEX_ANDROID_CERT_SHA256: ${{ vars.REMOTE_CODEX_ANDROID_CERT_SHA256 }}
+        run: node scripts/github-build.mjs verify
+      - name: Remove runner signing files
+        if: always()
+        run: node scripts/github-build.mjs clean
+      - name: Upload verified EXE and APK together
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: RemoteCodex-${{ github.run_number }}-${{ github.sha }}
+          path: |
+            dist/RemoteCodex.exe
+            dist/RemoteCodex.apk
+            dist/RemoteCodex.build.json
+            dist/RemoteCodex.apk.build.json
+            dist/latest.json
+            dist/android-latest.json
+            dist/RELEASE-NOTES.md
+            dist/GITHUB-BUILD.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+      - name: Scope
+        shell: pwsh
+        run: |
+          'Both artifacts use the original signing identities. This workflow builds and uploads a short-lived Actions artifact; it does not publish an update or verify live ChatGPT behavior.' >> $env:GITHUB_STEP_SUMMARY

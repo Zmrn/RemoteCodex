@@ -4,7 +4,7 @@
 
 ## 新会话接手
 
-- 先确认实际操作系统、主机、工作目录、Git 远端/分支及工作区状态，不能把云端/沙箱测试说成本机验证。本机原工作区中的仓库位于 `outputs/remote-codex/`；直接克隆时以包含本文件与 package.json 的 Git 根目录为准。远端为 `https://gitee.com/Anso/remote-codex.git`，本次交接分支为 `main`，开工时重新核对。
+- 先确认实际操作系统、主机、工作目录、Git 远端/分支及工作区状态，不能把云端/沙箱测试说成本机验证。本机原工作区中的仓库位于 `outputs/remote-codex/`；直接克隆时以包含本文件与 package.json 的 Git 根目录为准。GitHub 仓库为 `https://github.com/Zmrn/RemoteCodex.git`，迁移期保留 Gitee `https://gitee.com/Anso/remote-codex.git`；本工作区分别使用 github/origin，其他克隆必须重新核对，不按远端名字推测地址。当前分支 main。
 - 当前源码基线（2026-09-09）：Remote Codex **0.10.16**，部分历史优先显示可读内容，双端发布、笔记本内置更新和 Android 隔离横竖屏通过，见 [HISTORY-READ.md](HISTORY-READ.md)。0.10.15 新增 VS Code 持有共享 IPC 管道时的官方 ChatGPT 桥接，真实专用任务的 12 项检查通过，见 [VSCODE-COEXISTENCE.md](VSCODE-COEXISTENCE.md)。Windows x64 官方包 **26.901.6511.0、26.903.8094.0** 的 Codex 核心读写已验证。软件版本以 package.json 为准，官方支持范围以 src/official-desktop.json 的 validation 为准；交接快照不是实时状态，也不代表所有功能均已验证。
 - 2026-09-09 接手笔记本已重建并发布最终合并 0.10.15 EXE/APK，包含 VS Code 共存和设备保护；笔记本内置更新及配置保留验收通过。130 项 Node、13 项窗口、最终 EXE 自检和包内旧版→新版强制重启测试通过。最终哈希及两台机器各自的验证范围见 VSCODE-COEXISTENCE.md、DEVICE-STORAGE.md；本机没有做最终合并 APK 的模拟器/真机行为测试。
 - 最近修复及证据见 [CREATE-IMAGES.md](CREATE-IMAGES.md)：新建文字/多图、失败草稿保留、正式控制端跨设备发送；115 项 Node 回归、13 项窗口检查、Android API 35 横竖屏及真实官方 owner 测试已通过。新官方版本、Chat 写入、原生生图等不能由这些结果推定成功。
@@ -89,6 +89,10 @@
 - 物理手机必须确认目标后才能安装测试；默认使用项目 `work/` 下的隔离模拟器，不修改用户现有 AVD。
 
 ## 同步发布（每次更新必须遵守）
+
+- GitHub Actions 和对话式构建入口见 [GITHUB-ACTIONS.md](GITHUB-ACTIONS.md)。用户说“打包当前版本”时，先确认源码与 GitHub main 一致，再执行 `node scripts/github-actions.mjs build`，使用返回的 runId watch/download；不要让用户必须手动打开网页，派发结果未知不能重复提交。本地不必重建。迁移期同时推送 GitHub/Gitee，合并保留其他设备提交，不能强推或删除旧远端。
+- CI Checks 无正式密钥；正式双端 build 只用 main 的 signing 环境和原签名身份。不得上传本地 DPAPI 登录凭据、SSH 凭据、用户数据或整个 work/data；签名材料只通过获授权的 GitHub 加密 Secrets 配置，缺失时报错，不生成替代证书。产物仅白名单文件，保留 3 天，固定标准 windows-2022，不启用付费规格。云端构建不代表真实官方桥接验证，不登录 ChatGPT/执行 APK，不自动改现有更新入口或部署资源；构建与正式发布是两个操作。
+- 2026-09-10 用户已授权并完成 signing 环境原签名配置，通常无需再次迁移或上传。首次双端云端构建 `34437906384`（源码 `20d782f`、0.10.27）及对话式下载验签通过：198 Node、49 主机 JVM、原 APK 证书和双端清单/哈希；详情、产物哈希及官方支持范围见 GITHUB-ACTIONS.md。本轮未安装/运行 APK、更新现有客户端或发布更新资源。同版本云端重建不能覆盖已发布的正式资源。
 
 - **每次发布必须在发布说明和最终交付中明确列出支持的官方 ChatGPT/Codex 桌面包版本、平台、Codex/Chat/Work 支持范围及未验证项。不能只写 Remote Codex 自身版本，也不能把“可以连接/读历史”当作新版完整兼容。**
 - 官方接口和已验证版本统一在 src/official-desktop.json 管理；运行代码使用 src/official-protocol.mjs，不得重新散落硬编码版本、IPC 方法及版本号。升级处理遵循 COMPATIBILITY.md；接口字段/适配位置和回归入口见自动生成的 COMPATIBILITY-INTERFACES.md。

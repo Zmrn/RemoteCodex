@@ -1,5 +1,7 @@
 # Remote Codex · ChatGPT 桌面会话桥接器
 
+源码：[GitHub](https://github.com/Zmrn/RemoteCodex)（迁移中，保留 Gitee 副本）。支持通过 AI 对话直接触发 GitHub Actions 双端打包、查询进度和下载 EXE/APK，设置与命令见 [GITHUB-ACTIONS.md](GITHUB-ACTIONS.md)。
+
 Windows / Android 原型，当前版本以 package.json 和发布说明为准。连接已经运行的官方 ChatGPT 桌面端，通过它管理的同一个 Codex 任务收发消息、查看实时状态和操作队列。Windows 可自由调整窗口大小；Android 竖屏使用侧栏抽屉，横屏使用桌面布局。
 
 新开发会话先读 [AGENTS.md](AGENTS.md)。2026-09-09 交接版本为 0.10.14；已支持一次提交文字和多张图片新建同一官方 Codex 任务，失败保留完整草稿，实际链路和准备轮限制见 [CREATE-IMAGES.md](CREATE-IMAGES.md)。下文带旧版本号的条目是功能演进记录，当前支持范围以中央清单与最新验证文档为准。
@@ -39,8 +41,8 @@ Android APK 的安装、自动下载更新、系统确认安装和复测方法�
 需要 Windows、Node.js 22+、Python 3.10+、Microsoft Edge，以及已运行、已登录且至少有一个 Codex 任务的官方 ChatGPT 桌面端。`node` 和 `python` 需要在 PATH 中。服务运行只用标准库，无需 `npm install` 或 API Key。
 
 ```powershell
-git clone https://gitee.com/Anso/remote-codex.git
-cd remote-codex
+git clone https://github.com/Zmrn/RemoteCodex.git
+cd RemoteCodex
 .\Open-UI.cmd
 ```
 
