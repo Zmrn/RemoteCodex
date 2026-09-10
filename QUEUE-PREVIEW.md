@@ -1,6 +1,8 @@
 # 队列渐进加载（0.10.10）
 
-## 2026-09-10：Ctrl+Enter 直接调整方向（源码完成，未构建发布）
+## 2026-09-10：Ctrl+Enter 直接调整方向（0.10.30 已发布）
+
+已随GitHub同次双端构建34463415359发布；本次新交互仍为隔离回归，没有真实任务steer或APK运行验收，未升级现有客户端。完整记录见 GITHUB-UPDATES.md。
 
 Codex 运行中，普通 Enter/发送按钮仍入官方队列，Ctrl+Enter 直接发送文字及全部图片到同一任务的官方 `thread-follower-steer-turn`，不先入队再取回。空闲/新建任务中的 Ctrl+Enter 仍为普通发送；Shift+Enter 换行，输入法确认和长按重复键不提交。Chat 继续使用原 Chat 发送能力，不套用 Codex 调整方向。运行中的提示同时展示两种快捷键。
 

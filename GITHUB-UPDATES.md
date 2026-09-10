@@ -1,4 +1,6 @@
-# GitHub 直接更新（0.10.29 已发布）
+# GitHub 直接更新
+
+最新发布为 [0.10.30](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.30)，包含图片加载/重试、Ctrl+Enter 调整方向与官方已读通知修复；详细验证见本文末尾。0.10.29 是首次迁移到 GitHub 直接更新的版本。
 
 2026-09-10 用户要求不再经原远端服务器分发更新。Windows 和 Android 更新入口改为 GitHub Releases，公开配置统一在 `src/update-source.json`。客户端不需要 GitHub 登录或访问密钥；设备互连仍沿用原连接方式。
 
@@ -54,3 +56,18 @@ node scripts/github-actions.mjs publish <runId>
 | RemoteCodex.apk | 257537 | `af1b5cde0d5f9f5c1257a16f7a9808087c914300b910b8be059215356f4f955e` |
 
 原 APK 证书 SHA-256：`3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`。中央清单 SHA-256：`1a24252d7c4dbbebf0367feb6325a329f11abc7268d3a6c467ab5ec7da1532b5`。构建包内 GITHUB-BUILD.json 的 `published:false` / `liveDesktopTested:false` 是云端产出当时的状态，发布后不改写已验签资源；后续验证和发布状态以本节为准。
+
+## 0.10.30 正式发布（2026-09-10）
+
+用户明确要求打包发布后，仅派发一次 [Build EXE and APK 34463415359](https://github.com/Zmrn/RemoteCodex/actions/runs/34463415359)，构建提交 `5f1d660a8946ad8fc7e17e2217694a2f864453c7`。同提交 [Checks34463387667](https://github.com/Zmrn/RemoteCodex/actions/runs/34463387667) 成功，包含新增的共享页面→HTTP→生产已读函数→隔离官方IPC测试。功能来自 6a01f4d、f88b318；未完成 Chat 修改未纳入，版本号仅升为0.10.30，没有扩大官方兼容范围。
+
+标准发布器使用同次已下载并验签的八项产物，草稿上传并逐项从GitHub读回哈希核验后公开到 [v0.10.30](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.30)。发布后通过不携带登录凭据的生产更新函数取得latest双清单，再按固定版本完整下载EXE/APK及说明；原RSA签名、长度、SHA-256、发布说明哈希与云产物一致。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44124160 | `8669b9f1b44e409df7b60ff95bba98a22fe54ef5b75c3b678d145ebae499a57c` |
+| RemoteCodex.apk | 257614 | `8c8d28fda2ec15fcb4095c1e13b1463d9b5b4cfabe1a158a6e66e79cfe6957a5` |
+
+APK包名/版本10030、v2/v3签名和原安装证书通过；原证书指纹不变。中央清单SHA-256为 `84de01df63976cb53cec8df7874236d51520abbd6144f552a6a5a76bf4b32c5d`，双端元数据一致。EXE隔离home自检通过，使用内嵌Node22.19.0/Python3.13.2、DPAPI和实际官方26.903.8094.0/PID108796只读项目/任务列表。双端UI、EXE源码与发布提交核对一致，GitHub更新入口和无用户配置/签名文件检查通过。隔离的0.10.29云包源码→0.10.30云包源码，设备保存/升级/强制重启/显式删除检查通过；现有客户端设备与接入配置保持原样。
+
+支持仍为Windows x64官方26.901.6511.0、26.903.8094.0的Codex核心；官方已读与通知限于后者本机Codex。Chat列表/文字历史，续写待专用真实验证，新建/模型/生成图片未完成；Work未独立验证。新交互仅隔离回归及问题任务只读核对，不是本次真实任务写入验收。本轮没有运行APK或模拟器、升级现有客户端、访问旧服务器或本地构建；安装验证由用户进行。GITHUB-BUILD.json中的published/liveDesktopTested仍保留云端产出时的false，不改写已发布产物。
