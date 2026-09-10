@@ -54,8 +54,12 @@ export function webImageUrl(value) {
   } catch { return null; }
 }
 
-export function remoteMarkdownImage(url, alt) {
+export function remoteMarkdownImage(url, alt, reuse) {
+  const identity = JSON.stringify(['web', url, alt]);
+  const previous = reuse?.take(identity);
+  if (previous) return previous;
   const box = document.createElement("span"), image = document.createElement("img");
+  box.imageIdentity = identity;
   box.className = "remote-message-image";
   image.alt = alt || "会话图片";
   image.loading = "lazy";

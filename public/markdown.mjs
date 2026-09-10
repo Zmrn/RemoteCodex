@@ -86,7 +86,7 @@ function renderTokens(parent, tokens, citations, depth = 0) {
       }
       case "image": {
         const url = webImageUrl(entities(token.href));
-        node = url ? remoteMarkdownImage(url, entities(token.text)) : document.createTextNode(token.raw);
+        node = url ? remoteMarkdownImage(url, entities(token.text), citations?.images) : document.createTextNode(token.raw);
         break;
       }
       case "list": {
@@ -133,13 +133,13 @@ function renderTokens(parent, tokens, citations, depth = 0) {
 export function inline(parent, text, citations) {
   renderTokens(parent, Lexer.lexInline(String(text ?? ""), options), citations);
 }
-export function markdown(text) {
+export function markdown(text, { images } = {}) {
   const root = element("div"); root.className = "markdown";
   const notice = element("details"), summary = element("summary", "来源链接未提供");
   notice.className = "citation-notice";
   notice.id = "citation-sources-" + ++citationViewId;
   notice.append(summary, element("p", missingCitationSource));
-  const citations = { numbers: new Map(), id: notice.id, notice, used: false };
+  const citations = { numbers: new Map(), id: notice.id, notice, used: false, images };
   try { renderTokens(root, Lexer.lex(String(text ?? ""), options), citations); }
   catch {
     // A malformed or deeply nested streamed response must remain readable.

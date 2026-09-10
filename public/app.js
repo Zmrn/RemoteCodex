@@ -20,6 +20,7 @@ import { HelpUpdates } from "./help-updates.mjs";
 import { DeviceConnections } from "./device-connections.mjs";
 import { zoomableImage } from "./image-viewer.mjs";
 import { imageLoadState } from "./image-load-state.mjs";
+import { imageReuse, releaseDetachedImages } from "./image-reuse.mjs";
 import { ProjectPicker } from "./project-picker.mjs";
 import { renderQuota, updateQuotaCountdowns } from "./usage-view.mjs";
 import {
@@ -589,6 +590,7 @@ function scheduleSidebar() {
   sidebarTimer = setTimeout(() => { sidebarTimer = null; if (g === generation) pollSidebar(); }, 200);
 }
 const messageImageCache = new Map();
+releaseDetachedImages($("messages"));
 const messageImageObserver = new IntersectionObserver(
   (entries) => {
     for (const entry of entries)
@@ -599,7 +601,10 @@ const messageImageObserver = new IntersectionObserver(
   },
   { root: $("message-scroll"), rootMargin: "240px" },
 );
-function messageImage(ref) {
+function messageImage(ref, reuse) {
+  const identity = JSON.stringify([agentId, selected, 'media', ref.contentKey ?? ref.id ?? ref.src, ref.name]);
+  const existing = reuse?.take(identity, box => box.canReuse() && (box.mediaId === ref.id || box.imageStatus === 'ready'));
+  if (existing) { existing.updateReference(ref); return existing; }
   const box = node("div", "message-image"),
     img = node("img"),
     link = node("a", "image-download", "下载原图");
@@ -608,26 +613,39 @@ function messageImage(ref) {
   img.decoding = "async";
   link.download = ref.name ?? "image.png";
   link.hidden = true;
-  const imageAgent = agentId,
-    imageThread = selected,
-    imageSignals = [agentReads.signal, taskReads.signal];
-  if (ref.id) img.dataset.downloadRoute = link.dataset.downloadRoute = base(imageAgent) + '/threads/' + imageThread + '/media?id=' + encodeURIComponent(ref.id);
-  const key = imageAgent + ":" + imageThread + ":" + (ref.id ?? ref.src);
-  let started = false, ready;
+  const imageAgent = agentId, imageThread = selected;
+  let imageSignals = [agentReads.signal, taskReads.signal];
+  box.imageIdentity = identity;
+  box.imageStatus = 'waiting';
+  box.canReuse = () => box.imageStatus === 'ready' || !imageSignals.some(signal => signal.aborted);
+  let key;
+  box.updateReference = next => {
+    if (box.imageStatus === 'ready') imageSignals = [agentReads.signal, taskReads.signal];
+    ref = next; box.mediaId = ref.id;
+    key = imageAgent + ":" + imageThread + ":" + (ref.id ?? ref.src);
+    if (ref.id) img.dataset.downloadRoute = link.dataset.downloadRoute = base(imageAgent) + '/threads/' + imageThread + '/media?id=' + encodeURIComponent(ref.id);
+  };
+  box.updateReference(ref);
+  let started = false, ready, ownedUrl;
+  box.releaseImage = () => {
+    if (ownedUrl) URL.revokeObjectURL(ownedUrl);
+    ownedUrl = null;
+  };
   const forget = () => {
+    box.releaseImage();
     if (messageImageCache.get(key) !== ready) return;
     messageImageCache.delete(key);
-    ready?.then(url => { if (url.startsWith("blob:")) URL.revokeObjectURL(url); }).catch(() => {});
   };
   const state = imageLoadState(img, {
-    ready: () => { link.href = img.src; link.hidden = false; },
-    failed: () => { started = false; link.hidden = true; link.removeAttribute("href"); forget(); },
+    ready: () => { box.imageStatus = 'ready'; link.href = img.src; link.hidden = false; },
+    failed: () => { box.imageStatus = 'error'; started = false; link.hidden = true; link.removeAttribute("href"); forget(); },
     retry: () => { img.removeAttribute("src"); box.loadImage(); },
   });
   box.append(img, state.element, link);
   box.loadImage = () => {
     if (started || imageSignals.some(signal => signal.aborted)) return;
     started = true;
+    box.imageStatus = 'loading';
     state.loading();
     ready = messageImageCache.get(key);
     if (!ready) {
@@ -648,24 +666,20 @@ function messageImage(ref) {
             },
           ).then(async (r) => {
             if (!r.ok) throw Error("原图不可用（源文件可能已移动或删除）");
-            return URL.createObjectURL(await r.blob());
+            return r.blob();
           });
       messageImageCache.set(key, ready);
       if (messageImageCache.size > 100) {
         const first = messageImageCache.keys().next().value;
-        messageImageCache
-          .get(first)
-          .then((url) => {
-            if (url.startsWith("blob:")) URL.revokeObjectURL(url);
-          })
-          .catch(() => {});
+        // Cached bytes and the displayed node have independent lifetimes.
+        // Evicting a download must not revoke an image still on the page.
         messageImageCache.delete(first);
       }
     }
     ready
-      .then((src) => {
-        if (imageSignals.some(signal => signal.aborted)) return;
-        img.src = src;
+      .then((source) => {
+        if (!box.isConnected || imageSignals.some(signal => signal.aborted)) return;
+        img.src = typeof source === 'string' ? source : (ownedUrl = URL.createObjectURL(source));
         link.rel = "noopener";
       })
       .catch(() => {
@@ -673,7 +687,6 @@ function messageImage(ref) {
         if (!imageSignals.some(signal => signal.aborted)) state.error();
       });
   };
-  messageImageObserver.observe(box);
   return box;
 }
 function featureAvailable(key, legacy = status.existingCodexWritable === true) {
@@ -1430,7 +1443,7 @@ async function selectThread(id, record = true, { preserveDrawer = false } = {}) 
   });
   await read();
 }
-function renderItem(item, turnId) {
+function renderItem(item, turnId, previous) {
   if (mode === 'codex' && item.type === 'mcpServerElicitation') {
     if (liveSettingsState?.approvals?.some(a => a.requestId === String(item.requestId))) return null;
     return approvalUI.history(item);
@@ -1497,16 +1510,20 @@ function renderItem(item, turnId) {
           : "正在生成图片…"),
     );
   else if (item.type !== "imageGeneration") return null;
+  const refs = item.bridgeDisplay?.images ?? images.map((c) => ({ src: c.url, name: "已上传的图片" }));
+  const signature = JSON.stringify([agentId, selected, mode, user, text, refs, item.bridgeDisplay?.files]);
+  if (previous?.classList.contains('message') && previous.renderSignature === signature && previous.renderSignal === taskReads.signal) return previous;
+  const reuse = imageReuse(previous);
   const box = node(
     "article",
     "message " + (user ? "user-message" : "assistant-message"),
   );
+  box.renderSignature = signature;
+  box.renderSignal = taskReads.signal;
   const body = node("div", "message-body");
   if (user) body.textContent = text ?? "";
-  else body.append(markdown(text));
-  for (const ref of item.bridgeDisplay?.images ??
-    images.map((c) => ({ src: c.url, name: "已上传的图片" })))
-    body.append(messageImage(ref));
+  else body.append(markdown(text, { images: reuse }));
+  for (const ref of refs) body.append(messageImage(ref, reuse));
   for (const file of item.bridgeDisplay?.files ?? []) {
     const button = node("button", "attachment-chip file-download", file.name);
     button.type = "button";
@@ -1540,6 +1557,8 @@ function renderItem(item, turnId) {
 function displayTurns() {
   messageImageObserver.disconnect();
   questionUI.index(turns);
+  const previousItems = new Map([...$("messages").querySelectorAll('.turn > [data-item-id]')]
+    .map(item => [item.parentElement.dataset.turnId + ':' + item.dataset.itemId, item]));
   const incoming = document.createElement('div');
   for (const t of [...turns].sort(
     (a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0),
@@ -1558,7 +1577,7 @@ function displayTurns() {
       ),
     );
     for (const item of t.items ?? []) {
-      const n = renderItem(item, t.id);
+      const n = renderItem(item, t.id, previousItems.get(t.id + ':' + item.id));
       if (n) {
         n.dataset.itemId = item.id;
         wrapper.append(n);
@@ -1653,6 +1672,8 @@ function displayTurns() {
     agent: agentId, id: selected, epoch: viewEpoch, connected: status.connected, writable: status.browserApprovals?.supported === true,
   }));
   reconcileMessages($("messages"), [...incoming.children]);
+  for (const box of $("messages").querySelectorAll('.message-image'))
+    if (box.imageStatus === 'waiting') messageImageObserver.observe(box);
 }
 function releaseViewing() {
   const previous = viewingSubscription;
@@ -1791,6 +1812,7 @@ async function readTask(job, older) {
       throw Error("设备返回的会话内容格式不受支持，请更新目标设备后重试");
     if (!matchesMode(r.data.thread, mode)) throw Error("会话类型与当前模式不同，请切换模式后重新选择");
     readFailures = 0;
+    const hadContent = turns.length > 0;
     const historyChanged = !older && taskData && (taskData.history?.revision || r.data.history?.revision) &&
       taskData.history?.revision !== r.data.history?.revision;
     if (historyChanged) {
@@ -1818,7 +1840,7 @@ async function readTask(job, older) {
     updateHistoryNotice();
     const scroll = $("message-scroll");
     const atBottom =
-      firstLoad ||
+      !hadContent ||
       scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 100;
     const anchor = captureMessageAnchor();
     turns = mergeTurns(turns, r.data.turns, !!older);

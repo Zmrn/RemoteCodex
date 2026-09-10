@@ -63,6 +63,7 @@ export async function startServer({
     ["/update-view.mjs", "text/javascript; charset=utf-8"],
     ["/image-viewer.mjs", "text/javascript; charset=utf-8"],
     ["/image-load-state.mjs", "text/javascript; charset=utf-8"],
+    ["/image-reuse.mjs", "text/javascript; charset=utf-8"],
     ["/project-picker.mjs", "text/javascript; charset=utf-8"],
     ["/usage-view.mjs", "text/javascript; charset=utf-8"],
     ["/questions-ui.mjs", "text/javascript; charset=utf-8"],

@@ -105,6 +105,7 @@ test("loaded native write failure never retries through the desktop tool; Chat s
     catalog,
     identity: { appToolsPipe: { image: "OpenAI.Codex_26.901.6511.0_x64__" } },
     call: async (name) => {
+      if (name === 'list_threads') return { threads: [] };
       if (name !== "read_thread") other++;
       return { thread: { id, kind, status: { type: "idle" } } };
     },

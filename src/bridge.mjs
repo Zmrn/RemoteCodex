@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID, createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { Desktop, localContext } from "./desktop.mjs";
+import { readCodexThreadMetadata } from "./thread-metadata.mjs";
 import { applyPatches, runtimeStatus, mergeLiveTurnItems, activeTurnId } from "./state.mjs";
 import { accountUsage } from "./usage.mjs";
 import { OfficialQueue, composeQueuedMessage } from "./queue.mjs";
@@ -196,13 +197,12 @@ export class Bridge extends EventEmitter {
   async codexThread(id) {
     this.guard(id);
     this.requireConnection();
-    const r = await this.desktop.call(TOOLS.readThread, {
-      threadId: id,
-      turnLimit: 1,
+    const desktop = this.desktop, identity = desktop.identity;
+    return readCodexThreadMetadata(desktop, id, () => {
+      this.requireConnection();
+      if (desktop !== this.desktop || desktop.identity !== identity)
+        throw Error('官方连接已变化，操作未发送，请重新连接');
     });
-    if (r.thread?.id !== id || r.thread.kind !== "codex")
-      throw Error("目前仅支持 Codex 会话写入");
-    return r;
   }
   async models(mode = "codex") {
     this.requireConnection();
@@ -1042,6 +1042,12 @@ export class Bridge extends EventEmitter {
           : null,
       },
       async dispatch => {
+        const desktop = this.desktop, identity = desktop.identity;
+        const checkConnection = () => {
+          this.requireConnection();
+          if (desktop !== this.desktop || desktop.identity !== identity)
+            throw Error('官方连接已变化，消息未发送；草稿已保留');
+        };
         let status = await this.codexThread(id);
         if (
           status.thread.status.type === "notLoaded" &&
@@ -1068,6 +1074,7 @@ export class Bridge extends EventEmitter {
           // The desktop tool resumes its own existing task. Choose this route
           // before dispatch; never retry a failed native write through it.
           this.requireSupportedBuild("resume");
+          checkConnection();
           dispatch();
           const r = await this.desktop.call(TOOLS.sendMessage, {
             threadId: id,
@@ -1084,9 +1091,24 @@ export class Bridge extends EventEmitter {
           return r;
         }
         if (status.thread?.status?.type !== "idle")
-          throw Error("Task must be idle for native start; no automatic steer");
+          throw Error("当前任务正在执行或状态未知，消息未发送；请刷新后使用队列或调整方向");
         this.requireSupportedBuild("send");
+        const previous = this.live.get(id);
         const owner = await this.follow(id);
+        // List metadata bypasses oversized history. Require a newly observed,
+        // matching owner snapshot before using that route to start a turn.
+        const requireFreshOwner = status.source === 'official-list-live';
+        if (requireFreshOwner) for (let n = 0; n < 40 && this.live.get(id) === previous; n++)
+          await new Promise(resolve => setTimeout(resolve, 100));
+        const checkOwner = () => {
+          checkConnection();
+          if (!requireFreshOwner) return;
+          const live = this.live.get(id);
+          if (!live || live === previous || live.owner !== owner.handledByClientId ||
+              live.state?.id !== id || live.state.threadRuntimeStatus?.type !== 'idle')
+            throw Error('官方当前任务所有者或空闲状态尚未确认，消息未发送；草稿已保留，请刷新重试');
+        };
+        checkOwner();
         if (settings.permissions || serviceTier !== undefined) {
           const update = {
             ...(permissionMode ? { permissionMode } : {}),
@@ -1104,8 +1126,9 @@ export class Bridge extends EventEmitter {
         const input = [{ type: "text", text: prompt, text_elements: [] }];
         for (const url of images) input.push({ type: "image", url });
         if (beforeDispatch) await beforeDispatch();
+        checkOwner();
         dispatch();
-        const r = await protocolRequest(this.desktop.ipc, "start",
+        const r = await protocolRequest(desktop.ipc, "start",
           {
             conversationId: id,
             turnStart: {

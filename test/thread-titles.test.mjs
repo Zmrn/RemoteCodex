@@ -18,7 +18,7 @@ function fixture(t) {
       inputSchema: { properties: { model: { description: 'fixture (Fixture; supported reasoning efforts: low)' } } } })),
     call: async (name, args) => {
       if (name === TOOLS.readThread) return { thread: { id, kind: state.kind, title: state.title } };
-      if (name === TOOLS.listThreads) return { threads: [{ id, kind: state.kind, title: state.title }] };
+      if (name === TOOLS.listThreads) return { threads: [{ id, kind: state.kind, title: state.title, hostId: 'local', status: 'idle' }] };
       if (name === TOOLS.setTitle) { writes.push({ name, args }); assert.equal(Object.values(b.db.requests).at(-1).status, 'outcome-unknown'); return { threadId: id, title: args.title }; }
       if (name === TOOLS.createThread) { writes.push({ name, args }); return { threadId: id, cwd: 'C:/fixture' }; }
       throw Error('Unexpected tool: ' + name);

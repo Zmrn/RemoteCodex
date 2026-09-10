@@ -126,9 +126,9 @@
         "limit"
       ],
       "response": "threads[], pinnedThreads[]",
-      "purpose": "会话列表",
-      "consumer": "src/bridge.mjs:threads, src/task-reports.mjs:collect",
-      "test": "test/chat.test.mjs"
+      "purpose": "会话列表与操作前实时元数据",
+      "consumer": "src/bridge.mjs:threads, src/task-reports.mjs:collect, src/thread-metadata.mjs:readCodexThreadMetadata",
+      "test": "test/thread-metadata.test.mjs"
     },
     "readThread": {
       "name": "read_thread",
@@ -142,7 +142,7 @@
       ],
       "response": "thread, turns, nextCursor",
       "purpose": "历史读取",
-      "consumer": "src/bridge.mjs:read, src/task-reports.mjs:collect",
+      "consumer": "src/bridge.mjs:read, src/task-reports.mjs:collect, src/thread-metadata.mjs:readCodexThreadMetadata (列表不可用或缺任务时)",
       "test": "test/conversation-pages.test.mjs"
     },
     "createThread": {

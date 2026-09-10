@@ -52,6 +52,8 @@ test('changed official files invalidate both older cursors and lazy image refere
  assert.throws(()=>s.media.read(id,image.id),/历史已变化/);
  await assert.rejects(s.read({cursor:first.page.nextCursor}),/历史已变化/);
  const second=await s.read({}); assert.notEqual(second.history.revision,first.history.revision);
+ const renewed=second.turns[0].items.find(i=>i.id==='picture').bridgeHistoryImages[0];
+ assert.notEqual(renewed.id,image.id); assert.equal(renewed.contentKey,image.contentKey);
  assert.ok(second.turns[0].items.some(i=>i.id==='msg-99'));
  // Replacing/truncating cannot reuse a same-task, old cursor either.
  fs.writeFileSync(s.file,snapshot.subarray(0,80)); await assert.rejects(s.read({cursor:second.page.nextCursor}));
@@ -119,11 +121,23 @@ test('official reconnection replaces the history revision and registers usable f
    call:async tool=>{if(tool==='list_threads')return {threads:[thread]};throw Error('Codex app tool request failed');}});
  const bridge=new Bridge(path.join(s.home,'bridge'),{desktopFactory:factory,homeResolver:async()=>s.home});
  t.after(()=>bridge.disconnect()); await bridge.connect();
- const first=await bridge.readPage(id),old=first.data.turns[0].items.find(i=>i.id==='picture').bridgeDisplay.images[0].id;
+ const first=await bridge.readPage(id),oldImage=first.data.turns[0].items.find(i=>i.id==='picture').bridgeDisplay.images[0],old=oldImage.id;
  assert.equal(bridge.media.read(id,old).type,'image/png');
  bridge.connected=false; await bridge.connect();
  assert.throws(()=>bridge.media.read(id,old),/图片未出现/);
- const second=await bridge.readPage(id),fresh=second.data.turns[0].items.find(i=>i.id==='picture').bridgeDisplay.images[0].id;
+ const second=await bridge.readPage(id),freshImage=second.data.turns[0].items.find(i=>i.id==='picture').bridgeDisplay.images[0],fresh=freshImage.id;
+ assert.notEqual(old,fresh); assert.equal(oldImage.contentKey,freshImage.contentKey);
  assert.notEqual(first.data.history.revision,second.data.history.revision);
  assert.equal(bridge.media.read(id,fresh).type,'image/png');
+});
+
+test('image reuse identity follows the image source, not its caption or surrounding record',async t=>{
+ const picture=text=>record({type:'item_completed',thread_id:id,turn_id:a,item:{type:'UserMessage',id:'picture',content:[{type:'text',text},{type:'image',url:png}]}});
+ const s=setup(t,[picture('first')]), image=async()=>(await s.read({})).turns[0].items[0].bridgeHistoryImages[0];
+ const first=await image();
+ const rewrite=row=>fs.writeFileSync(s.file,[meta(),row].map(r=>JSON.stringify(r)+'\n').join(''));
+ rewrite(picture('longer caption'));const caption=await image();
+ assert.notEqual(first.id,caption.id);assert.equal(first.contentKey,caption.contentKey);
+ const changed=picture('another caption');changed.payload.item.content[1].url=png+'AA';rewrite(changed);
+ assert.notEqual((await image()).contentKey,caption.contentKey);
 });

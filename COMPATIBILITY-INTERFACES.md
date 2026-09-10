@@ -22,8 +22,8 @@ Chat：列表/历史读取；文字续写待专用真实会话验证；新建/�
 | 方法 | 用途 | 请求字段 | 返回字段 | 调用/适配位置 | 回归 |
 | --- | --- | --- | --- | --- | --- |
 | list_projects | 项目列表 |  | projects[] | src/bridge.mjs:projects | test/projects.test.mjs |
-| list_threads | 会话列表 | limit | threads[], pinnedThreads[] | src/bridge.mjs:threads, src/task-reports.mjs:collect | test/chat.test.mjs |
-| read_thread | 历史读取 | threadId, turnLimit, includeOutputs, maxOutputCharsPerItem, cursor, hostId | thread, turns, nextCursor | src/bridge.mjs:read, src/task-reports.mjs:collect | test/conversation-pages.test.mjs |
+| list_threads | 会话列表与操作前实时元数据 | limit | threads[], pinnedThreads[] | src/bridge.mjs:threads, src/task-reports.mjs:collect, src/thread-metadata.mjs:readCodexThreadMetadata | test/thread-metadata.test.mjs |
+| read_thread | 历史读取 | threadId, turnLimit, includeOutputs, maxOutputCharsPerItem, cursor, hostId | thread, turns, nextCursor | src/bridge.mjs:read, src/task-reports.mjs:collect, src/thread-metadata.mjs:readCodexThreadMetadata (列表不可用或缺任务时) | test/conversation-pages.test.mjs |
 | create_thread | 新建真实任务 | prompt, target, model, thinking, title | threadId required; clientThreadId-only response treated as outcome-unknown | src/bridge.mjs:create | test/projects.test.mjs |
 | send_message_to_thread | 继续已有任务；Chat 分支未完成实测 | threadId, prompt, model, thinking | official tool result | src/bridge.mjs:send, nativeSend, chatSend | test/send-lifecycle.test.mjs |
 | set_thread_title | 用户主动修改 Codex 会话名；专用测试权限上下文命名 | threadId, title | threadId, title (submission acknowledgement; display uses subsequent official list) | src/thread-titles.mjs:renameThread, src/bridge.mjs:permissionContext | test/thread-titles.test.mjs |

@@ -208,7 +208,8 @@ export class RolloutHistory {
         if (typeof image !== 'string') throw Error('官方图片记录格式尚不支持');
         return image.startsWith('data:') ? image : 'data:image/png;base64,' + image;
       }, name);
-      images.push(ref);
+      const image = field === 'result' ? raw.result : raw.content?.[Number(field)]?.url ?? raw.content?.[Number(field)]?.image_url;
+      images.push({ ...ref, contentKey: hash(typeof image === 'string' ? image : entry.digest + ':' + field) });
     };
     if (raw.type === 'AgentMessage') return {...base,type:'agentMessage',text:textContent(raw.content)};
     if (raw.type === 'UserMessage') {
