@@ -12,6 +12,7 @@ class DesktopNotificationsTests {
     static int checks;
     static void Check(bool value, string message) { if (!value) throw new Exception(message); checks++; Console.WriteLine("PASS " + message); }
     static void Pump(int ms) { var until = Stopwatch.StartNew(); do { Application.DoEvents(); Thread.Sleep(10); } while (until.ElapsedMilliseconds < ms); }
+    static void PumpUntil(Func<bool> ready, int timeoutMs) { var elapsed = Stopwatch.StartNew(); while (!ready() && elapsed.ElapsedMilliseconds < timeoutMs) Pump(20); }
     static IEnumerable<Control> All(Control c) { foreach(Control child in c.Controls) { yield return child; foreach(var next in All(child))yield return next; } }
     static TextBox Input(Form card) { return All(card).OfType<TextBox>().Single(); }
     static Button Button(Form card,string name) { return All(card).OfType<Button>().Single(b=>b.Name==name); }
@@ -94,10 +95,12 @@ class DesktopNotificationsTests {
                 Pump(4600); Check(card.IsDisposed, "delayed save still allows closure after the new inactivity window");
             }
             int displayed=0;
-            using(var owner=new Form())using(var menu=new ContextMenuStrip())using(var host=new DesktopNotifications(owner,args[0],menu,()=>Task.FromResult("null"),text=>Task.FromResult(true),card=>{displayed++;ShowBriefly(card);})){var handle=owner.Handle;host.Start(new string('b',64));Pump(2500);
+            // The poll interval is already 2 seconds. Wait for its HTTP result,
+            // not a 500ms allowance for a cold WebClient on shared CI runners.
+            using(var owner=new Form())using(var menu=new ContextMenuStrip())using(var host=new DesktopNotifications(owner,args[0],menu,()=>Task.FromResult("null"),text=>Task.FromResult(true),card=>{displayed++;ShowBriefly(card);})){var handle=owner.Handle;host.Start(new string('b',64));PumpUntil(()=>displayed>0,8000);
                 Check(!owner.Visible&&displayed==1,"hidden main window still receives notification");
                 Pump(7900);Check(displayed==1,"failed dismiss acknowledgement and repeated poll never resurrect expired popup");
-                menu.Items.OfType<ToolStripMenuItem>().Single(i=>i.Text.StartsWith("恢复未发出")).PerformClick();Pump(2300);
+                menu.Items.OfType<ToolStripMenuItem>().Single(i=>i.Text.StartsWith("恢复未发出")).PerformClick();PumpUntil(()=>displayed>1,8000);
                 Check(displayed==2,"explicit recovery reopens only the returned draft IDs");
                 host.Dispose();Pump(2200);Check(displayed==2,"disposing host stops notifications");
             }

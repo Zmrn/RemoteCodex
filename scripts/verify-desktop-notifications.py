@@ -20,7 +20,7 @@ compiler=Path(os.environ['WINDIR'])/'Microsoft.NET/Framework64/v4.0.30319/csc.ex
 exe=folder/'DesktopNotificationsTests.exe'
 subprocess.run([str(compiler),'/nologo','/target:exe','/platform:x64','/codepage:65001','/reference:System.Windows.Forms.dll','/reference:System.Drawing.dll','/reference:System.Web.Extensions.dll','/out:'+str(exe),str(ROOT/'windows/DesktopNotifications.cs'),str(ROOT/'windows/NotificationCard.cs'),str(ROOT/'test/DesktopNotificationsTests.cs')],check=True)
 try:
-    result=subprocess.run([str(exe),f'http://127.0.0.1:{server.server_port}',str(folder)],capture_output=True,text=True,encoding='utf-8',timeout=55,creationflags=subprocess.CREATE_NO_WINDOW)
+    result=subprocess.run([str(exe),f'http://127.0.0.1:{server.server_port}',str(folder)],capture_output=True,text=True,encoding='utf-8',timeout=75,creationflags=subprocess.CREATE_NO_WINDOW)
     print(result.stdout,end='');print(result.stderr,end='')
     (folder/'result.json').write_text(json.dumps({'passed':result.returncode==0,'output':result.stdout},ensure_ascii=False,indent=2),encoding='utf-8')
     print('Evidence:',folder)
