@@ -71,11 +71,12 @@ export class Desktop {
     this.identity = null;
     this.catalog = [];
   }
-  async connect() {
+  async connect({ inspectCatalog = false } = {}) {
     this.close();
     this.tools = this.ipc = this.identity = null;
     this.catalog = [];
-    this.context ??= localContext();
+    // A diagnostics-only connection reads tools/list and never needs a task context.
+    if (!inspectCatalog) this.context ??= localContext();
     const identity = await this.discoverPipes();
     const owned = identity.pipes.filter(p => officialImage(p) && pipeName(p).startsWith(OFFICIAL.discovery.toolsPipePrefix));
     if (!owned.length) throw Error("Official ChatGPT app-tools process unavailable");
@@ -94,7 +95,7 @@ export class Desktop {
           );
           if (
             f.result?.tools?.some(
-              (t) => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === TOOLS.listThreads,
+              (t) => t.namespace === OFFICIAL.discovery.toolsNamespace && (inspectCatalog || t.name === TOOLS.listThreads),
             )
           ) {
             this.tools = client;

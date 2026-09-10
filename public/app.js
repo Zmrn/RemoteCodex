@@ -1,5 +1,6 @@
 import { draftBinding, protectRecovery, orphanEntries } from "./draft-guard.mjs";
 import { ConnectionDiagnostics } from "./connection-diagnostics.mjs";
+import { CompatibilityView } from "./compatibility-view.mjs";
 import { SidebarReports, sidebarIndicator } from "./sidebar-reports.mjs";
 import { USER_INPUT_REQUEST } from "./official-events.mjs";
 import { validateImageBatch, imagePayload, imageUrls } from "./image-input.mjs";
@@ -3109,6 +3110,8 @@ const connectionDiagnostics=new ConnectionDiagnostics({api,getAgent:currentAgent
   updates:async id=>{await agentApi(id,'/updates/check',{});toast('已请求目标检查更新');},
 });
 $("diagnose-connection").onclick=$("help-diagnose").onclick=()=>connectionDiagnostics.open();
+const compatibilityView = new CompatibilityView({ agentApi, getAgent: currentAgent, getAgents: () => agents, toast });
+$("help-compatibility").onclick = () => compatibilityView.open();
 $('connection').onclick=()=>connectionDiagnostics.open();$('connection').setAttribute('role','button');$('connection').tabIndex=0;
 $('connection').onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();connectionDiagnostics.open();}};
 if (android) new DeviceConnections({ $, api });

@@ -15,6 +15,7 @@ import { DATA_DIR, INSTANCE } from "./runtime.mjs";
 import { createGzip } from "node:zlib";
 import { conversationView } from "./state.mjs";
 import { CompatibilityProbes, inspectDesktop } from "./compatibility-probe.mjs";
+import { collectCompatibilityReport } from "./compatibility-report.mjs";
 import { diagnoseDevice } from "./diagnostics.mjs";
 import { NotificationSource } from './notification-source.mjs';
 import { DesktopNotifications } from './desktop-notifications.mjs';
@@ -25,6 +26,7 @@ export async function startServer({
   agentHost,
   agentPort = 43128,
   access,
+  compatibilityReport = collectCompatibilityReport,
 } = {}) {
   agents ??= new Agents(bridge.dataDir ?? DATA_DIR);
   await agents.preserve?.();
@@ -35,6 +37,7 @@ export async function startServer({
   );
   const diagnosticStatus = () => ({...bridge.status(),bridgeVersion:INSTANCE.version,storageHealth:[...(bridge.status().storageHealth??[]),access.store?.health,updater.store?.health].filter(Boolean)});
   const diagnostics = new Map();
+  let compatibilityReportJob = null;
   const notificationSource = new NotificationSource(bridge);
   let desktopNotifications;
   const notifications = () => desktopNotifications ??= new DesktopNotifications(agents, bridge.dataDir ?? DATA_DIR);
@@ -68,6 +71,7 @@ export async function startServer({
     ["/device-settings.mjs", "text/javascript; charset=utf-8"],
     ["/diagnostic-state.mjs", "text/javascript; charset=utf-8"],
     ["/connection-diagnostics.mjs", "text/javascript; charset=utf-8"],
+    ["/compatibility-view.mjs", "text/javascript; charset=utf-8"],
     ["/draft-guard.mjs", "text/javascript; charset=utf-8"],
     ["/sidebar-reports.mjs", "text/javascript; charset=utf-8"],
     ["/update-recovery.mjs", "text/javascript; charset=utf-8"],
@@ -209,6 +213,10 @@ export async function startServer({
       if (req.method === "GET" && url.pathname === "/api/compatibility") {
         bridge.requireConnection();
         return json(res, 200, await inspectDesktop(bridge.desktop));
+      }
+      if (req.method === "GET" && url.pathname === "/api/compatibility/report") {
+        compatibilityReportJob ??= Promise.resolve().then(compatibilityReport).finally(() => { compatibilityReportJob = null; });
+        return json(res, 200, await compatibilityReportJob);
       }
       if (req.method === "GET" && url.pathname === "/api/compatibility/probe")
         return json(res, 200, compatibilityProbes.read(url.searchParams.get("requestId")));

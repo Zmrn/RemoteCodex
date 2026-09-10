@@ -1,5 +1,10 @@
 {
   "schemaVersion": 1,
+  "updateDiscovery": {
+    "manifestUrl": "https://persistent.oaistatic.com/codex-app-prod/windows-store-update.json",
+    "schemaVersion": 1,
+    "packageIdentity": "OpenAI.Codex"
+  },
   "probeCandidates": [],
   "validation": [
     {

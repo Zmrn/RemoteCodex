@@ -84,6 +84,21 @@ test("VS Code broker cannot substitute for missing official app-tools or its cat
   }
 });
 
+test("diagnostic connection can inspect a missing list_threads without a task context or tool call", async () => {
+  const tools = [{ namespace: 'codex_app', name: 'get_usage_limits' }];
+  const normal = fixture([vscode, app], { catalog: tools });
+  await assert.rejects(normal.desktop.connect(), /Official app-tools pipe unavailable/);
+  const f = fixture([vscode, app], { catalog: tools });
+  f.desktop.context = null;
+  try {
+    await f.desktop.connect({ inspectCatalog: true });
+    assert.equal(f.desktop.context, null);
+    assert.deepEqual(f.desktop.catalog, tools);
+    assert.ok(f.clients.flatMap(c => c.calls).every(c => c.method === OFFICIAL.transport.toolsList));
+  } finally { f.desktop.close(); }
+  assert.ok(f.clients.every(c => c.closed));
+});
+
 test("replaced endpoints and failed broker handshake close all clients and clear trusted state", async () => {
   for (const options of [
     { brokerFails: true },

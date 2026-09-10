@@ -3043,5 +3043,24 @@ dialog textarea,
 .diagnostic-check button,.diagnostic-actions button,#help-diagnose { min-height:40px; padding:8px 12px; white-space:normal; }
 .diagnostic-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
 .diagnostic-checks textarea { box-sizing:border-box; width:100%; min-height:160px; }
+.compatibility-dialog { width:min(960px,calc(100vw - 28px)); }
+#help-compatibility { min-height:40px; padding:8px 12px; margin-bottom:12px; }
+.compatibility-summary { font-weight:600; }
+.compatibility-versions { padding:14px; background:var(--surface-raised); border:1px solid var(--line); border-radius:12px; margin-bottom:12px; }
+.compatibility-versions > div { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; margin:8px 0; }
+.compatibility-versions small { grid-column:1 / -1; color:var(--muted); }
+.compatibility-row { border:1px solid var(--line); border-radius:12px; padding:14px; margin:12px 0; background:var(--surface-raised); }
+.compatibility-row code { overflow-wrap:anywhere; min-width:0; font-size:13px; }
+.compatibility-row .badge { flex-shrink:0; }
+.compatibility-row[data-status="error"] { border-color:#dd7474; background:#341f28; }
+.compatibility-row[data-status="error"] .diagnostic-heading, .compatibility-columns [data-status="error"], .compatibility-blocked { color:#ffb1ae; }
+.compatibility-pending, .compatibility-row[data-status="warning"] .badge { color:#eac180; }
+.compatibility-columns { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:12px 0; }
+.compatibility-columns dt { color:var(--muted); font-size:12px; }
+.compatibility-columns dd { margin:6px 0 0; overflow-wrap:anywhere; font-size:14px; }
+.compatibility-columns small { display:block; font-size:12px; margin-top:6px; line-height:1.6; }
+.compatibility-parameters { overflow-wrap:anywhere; font-size:12px; color:var(--muted); }
+#compatibility-rows textarea { box-sizing:border-box; width:100%; min-height:180px; }
+@media(max-width:560px) { .compatibility-columns { grid-template-columns:1fr; gap:10px; } .compatibility-columns > div { display:grid; grid-template-columns:6em minmax(0,1fr); gap:10px; } .compatibility-columns dd { margin:0; } }
 .orphan-preview { white-space:pre-wrap; max-height:180px; overflow:auto; }
 #connection[role="button"] { cursor:pointer; }
