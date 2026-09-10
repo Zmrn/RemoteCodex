@@ -1,8 +1,8 @@
-# GitHub 直接更新（0.10.29 待构建）
+# GitHub 直接更新（0.10.29 已发布）
 
 2026-09-10 用户要求不再经原远端服务器分发更新。Windows 和 Android 更新入口改为 GitHub Releases，公开配置统一在 `src/update-source.json`。客户端不需要 GitHub 登录或访问密钥；设备互连仍沿用原连接方式。
 
-本次完成源码与隔离测试，**未构建 APK/EXE、未创建或发布 GitHub Release、未更新客户端、未操作旧服务器**。0.10.29 是下一次明确构建指令使用的源码版本，不代表已上线。
+2026-09-10 用户明确要求最新版云端构建后，0.10.29 已由 GitHub Actions 同次生成 APK/EXE 并正式发布到 GitHub Releases。下载后的原签名、双端哈希、EXE 包内只读自检及匿名 GitHub 更新下载均通过；未安装更新本机客户端、未执行 APK、未操作旧服务器。具体运行和产物见本文末尾。
 
 ## 更新链路
 
@@ -32,10 +32,25 @@ node scripts/github-actions.mjs publish <runId>
 
 已安装的 0.10.28 及更早版本把旧更新入口写在包内，无法通过未升级的客户端直接获得新的入口。下一次构建并发布迁移版后，需要从 GitHub Releases 手动安装一次：Windows 替换程序时保留原数据目录，Android 使用同证书覆盖安装。此后按现有自动更新设置直接查询 GitHub。不要卸载并清理数据，也不通过旧服务器加跳转或补发迁移包。本次不改正在运行的客户端或用户数据。
 
-下载页：[GitHub Releases](https://github.com/Zmrn/RemoteCodex/releases)。该页是否已有迁移版以实际发布状态为准，本次没有发布。
+下载页：[0.10.29 GitHub Release](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.29)。这是首个使用 GitHub 直接更新入口的正式迁移版。
 
 ## 验证与范围
 
 204 项 Node 回归和 22 项主机 JVM 更新网络检查通过。覆盖 GitHub/CDN 重定向、不转发凭据、HTTP/其他域名/循环拒绝、下载大小限制、固定版本、双端签名及来源校验、草稿公开顺序、未知上传/发布结果恢复、已发布资源不可覆写、版本回退和标签冲突。更新格式的单文件测试补齐独立 scratch 目录创建，不再依赖其他测试先运行。
 
-Node/Java 使用隔离服务替身，不创建真实 GitHub Release。尚无本版本云构建、真实 Release 上传/读回、Windows 内置更新、APK 安装或执行验证。官方兼容清单未更改：Windows x64 官方 26.901.6511.0、26.903.8094.0 的 Codex 核心；通知仅 .903 本机 Codex owner。Chat 列表/文字历史与实验性续写保持，新建/模型/生成图片未完成，Work 未独立验证；本次不增加官方真实操作证据。
+上述 Node/Java 回归使用隔离服务替身。后续云构建、真实 Release 上传/读回和匿名下载已通过，见下文；Windows 内置升级、APK 安装或执行仍未在此版验证。官方兼容清单未更改：Windows x64 官方 26.901.6511.0、26.903.8094.0 的 Codex 核心；通知仅 .903 本机 Codex owner。Chat 列表/文字历史与实验性续写保持，新建/模型/生成图片未完成，Work 未独立验证；此次包内自检只读取官方项目与任务，不增加写入或 Chat 功能验证。
+
+## 2026-09-10 正式云构建与发布
+
+- 源码：`9c9080e73061ba48e27549b1c556cabc36136b36`，版本 0.10.29；原工作区 8 份未完成 Chat 修改未纳入构建。
+- [Build EXE and APK 34443633443](https://github.com/Zmrn/RemoteCodex/actions/runs/34443633443)：成功，标准 Windows runner；双端构建与回归、Android 主机 JVM 检查、更新网络回归、原身份签名、兼容元数据/包内容校验及签名临时文件清理全部通过。
+- 同次八项产物经草稿上传、逐项读回哈希核验后公开：[Remote Codex 0.10.29](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.29)。没有本地重建、旧服务器操作或替换已发布资源。
+- 本机下载后：两个更新清单 RSA 验签、APK v2/v3 签名和原证书一致、EXE 隔离目录包内运行时/DPAPI/官方只读访问通过（实际官方 26.903.8094.0，PID 108796）。没有安装/执行 APK，也没有升级当前客户端。
+- 发布后：使用生产更新下载函数、不带登录凭据，从 latest 取得两个签名清单，再按 v0.10.29 固定版本下载完整 EXE/APK；大小、SHA-256、发布说明与本次云产物一致。最新 Release 含全部八项资源。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44121088 | `3f2fc9c004469f9d321246fb1b2995149a05e62a1ee1eea78f45be7fa7952e3b` |
+| RemoteCodex.apk | 257537 | `af1b5cde0d5f9f5c1257a16f7a9808087c914300b910b8be059215356f4f955e` |
+
+原 APK 证书 SHA-256：`3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`。中央清单 SHA-256：`1a24252d7c4dbbebf0367feb6325a329f11abc7268d3a6c467ab5ec7da1532b5`。构建包内 GITHUB-BUILD.json 的 `published:false` / `liveDesktopTested:false` 是云端产出当时的状态，发布后不改写已验签资源；后续验证和发布状态以本节为准。
