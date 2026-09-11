@@ -1,5 +1,7 @@
 # GitHub 主仓库与按需云端构建
 
+最新发布0.10.34：最终277项Node22.19.0和同SHA Checks34550592172成功后，preflight放行，Build34550835116仅派发一次并通过云端签名前门禁。双端原签名/证书、包内容/隔离运行时/设备保护和匿名下载均通过，已公开Releases/v0.10.34；未执行APK或升级现有客户端。完整产物与验证范围见GITHUB-UPDATES.md。
+
 正式仓库：[Zmrn/RemoteCodex](https://github.com/Zmrn/RemoteCodex)。2026-09-10 用户明确将默认远端从 Gitee 改为 GitHub。切换前 GitHub main 与本地已提交的 `df50d0b`（0.10.28）一致，包含双方历史与 MIT LICENSE，无需覆盖远端或回退代码。用户随后明确彻底停用 Gitee，并将自行删除旧仓库。GitHub 是唯一远端主仓库；不再访问、同步或维护 Gitee，本地 gitee-archive 远端已移除。旧仓库历史已经包含在 GitHub main 中，历史文档里的旧地址不再是操作目标。
 
 用户最新约定：**只有明确要求构建/打包时，才在 GitHub Actions 生成 APK 和 EXE；不在本地构建。** 日常需求、修复、review、提交或构建能力查询不触发正式构建、发布或客户端升级。源码 push/PR 的 Checks 可以自动运行回归，但不会生成正式安装包。云端构建失败时报告失败，不擅自改成本地构建。

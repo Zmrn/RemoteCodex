@@ -1,5 +1,26 @@
 # GitHub 直接更新
 
+## 0.10.34 正式发布（2026-09-11）
+
+[GitHub Release v0.10.34](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.34) 已公开。最终版本277项Node22.19.0、接口清单和共享图片/历史UI通过，源码`6fd6b7c681d2120371cc15f65692a15ba9a39e7c`的[Checks34550592172](https://github.com/Zmrn/RemoteCodex/actions/runs/34550592172)成功后，只读preflight放行，仅派发一次[Build34550835116](https://github.com/Zmrn/RemoteCodex/actions/runs/34550835116)。requestId为`0bf21bdd-5ed3-4b50-b863-f10f5d1d6d82`，云端签名前门禁及全部构建步骤首次通过。
+
+本版修复长会话发送准备读取整轮正文超限，以及Windows/Android图片随刷新反复进入loading导致抖动。发送使用官方实时元数据并核对新的owner/idle/连接；图片保留当前官方消息中的同图节点与解码状态，支持断线取消后恢复、失败手动重试和官方删除。历史扫描提前退出等待文件关闭，避免Windows文件句柄滞留。未使用磁盘历史完成标记授权写入，未知派发不重放。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44160000 | `7b38fb1f12eb2afdbce695dee8aa41533c1f640be8154430f703497b94d1ca5b` |
+| RemoteCodex.apk | 274443 | `5dc0f02c0ac1c2d1cf48f9942636da0feef3ce2829db9ce2863b30646334dd62` |
+
+原RSA双清单签名、APK v2/v3原证书、包名com.anso.remotecodex/versionCode10034、双端源码/共享界面/发布说明/更新渠道均一致；无用户配置或私钥。APK原证书SHA-256仍为`3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`；正式中央清单SHA-256为`1e94b3e63a91519572d3856b1390ee6281a994a856593a5d98d8a29a57ba2e17`，按构建提交Git blob和包内实际字节核对。
+
+EXE使用隔离home、PATH仅Windows System32，通过内嵌Node22.19.0/Python3.13.2、DPAPI、界面资源及真实官方项目/任务只读自检。包内源码在官方Windows x64 26.903.9818.0/PID30692对用户问题长任务取得官方列表idle及新的匹配owner idle，只有list_threads与owner发现/订阅，没有read_thread或真实发送；20/20接口、23/23功能条件匹配，不等于真实写入往返验证。
+
+隔离0.10.33云包→0.10.34云包的设备保存、升级、强制重启和显式删除通过；现有客户端设备/接入/更新/通知设置及通知草稿文件字节保持。标准发布器八项资源上传逐项读回后公开，再匿名用生产下载函数读取latest双签名清单，按固定v0.10.34完整下载双包及说明，验签、大小和哈希全部一致。构建、下载、上传及匿名核验均首次成功，没有重复派发或重建。
+
+未执行APK/模拟器、升级现有客户端、重启官方应用或向真实任务写入。Chat/Work未完成适配未纳入，官方兼容继续按当前实际接口判断。GITHUB-BUILD.json中的published/liveDesktopTested保留云端产出时的false，不改写已验签资源。
+
+证据在会话`work/release-034/work/`：checks-watch.log、preflight.json、build-dispatch.log、build-watch.log、package-verification.json、packaged-metadata.json、packaged-policy.json、agent-restart.log、installed-data-after.json、release-state.json、online-verification.json。发布记录提交不再次构建。
+
 ## 0.10.33 正式发布（2026-09-11）
 
 [GitHub Release v0.10.33](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.33)已公开，包含超长Codex历史只读分页、独立图片加载及重连后引用刷新。目标Windows接入端与使用的控制端都需更新。8份未完成Chat修改独立保留，未纳入安装包。
