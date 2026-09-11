@@ -50,3 +50,25 @@ export function itemText(item) {
     .map((c) => c.text)
     .join("\n");
 }
+
+// Display only official timestamps. A turn's start is not a message's send time.
+export function messageTime(item, turn) {
+  const recorded = item.bridgeRecordedAt;
+  const recordMs = typeof recorded === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(recorded)
+    ? Date.parse(recorded) : NaN;
+  const turnMs = typeof turn.startedAt === 'number' ? turn.startedAt * 1000 : NaN;
+  const isRecord = Number.isFinite(recordMs);
+  const date = new Date(isRecord ? recordMs : turnMs);
+  if (!Number.isFinite(date.getTime()) || date.getTime() <= 0) return {
+    text: '时间未知', title: '官方记录未提供可用时间', iso: null,
+  };
+  const pad = n => String(n).padStart(2, '0');
+  const text = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return {
+    text: `${isRecord ? '记录于' : '本轮开始'} ${text}`,
+    title: (isRecord ? '官方消息完成记录时间' : '官方仅提供本轮开始时间，并非此条消息的准确发送时间') +
+      '；按当前设备时区显示（' + Intl.DateTimeFormat().resolvedOptions().timeZone + '）',
+    iso: date.toISOString(),
+  };
+}

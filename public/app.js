@@ -12,7 +12,7 @@ import { DeviceSettings, accessSummary } from "./device-settings.mjs";
 import { ThreadMenu } from "./thread-menu.mjs";
 import { ApprovalsUI } from "./approvals-ui.mjs";
 import { QuestionsUI } from "./questions-ui.mjs";
-import { questionReply, userContent } from "./message-content.mjs";
+import { questionReply, userContent, messageTime } from "./message-content.mjs";
 import { mergeTurns, overlaps } from "./conversation-history.mjs";
 import { Reconnector } from "./reconnect.mjs";
 import { clipboardImages } from "./clipboard-images.mjs";
@@ -1580,6 +1580,17 @@ function displayTurns() {
       const n = renderItem(item, t.id, previousItems.get(t.id + ':' + item.id));
       if (n) {
         n.dataset.itemId = item.id;
+        const time = messageTime(item, t);
+        let stamp = n.querySelector('.message-time');
+        if (!stamp) {
+          stamp = node('time', 'message-time');
+          (n.querySelector('.message-actions') ?? n).append(stamp);
+        }
+        // Update metadata separately so a corrected timestamp keeps loaded images.
+        stamp.textContent = time.text;
+        stamp.title = time.title;
+        if (time.iso) stamp.dateTime = time.iso;
+        else stamp.removeAttribute('datetime');
         wrapper.append(n);
       }
     }

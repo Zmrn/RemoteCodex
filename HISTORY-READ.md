@@ -1,5 +1,9 @@
 # 部分历史优先显示 · 0.10.16
 
+## 2026-09-11 消息时间显示（源码未发布）
+
+共享会话页现在常驻显示每条消息的时间。超长历史分段读取保留已核对 `item_completed` 的官方 `timestamp`，标为“记录于”；其他消息只有整轮 `startedAt` 时明确标为“本轮开始”。按当前控制端时区显示，不使用本地观察时间补造，详见 MESSAGE-TIMES.md。本次源码未打包。
+
 ## 0.10.34 已发布（2026-09-11）
 
 下述发送准备与文件流关闭修复已随GitHub Build34550835116正式发布至[v0.10.34](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.34)。包内源码对实际长任务只读确认官方列表与新的owner状态匹配，无read_thread或任务写入。原签名、包内容和隔离升级数据保护通过；未执行APK或升级现有客户端。请同时更新目标Windows接入端及Windows/Android控制端；完整范围见GITHUB-UPDATES.md。下面未发布描述为开发阶段记录。

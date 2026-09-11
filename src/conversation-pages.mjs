@@ -165,6 +165,7 @@ export function compactConversation(data) {
       ...turn,
       items: (turn.items ?? []).flatMap((item) => {
         const base = { id: item.id, type: item.type, status: item.status,
+          ...(typeof item.bridgeRecordedAt === 'string' ? {bridgeRecordedAt:item.bridgeRecordedAt} : {}),
           ...(Number.isSafeInteger(item.bridgeItemIndex)?{bridgeItemIndex:item.bridgeItemIndex}:{}) };
         const display = item.bridgeDisplay;
         switch (item.type) {

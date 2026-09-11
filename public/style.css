@@ -529,7 +529,8 @@ body[data-mode="chat"] .composer-footnote { line-height: 1.5; }
 }
 .user-message {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
   margin: 3px 0 31px;
 }
 .user-message .message-body {
@@ -634,6 +635,7 @@ body[data-mode="chat"] .composer-footnote { line-height: 1.5; }
 }
 .message-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 3px;
   margin-top: 12px;
@@ -649,13 +651,16 @@ body[data-mode="chat"] .composer-footnote { line-height: 1.5; }
   height: 16px;
 }
 .message-time {
+  display: block;
   font-size: 11px;
+  font-weight: normal;
+  line-height: 1.5;
   color: var(--muted);
-  margin-left: 5px;
-  opacity: 0;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
 }
-.message:hover .message-time {
-  opacity: 1;
+.message-actions .message-time {
+  margin: 0 0 0 5px;
 }
 .result-card {
   margin: 16px 0;

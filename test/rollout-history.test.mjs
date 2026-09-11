@@ -7,6 +7,7 @@ import { RolloutHistory } from '../src/rollout-history.mjs';
 import { MessageMedia } from '../src/message-media.mjs';
 import { ConversationPages, compactConversation } from '../src/conversation-pages.mjs';
 import { mergeTurns } from '../public/conversation-history.mjs';
+import { messageTime } from '../public/message-content.mjs';
 import { readOfficialHistory } from '../src/history-read.mjs';
 import { Bridge } from '../src/bridge.mjs';
 import { EventEmitter } from 'node:events';
@@ -40,10 +41,24 @@ test('large raw payload does not block bounded text pages or copy images into th
    cursor=page.data.page.nextCursor; if(cursor)page=await pages.read(id,cursor,read);
  } while(cursor);
  assert.equal(turns[0].items.length,91); assert.equal(new Set(turns[0].items.map(i=>i.id)).size,91);
+ assert.ok(turns[0].items.every(i=>i.bridgeRecordedAt==='2026-09-10T12:00:00Z'));
+ assert.ok(turns[0].items.every(i=>messageTime(i,turns[0]).iso==='2026-09-10T12:00:00.000Z'));
  const image=turns[0].items.find(i=>i.id==='picture').bridgeDisplay.images[0];
  assert.equal(s.media.read(id,image.id).type,'image/png');
  assert.throws(()=>s.media.read(b,image.id),/图片未出现/);
  assert.equal(s.media.inlineBytes,0);
+});
+test('display times distinguish official completed records from turn starts and never use the observation time',()=>{
+ const turn={startedAt:Date.parse('2026-09-10T11:00:00Z')/1000};
+ const time=messageTime({bridgeRecordedAt:'2026-09-10T20:00:00+08:00'},turn);
+ assert.equal(time.iso,'2026-09-10T12:00:00.000Z');assert.match(time.text,/^记录于 /);
+ for(const value of [undefined,null,0,'bad','2026-09-10T12:00:00']){
+  const fallback=messageTime({bridgeRecordedAt:value},turn);
+  assert.equal(fallback.iso,'2026-09-10T11:00:00.000Z');assert.match(fallback.text,/^本轮开始 /);
+ }
+ for(const startedAt of [undefined,null,0,-1,NaN,Infinity,1e20,'2026-09-10']){
+  assert.equal(messageTime({}, {startedAt,observedAt:Date.now(),updatedAt:Date.now()}).iso,null);
+ }
 });
 test('changed official files invalidate both older cursors and lazy image references',async t=>{
  const s=setup(t,[...Array.from({length:55},(_,n)=>item(n)),record({type:'item_completed',thread_id:id,turn_id:a,item:{type:'Extension',kind:'image_gen.generation',id:'picture',result:png}})]);

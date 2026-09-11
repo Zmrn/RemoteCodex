@@ -157,7 +157,8 @@ export class RolloutHistory {
       if (typeof p.item.id !== 'string' || !p.item.id || p.item.id.length > 256) throw Error('官方历史消息身份无法确认');
       if (++items > spec.maxItems) throw Error('官方历史索引超过安全上限');
       const { offset, length, digest } = record;
-      turn.entries.set(p.item.id, { offset, length, digest, itemId:p.item.id, turnId:p.turn_id });
+      turn.entries.set(p.item.id, { offset, length, digest, itemId:p.item.id, turnId:p.turn_id,
+        recordedAt: typeof value.timestamp === 'string' ? value.timestamp : undefined });
     }
     current();
     if (!meta || stamp(await fsp.stat(file, { bigint:true })) !== signature) throw changed();
@@ -207,7 +208,7 @@ export class RolloutHistory {
       page:{ order:'newest_first', nextCursor, hasMore:!!nextCursor }, bridgeHistoryFallback:true };
   }
   item(index, entry, raw, threadId, media, check) {
-    const images = [], base = { id:raw.id, status:'history' };
+    const images = [], base = { id:raw.id, status:'history', bridgeRecordedAt:entry.recordedAt };
     const source = {file:index.file,stamp:index.stamp}, revision = index.revision;
     const lazy = (field, name) => {
       const ref = media.addDeferred(threadId, revision + ':' + entry.offset + ':' + field, () => {
