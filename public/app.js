@@ -1089,6 +1089,10 @@ function renderAgents() {
   }
 }
 function renderThreads() {
+  for(const link of $('messages').querySelectorAll('[data-created-thread-id]')) {
+    const title=threads.find(t=>t.id===link.dataset.createdThreadId)?.title;
+    link.textContent=title?'打开任务 · '+title:'打开新任务';
+  }
   if (pendingCreated?.generation === generation && threads.some(t => t.id === pendingCreated.id)) pendingCreated = null;
   const synchronizing = pendingCreated?.generation === generation;
   $('thread-list-sync').hidden = !synchronizing;
@@ -1524,7 +1528,13 @@ function renderItem(item, turnId, previous) {
   box.renderSignal = taskReads.signal;
   const body = node("div", "message-body");
   if (user) body.textContent = text ?? "";
-  else body.append(markdown(text, { images: reuse }));
+  else {
+    const a=agentId,g=generation,epoch=viewEpoch;
+    body.append(markdown(text, { images: reuse, openThread: mode==='codex' ? id=>{
+      if(a!==agentId || g!==generation || epoch!==viewEpoch || mode!=='codex') return;
+      selectThread(id).catch(error);
+    } : undefined }));
+  }
   for (const ref of refs) body.append(messageImage(ref, reuse));
   for (const file of item.bridgeDisplay?.files ?? []) {
     const button = node("button", "attachment-chip file-download", file.name);
@@ -1817,7 +1827,8 @@ async function readTask(job, older) {
     if (r.notModified && !older && taskData) {
       readFailures = 0;
       clearError();
-      if (r.reportReceipt !== undefined) visibleReport = r.reportReceipt ? { ...r.reportReceipt, a, id, g } : null;
+      if (r.reportReceipt !== undefined) visibleReport = r.reportReceipt ? { ...r.reportReceipt, a, id, g }
+        : r.currentReportToken && r.currentReportToken===visibleReport?.token ? visibleReport : null;
       checkVisibleReport();
       return;
     }
@@ -1843,7 +1854,8 @@ async function readTask(job, older) {
     } else if (pageProtocol === "items-v1" && !intersects) gapCursor ??= next;
     if (!older) {
       headHash = r.headHash ?? null;
-      visibleReport = r.reportReceipt ? { ...r.reportReceipt, a, id, g } : null;
+      visibleReport = r.reportReceipt ? { ...r.reportReceipt, a, id, g }
+        : r.currentReportToken && r.currentReportToken===visibleReport?.token ? visibleReport : null;
       taskData = { ...r.data, live: r.live };
       modelSettings(r.live?.state);
     }
@@ -1858,9 +1870,11 @@ async function readTask(job, older) {
     const anchor = captureMessageAnchor();
     turns = mergeTurns(turns, r.data.turns, !!older);
     if (older) {
+      if(r.reportReceipt) visibleReport={...r.reportReceipt,a,id,g};
       $("older").hidden = !cursor && !historyFailure;
       displayTurns();
       restoreMessageAnchor(anchor);
+      checkVisibleReport();
       return;
     }
     const entry = threads.find((t) => t.id === id);

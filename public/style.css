@@ -3095,3 +3095,6 @@ dialog textarea,
 .thread-rename-dialog h2{font-size:19px;margin:0 0 12px}.thread-rename-dialog input{width:100%;box-sizing:border-box;padding:12px;margin:12px 0;border:1px solid #425670;border-radius:10px;background:#0f1722;color:#e5ecf7}
 .thread-rename-actions{display:flex;gap:8px;justify-content:flex-end}.thread-rename-actions button{padding:10px 20px;border-radius:10px}.thread-rename-dialog::backdrop{background:#0008}
 #thread-list-sync{margin:10px 14px;padding:10px;border-radius:10px;background:#202e40;line-height:1.6}
+.created-thread-link {display:inline-flex;align-items:center;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface-raised);color:inherit;max-width:100%;text-align:left;cursor:pointer}
+.created-thread-link:not(:disabled)::after {content:'↗';margin-left:14px;color:var(--accent)}
+.created-thread-link:disabled {opacity:.65;cursor:default}

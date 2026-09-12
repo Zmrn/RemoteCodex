@@ -13,6 +13,7 @@ function fixture() {
   const bridge = { requireConnection() {}, live: new Map([[id, { state, owner }]]),
     desktop: { owner: async () => ({ handledByClientId: owner }), call: async () => structuredClone(data),
       ipc: { broadcast(...args) { sent.push(args); mark = false; } } } };
+  bridge.follow=async()=>{const o=await bridge.desktop.owner();bridge.live.set(id,{state,owner});return o;};
   const context = { identity: { kind: 'chatgpt', accountId: 'fixture-account', userId: 'fixture-user' }, executionHostKey: 'fixture-host' };
   const reader = { supported: () => true, context: async () => context, marked: async () => mark };
   return { data, state, bridge, sent, reader, token: reportReceipt(data).token,
@@ -26,9 +27,9 @@ test('same idle latest report and verified owner notify official context once an
   assert.ok(!JSON.stringify(f.sent).includes('fixture response')); assert.ok(!JSON.stringify(f.sent).includes(f.token));
 });
 test('old reports, active turns, owner replacement and history lag never dispatch a clear', async () => {
-  for (const change of [f => { f.data.turns[0].items[0].text = 'new report'; },
+  for (const change of [f => { f.state.turnHistory.history.entitiesByKey.turn.items[0].text = 'new report'; },
     f => { f.state.threadRuntimeStatus.type = 'active'; },
-    f => { f.bridge.live.get(id).owner = 'replacement'; },
+    f => { f.bridge.desktop.owner=async()=>({handledByClientId:'replacement'}); },
     f => { f.state.turnHistory.history.entitiesByKey.new = { turnId: 'new', turnStartedAtMs: 2000, status: 'completed', items: [{ id: 'new', type: 'agentMessage', text: 'new' }] }; },
     f => { f.data.thread.kind = 'chatgpt'; }]) {
     const f = fixture(); change(f); await markOfficialReportRead(f.bridge, id, f.token, f.options); assert.equal(f.sent.length, 0);
@@ -68,9 +69,9 @@ test('empty or stale history items use the same authoritative owner report as th
   }
 });
 
-test('an owner-deleted report or newer history turn cannot clear the viewed older report', async () => {
+test('an owner-deleted report or newer owner turn cannot clear the viewed older report', async () => {
   for (const change of [f => { f.state.turnHistory.history.entitiesByKey.turn.items = []; },
-    f => { f.data.turns.unshift({ id: 'newer', startedAt: 2, status: 'completed', items: [{ id: 'new', type: 'agentMessage', text: 'new return' }] }); }]) {
+    f => { f.state.turnHistory.history.entitiesByKey.newer={turnId:'newer',turnStartedAtMs:2000,status:'completed',items:[{id:'new',type:'agentMessage',text:'new return'}]}; }]) {
     const f = fixture(); change(f);
     const result = await markOfficialReportRead(f.bridge, id, f.token, f.options);
     assert.equal(result.status, 'unavailable'); assert.equal(result.retryable, true); assert.equal(f.sent.length, 0);

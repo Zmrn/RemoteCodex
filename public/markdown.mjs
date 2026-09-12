@@ -72,7 +72,16 @@ function renderTokens(parent, tokens, citations, depth = 0) {
         break;
       case "br": node = element("br"); break;
       case "hr": node = element("hr"); break;
-      case "paragraph": node = element("p"); children(node); break;
+      case "paragraph": {
+        const reference = /^::created-thread\{(threadId|clientThreadId)="([^"\r\n]{1,160})"\}$/.exec(token.text?.trim()??'');
+        if(reference && (reference[1]==='threadId' ? /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(reference[2]) : /^[\w:-]+$/.test(reference[2]))) {
+          node=element('button',reference[1]==='threadId'?'打开新任务':'新任务正在创建');
+          node.type='button';node.className='created-thread-link';
+          node.disabled=reference[1]!=='threadId' || !citations?.openThread;
+          if(reference[1]==='threadId') {node.dataset.createdThreadId=reference[2];node.onclick=()=>citations.openThread(reference[2]);}
+        } else {node=element('p');children(node);}
+        break;
+      }
       case "heading": node = element("h" + Math.max(1, Math.min(6, token.depth))); children(node); break;
       case "strong": case "em": case "del": node = element(token.type); children(node); break;
       case "blockquote": node = element("blockquote"); children(node); break;
@@ -133,13 +142,13 @@ function renderTokens(parent, tokens, citations, depth = 0) {
 export function inline(parent, text, citations) {
   renderTokens(parent, Lexer.lexInline(String(text ?? ""), options), citations);
 }
-export function markdown(text, { images } = {}) {
+export function markdown(text, { images, openThread } = {}) {
   const root = element("div"); root.className = "markdown";
   const notice = element("details"), summary = element("summary", "来源链接未提供");
   notice.className = "citation-notice";
   notice.id = "citation-sources-" + ++citationViewId;
   notice.append(summary, element("p", missingCitationSource));
-  const citations = { numbers: new Map(), id: notice.id, notice, used: false, images };
+  const citations = { numbers: new Map(), id: notice.id, notice, used: false, images, openThread };
   try { renderTokens(root, Lexer.lex(String(text ?? ""), options), citations); }
   catch {
     // A malformed or deeply nested streamed response must remain readable.

@@ -54,6 +54,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/verify-thread-list-ui.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/verify-thread-sync-read-ui.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/verify-feature-compatibility-ui.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/verify-rollout-history-ui.mjs

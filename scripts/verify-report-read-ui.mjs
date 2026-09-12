@@ -14,7 +14,7 @@ const dir = fs.mkdtempSync(path.join(ROOT, 'work/report-read-ui-'));
 fs.writeFileSync(path.join(dir, 'update-settings.json'), '{"automatic":false}');
 const id = '99999999-9999-4999-8999-999999999999', owner = 'fixture-owner';
 const bridge = new Bridge(dir), checks = [], errors = [];
-let unread = true, reads = 0, sends = 0, ownerFailures = 0, reject = false, rawEmpty = true;
+let unread = true, reads = 0, sends = 0, ownerFailures = 0, reject = false, rawEmpty = true, marking = false;
 const items = [
  { id: 'old', type: 'agentMessage', text: 'EARLIER\n\n' + 'Older content.\n\n'.repeat(50) },
  { id: 'files', type: 'fileChange', changes: [{ path: 'fixture.txt', diff: 'fixture diff' }] },
@@ -38,18 +38,18 @@ bridge.projects = async () => ({ data: { projects: [] } });
 bridge.threads = async () => ({ data: { threads: [{ id, title: 'Report read fixture', kind: 'codex', status: 'idle', hostId: 'local' }] } });
 bridge.models = async () => ({ models: [] }); bridge.usage = async () => ({ status: 'unavailable', weekly: [] });
 bridge.connect = async () => { bridge.connected = true; return bridge.desktop.identity; };
-bridge.follow = async () => { refreshLive(); return {}; };
+bridge.follow = async () => { const result=marking?await bridge.desktop.owner():{handledByClientId:owner}; refreshLive(); return result; };
 bridge.queue.read = () => ({ confirmed: true, revision: '1', messages: [], recoveries: [] });
 bridge.disconnect = () => { bridge.connected = false; };
 bridge.taskReports.stateFactory = () => ({ supported: () => true, connect: async () => {}, close() {},
  read: async () => ({ running: false, unread, runtimeKnown: true, readStateKnown: true, unknown: false, stateSource: 'official-owner-snapshot' }) });
 const reader = { supported: () => true, context: async () => ({ identity: { kind: 'chatgpt', accountId: 'fixture', userId: 'fixture' }, executionHostKey: 'fixture' }), marked: async () => unread };
-bridge.markOfficialReportRead = async (thread, token) => { reads++; return markOfficialReportRead(bridge, thread, token, { reader, sleep: async () => {}, attempts: 1 }); };
+bridge.markOfficialReportRead = async (thread, token) => { reads++; marking=true;try{return await markOfficialReportRead(bridge, thread, token, { reader, sleep: async () => {}, attempts: 1 });}finally{marking=false;} };
 const app = await startServer({ port: 0, bridge });
 const browser = await chromium.launch({ executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true });
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function open(width, outcome = 'success') {
- unread = true; reads = sends = 0; ownerFailures = outcome === 'retry' ? 1 : outcome === 'exhaust' ? 100 : 0;
+ unread = true; reads = sends = 0; ownerFailures = 0;
  reject = outcome === 'unconfirmed'; refreshLive();
  const context = await browser.newContext({ viewport: { width, height: 800 } }), page = await context.newPage();
  page.on('pageerror', e => errors.push(e.message));
@@ -63,6 +63,7 @@ async function open(width, outcome = 'success') {
  await page.goto(app.address + '/?thread=' + id);
  await page.locator('[data-item-id="report"] .message-body').waitFor();
  await page.locator('.thread-dot.unread').waitFor({ state: 'attached' });
+ ownerFailures = outcome === 'retry' ? 1 : outcome === 'exhaust' ? 100 : 0;
  return { context, page };
 }
 async function showReplyEnd(page, focus = true) {

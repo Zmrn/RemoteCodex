@@ -19,6 +19,8 @@ import { TaskReports } from "./task-reports.mjs";
 import { DurableJson } from "./durable-json.mjs";
 import { markOfficialReportRead } from "./official-report-read.mjs";
 import { resolveOfficialHome } from "./official-read-state.mjs";
+import { readOfficialThreadIndex, supplementOfficialThreads } from './official-thread-index.mjs';
+import { visibleOwnerReport, ownerReport } from './visible-report.mjs';
 import { renameThread } from "./thread-titles.mjs";
 import { SubscriptionLeases } from "./subscriptions.mjs";
 import { answerApproval } from "./approvals.mjs";
@@ -385,14 +387,18 @@ export class Bridge extends EventEmitter {
   }
   async threads(limit = 50, options) {
     this.requireConnection();
-    const desktop = this.desktop;
-    const data = await desktop.call(TOOLS.listThreads, { limit: Math.min(limit, 50) }, undefined, options);
+    const desktop = this.desktop, identity = desktop.identity, home = this.officialDataHome();
+    const [data,index] = await Promise.all([
+      desktop.call(TOOLS.listThreads, { limit: Math.min(limit, 50) }, undefined, options),
+      readOfficialThreadIndex(home),
+    ]);
     this.requireConnection();
-    if (desktop !== this.desktop) throw Error('列表读取期间官方连接已变化，请重新读取');
+    if (desktop !== this.desktop || identity!==desktop.identity || home!==this.officialDataHome()) throw Error('列表读取期间官方连接已变化，请重新读取');
+    const view = supplementOfficialThreads(data,index,limit);
     return {
-      source: "official-desktop-tool-live",
+      source: view===data ? "official-desktop-tool-live" : "official-desktop-tool-live + official-local-index",
       observedAt: new Date().toISOString(),
-      data,
+      data: view,
     };
   }
   async read(id, cursor, { compact = false } = {}) {
@@ -405,7 +411,7 @@ export class Bridge extends EventEmitter {
     const fallback = compact ? async ({cursor:diskCursor,beforeTurnId}) => {
       check(); const home = this.officialDataHome();
       if (!home) throw Error('官方读取接口未能返回历史，且无法确认官方本机历史目录；当前内容已保留');
-      const list = await desktop.call(TOOLS.listThreads,{limit:50}); check();
+      const {data:list} = await this.threads(50); check();
       const thread = [...(list.pinnedThreads??[]),...(list.threads??[])].find(t=>t.id===id);
       if (!thread || thread.kind !== 'codex' || thread.hostId !== OFFICIAL.discovery.hostId) throw Error('官方读取接口未能返回历史，无法确认此任务的本机来源；当前内容已保留');
       return this.rolloutHistory.read({home,thread,cursor:diskCursor,beforeTurnId,media:this.media,check});
@@ -414,8 +420,10 @@ export class Bridge extends EventEmitter {
     this.requireConnection();
     if (desktop !== this.desktop) throw Error("Viewer connection changed during read");
     if (data.bridgeHistoryFallback) {
+      const report=visibleOwnerReport(data,this.live.get(id));
       const view = compactConversation(this.media.decorate(id,data,{externalImages:true}));
-      return {source:'official-local-rollout-read-only',readNotice,reportReceipt:null,observedAt:new Date().toISOString(),data:view,
+      return {source:'official-local-rollout-read-only',readNotice,reportReceipt:report?this.taskReports.observe(report.data):null,observedAt:new Date().toISOString(),data:view,
+        currentReportToken:ownerReport(data.thread,this.live.get(id)?.state)?.receipt.token??null,
         live:this.live.has(id)?{...this.live.get(id),status:runtimeStatus(this.live.get(id).state,this.connected)}:null};
     }
     if (data.thread?.kind === "chatgpt") {
@@ -483,7 +491,7 @@ export class Bridge extends EventEmitter {
       )
       .digest("hex");
     return known === headHash
-      ? { notModified: true, headHash, observedAt: result.observedAt, reportReceipt: result.reportReceipt }
+      ? { notModified: true, headHash, observedAt: result.observedAt, reportReceipt: result.reportReceipt, currentReportToken: result.currentReportToken }
       : { ...result, headHash };
   }
   async once(key, operation, payload, fn, { deferredDispatch = false } = {}) {

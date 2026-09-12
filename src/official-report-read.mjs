@@ -1,12 +1,12 @@
-import { OFFICIAL, TOOLS, protocolBroadcast } from './official-protocol.mjs';
+import { OFFICIAL, protocolBroadcast } from './official-protocol.mjs';
 import { OfficialReadState } from './official-read-state.mjs';
-import { reportReceipt } from './task-reports.mjs';
-import { mergeLiveTurnItems, liveTurns } from './state.mjs';
+import { readCodexThreadMetadata } from './thread-metadata.mjs';
+import { ownerReport } from './visible-report.mjs';
 
 // User-triggered receipt synchronization only. No disk writes, task messages,
 // UI automation, automatic reconnection or replay of an uncertain notification.
 export async function markOfficialReportRead(bridge, id, token, { reader = new OfficialReadState(bridge.desktop),
-  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), attempts = 20 } = {}) {
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), attempts = 20, snapshotAttempts = 40 } = {}) {
   const desktop = bridge.desktop, identity = desktop.identity;
   const current = () => { bridge.requireConnection(); if (desktop !== bridge.desktop || identity !== desktop.identity) throw Error('Connection changed'); };
   let dispatched = false;
@@ -19,18 +19,15 @@ export async function markOfficialReportRead(bridge, id, token, { reader = new O
     const marked = await reader.marked(context, id); current();
     if (marked === null) return result('unavailable');
     if (!marked) return result('already-read');
-    const owner = await desktop.owner(id); current();
-    const data = await desktop.call(TOOLS.readThread, { threadId: id, hostId: OFFICIAL.discovery.hostId,
-      turnLimit: 1, includeOutputs: false, maxOutputCharsPerItem: 0 }, undefined, { timeoutMs: 4000 });
+    const {thread} = await readCodexThreadMetadata(desktop,id,current);
+    const previous = bridge.live?.get(id), owner = await bridge.follow(id); current();
+    for(let i=0;i<snapshotAttempts && bridge.live?.get(id)===previous;i++) { await sleep(100); current(); }
     current();
-    if (data.thread?.id !== id || data.thread?.kind !== 'codex' || data.thread?.status?.type !== 'idle')
-      return result('report-changed');
     const matches = () => {
       current();
       const live = bridge.live?.get(id);
-      return live?.owner === owner.handledByClientId && live.state?.id === id &&
-        live.state.threadRuntimeStatus?.type === 'idle' && liveTurns(live.state).at(-1)?.status === 'completed' &&
-        reportReceipt(mergeLiveTurnItems(data, live.state))?.token === token;
+      return live && live!==previous && live.owner === owner.handledByClientId &&
+        ownerReport(thread,live.state)?.receipt.token === token;
     };
     // Check the current stream immediately before dispatch. There is no await
     // between this guard and the notification. The official receiver separately

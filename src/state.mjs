@@ -32,7 +32,7 @@ export function mergeLiveTurnItems(
   if (!Array.isArray(data.turns) || !state) return data;
   if (state.id && data.thread?.id && state.id !== data.thread.id) return data;
   const live = new Map(
-    Object.values(state.turnHistory?.history?.entitiesByKey ?? {})
+    (state.turnHistory?.history?.entitiesByKey ? Object.values(state.turnHistory.history.entitiesByKey) : state.turns ?? [])
       .filter((t) => t.turnId)
       .map((t) => [t.turnId, t]),
   );

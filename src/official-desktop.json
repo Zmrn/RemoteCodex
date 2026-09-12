@@ -70,6 +70,16 @@
     "queueKey": "queued-follow-ups",
     "sessionIndexFile": "session_index.jsonl",
     "source": "official-disk, read-only; not live-state proof",
+    "threadIndex": {
+      "file": "state_5.sqlite",
+      "assignmentsKey": "thread-project-assignments",
+      "projectlessKey": "projectless-thread-ids",
+      "maxGlobalBytes": 8388608,
+      "maxRows": 50,
+      "sources": ["vscode", "cli", "exec"],
+      "columns": ["id", "name", "title", "preview", "cwd", "updated_at", "source", "is_pinned", "archived"],
+      "rule": "Supplement missing display rows from the current verified official home, read-only SQLite snapshot plus explicit official sidebar membership; no runtime/unread inference or write authorization."
+    },
     "rolloutHistory": {
       "directories": [
         "sessions",
