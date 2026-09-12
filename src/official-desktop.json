@@ -71,7 +71,10 @@
     "sessionIndexFile": "session_index.jsonl",
     "source": "official-disk, read-only; not live-state proof",
     "rolloutHistory": {
-      "directories": ["sessions", "archived_sessions"],
+      "directories": [
+        "sessions",
+        "archived_sessions"
+      ],
       "format": "session_meta + event_msg/item_completed",
       "consumer": "src/rollout-history.mjs",
       "test": "test/rollout-history.test.mjs",
@@ -380,6 +383,23 @@
       "purpose": "用户处理浏览器网站访问授权；不扩大为任意 MCP 表单或所有网站授权",
       "consumer": "src/approvals.mjs:answerApproval",
       "test": "test/approvals.test.mjs"
+    },
+    "commandApproval": {
+      "method": "thread-follower-command-approval-decision",
+      "version": 1,
+      "request": [
+        "conversationId",
+        "requestId",
+        "decision"
+      ],
+      "response": [
+        "handledByClientId",
+        "result.method",
+        "result.result.ok"
+      ],
+      "purpose": "响应官方终端命令审批：拒绝、一次及请求提供的命令前缀规则",
+      "consumer": "src/approvals.mjs:answerApproval",
+      "test": "test/command-approvals.test.mjs"
     }
   },
   "events": {
@@ -426,6 +446,20 @@
       ],
       "consumer": "src/approvals.mjs:pendingApprovals",
       "test": "test/approvals.test.mjs"
+    },
+    "commandApproval": {
+      "method": "item/commandExecution/requestApproval",
+      "fields": [
+        "id",
+        "params.threadId",
+        "params.turnId",
+        "params.itemId",
+        "params.command",
+        "params.cwd",
+        "params.reason",
+        "params.proposedExecpolicyAmendment"
+      ],
+      "consumer": "src/approvals.mjs:approvalView"
     }
   },
   "structures": {
@@ -724,6 +758,16 @@
         "owner",
         "following",
         "readStateChanged"
+      ]
+    },
+    "commandApproval": {
+      "label": "终端命令审批",
+      "requires": [
+        "initialize",
+        "readThread",
+        "owner",
+        "following",
+        "commandApproval"
       ]
     }
   }

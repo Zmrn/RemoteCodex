@@ -46,6 +46,7 @@ Chat：列表/历史读取；文字续写待专用真实会话验证；新建/�
 | thread-follower-start-turn | 2 | 空闲任务中启动下一轮 | conversationId, turnStart.request.threadId, turnStart.request.input, turnStart.request.clientUserMessageId | handledByClientId, result.result.turn.id | src/bridge.mjs:nativeSend | test/multi-images.test.mjs |
 | thread-read-state-changed | 3 | 用户读到当前回报后通知官方清除未读标记；broadcast，无逐轮条件回执 | hostId, conversationId, hasUnreadTurn, context.identity, context.executionHostKey |  | src/official-report-read.mjs | test/official-report-read.test.mjs |
 | thread-follower-submit-mcp-server-elicitation-response | 1 | 用户处理浏览器网站访问授权；不扩大为任意 MCP 表单或所有网站授权 | conversationId, requestId, response | handledByClientId, result.result.ok | src/approvals.mjs:answerApproval | test/approvals.test.mjs |
+| thread-follower-command-approval-decision | 1 | 响应官方终端命令审批：拒绝、一次及请求提供的命令前缀规则 | conversationId, requestId, decision | handledByClientId, result.method, result.result.ok | src/approvals.mjs:answerApproval | test/command-approvals.test.mjs |
 
 ## 功能与所需接口
 
@@ -76,6 +77,7 @@ Chat：列表/历史读取；文字续写待专用真实会话验证；新建/�
 | 网站访问授权 | initialize, readThread, owner, following, mcpElicitation |
 | 实时状态、未读统计和通知 | initialize, owner, following |
 | 同步官方已读 | initialize, readThread, owner, following, readStateChanged |
+| 终端命令审批 | initialize, readThread, owner, following, commandApproval |
 
 ## 事件和依赖结构
 
@@ -85,6 +87,7 @@ Chat：列表/历史读取；文字续写待专用真实会话验证；新建/�
 | thread-queued-followups-changed | conversationId, messages | src/queue.mjs:frame |
 | item/tool/requestUserInput | id, params.questions | src/bridge.mjs:answerQuestions, public/app.js |
 | mcpServer/elicitation/request | id, params.threadId, params.turnId, params.serverName, params.mode, params.message, params.requestedSchema, params._meta | src/approvals.mjs:pendingApprovals |
+| item/commandExecution/requestApproval | id, params.threadId, params.turnId, params.itemId, params.command, params.cwd, params.reason, params.proposedExecpolicyAmendment | src/approvals.mjs:approvalView |
 
 | 结构 | 字段 | 适配位置 | 约束 |
 | --- | --- | --- | --- |

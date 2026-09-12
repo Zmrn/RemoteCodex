@@ -10,7 +10,7 @@ export function conversationView(result) {
     live: {
       ...result.live,
       activeTurnId: activeTurnId(state),
-      state: { approvals: pendingApprovals(state), ...Object.fromEntries(
+      state: { approvals: pendingApprovals(state), commandApprovals: pendingApprovals(state, 'command'), ...Object.fromEntries(
         [
           "latestThreadSettings",
           "latestModel",

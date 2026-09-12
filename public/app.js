@@ -556,13 +556,15 @@ const questionUI = new QuestionsUI(async (context, payload) => {
     setTimeout(() => read(), 250);
 }, scheduleDraftBackup);
 const approvalContextCurrent = context => mode === 'codex' && context.agent === agentId && context.id === selected && context.epoch === viewEpoch;
+const activeApprovals = () => [...(liveSettingsState?.approvals ?? []), ...(liveSettingsState?.commandApprovals ?? [])];
+const approvalWritable = kind => (kind === 'command' ? status.commandApprovals : status.browserApprovals)?.supported === true;
 const approvalUI = new ApprovalsUI({
   submit: async (context, payload) => {
-    const current = () => approvalContextCurrent(context) && status.connected && status.browserApprovals?.supported === true &&
-      liveSettingsState?.approvals?.some(a => a.requestId === payload.approvalRequestId && a.token === payload.token);
+    const current = () => approvalContextCurrent(context) && status.connected && approvalWritable(context.approvalKind) &&
+      activeApprovals().some(a => a.requestId === payload.approvalRequestId && a.token === payload.token && (a.kind ?? 'browser') === context.approvalKind);
     if (!current()) return { status: 'not-sent', error: '设备、连接或授权请求已变化，请刷新。' };
     let j;
-    try { j = await journal(context.agent, context.id, 'browser-approval:' + payload.approvalRequestId, payload); }
+    try { j = await journal(context.agent, context.id, context.approvalKind + '-approval:' + payload.approvalRequestId, payload); }
     catch { return { status: 'not-sent', error: '无法保存防重复提交记录，请检查本地存储。' }; }
     if (!current()) return { status: 'not-sent', error: '查看目标已变化，授权未发送。' };
     return agentApi(context.agent, '/threads/' + context.id + '/approvals', { ...payload, requestId: j.id });
@@ -1679,8 +1681,8 @@ function displayTurns() {
     }
     incoming.append(wrapper);
   }
-  if (mode === 'codex') for (const approval of liveSettingsState?.approvals ?? []) incoming.append(approvalUI.card(approval, {
-    agent: agentId, id: selected, epoch: viewEpoch, connected: status.connected, writable: status.browserApprovals?.supported === true,
+  if (mode === 'codex') for (const approval of activeApprovals()) incoming.append(approvalUI.card(approval, {
+    agent: agentId, id: selected, epoch: viewEpoch, connected: status.connected, approvalKind: approval.kind ?? 'browser', writable: approvalWritable(approval.kind),
   }));
   reconcileMessages($("messages"), [...incoming.children]);
   for (const box of $("messages").querySelectorAll('.message-image'))

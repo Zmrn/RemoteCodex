@@ -5,16 +5,28 @@ export class ApprovalsUI {
   key(context, approval) { return [context.agent, context.id, approval.requestId, approval.token].join(':'); }
   card(approval, context) {
     const key = this.key(context, approval), card = node('section', '', 'approval-card');
-    card.dataset.approvalId = approval.requestId; card.setAttribute('aria-label', approval.supported ? '浏览器访问授权' : '工具授权');
-    card.append(node('small', approval.supported ? 'Browser · 等待授权' : '工具 · 等待授权', 'field-help'), node('h3', approval.supported ? '允许访问这个网站？' : '待处理的工具授权'));
+    const command = approval.kind === 'command';
+    card.dataset.approvalId = approval.requestId; card.setAttribute('aria-label', command ? '终端命令审批' : approval.supported ? '浏览器访问授权' : '工具授权');
+    card.append(node('small', command ? '终端 · 等待审批' : approval.supported ? 'Browser · 等待授权' : '工具 · 等待授权', 'field-help'),
+      node('h3', command ? '允许执行这条命令？' : approval.supported ? '允许访问这个网站？' : '待处理的工具授权'));
     if (approval.origin) card.append(node('code', approval.origin, 'approval-origin'));
     if (approval.reason) card.append(node('p', approval.reason));
     if (approval.message) card.append(node('p', approval.message, 'field-help'));
+    if (command && approval.command) {
+      const code = node('pre', '', 'approval-command'); code.append(node('code', approval.command)); card.append(code);
+      if (approval.cwd) card.append(node('p', '工作目录：' + approval.cwd, 'field-help'));
+      if (approval.prefix) {
+        const scope = node('div', '', 'approval-scope'); scope.append(node('small', '同前缀命令的授权范围', 'field-help'));
+        scope.append(node('p', '允许类似命令会同时授权以下前缀匹配的命令；仅执行当前命令请选择“允许一次”。', 'field-help'),
+          node('pre', JSON.stringify(approval.prefix), 'approval-command')); card.append(scope);
+      }
+    }
     const actions = node('div', '', 'approval-actions'), detail = node('p', '', 'approval-status'); detail.setAttribute('role', 'status');
     const prior = this.attempts.get(key);
     card.approvalKey = key;
     card.approvalSignature = JSON.stringify([context.epoch, context.connected, context.writable, approval, prior ?? null]);
-    detail.textContent = !context.connected ? '连接中断，重新连接后再处理。' : !context.writable ? '目标设备尚未支持此授权，请更新目标 Remote Codex。' : prior?.message ?? '';
+    detail.textContent = !context.connected ? '连接中断，重新连接后再处理。' : !context.writable ? '目标设备尚未支持此授权，请更新目标 Remote Codex。'
+      : !approval.supported ? '此请求格式或授权范围尚未支持，请在官方应用中处理。' : prior?.message ?? '';
     for (const decision of approval.decisions ?? []) {
       const button = node('button', approvalLabels[decision], decision === 'once' ? 'approval-primary' : ''); button.type = 'button';
       button.disabled = !context.connected || !context.writable || !!prior?.locked;

@@ -1195,6 +1195,7 @@ export class Bridge extends EventEmitter {
       existingCodexWritable: can('send') || can('resume') || can('create') || can('queue') || can('steer'),
       threadTitles: { rename: can('rename'), kinds: ["codex"] },
       browserApprovals: { supported: can('browserApproval'), source: 'official-desktop-owner-IPC', allSites: false },
+      commandApprovals: { supported: can('commandApproval'), source: 'official-desktop-owner-IPC' },
       storageHealth: [this.stateStore.health],
       taskSummary: { supported: compatibility.features.taskState.supported, schemaVersion: 2, statePolicy: 'official-only', readReceipts: can('readReceipt') },
       interrupt: { supported: can('interrupt'), source: "official-desktop-owner-IPC" },

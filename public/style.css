@@ -3075,6 +3075,9 @@ dialog textarea,
 .approval-card h3{font-size:17px;margin:9px 0 14px;font-weight:600}
 .approval-card p{white-space:pre-wrap;line-height:1.6;margin:10px 0}
 .approval-origin{display:block;color:#bed9ff;font-size:16px;white-space:pre-wrap;overflow-wrap:anywhere}
+.approval-command{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;max-height:260px;overflow:auto;padding:12px;border:1px solid #344b69;border-radius:10px;background:#111924;font:13px/1.65 Consolas,monospace;user-select:text}
+.approval-command code{font:inherit}
+.approval-scope{margin:12px 0}
 .approval-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
 .approval-actions button,.approval-official{padding:10px 14px;border:1px solid #43566d;border-radius:10px;background:#263546;color:#e6edf7;cursor:pointer;white-space:normal}
 .approval-actions .approval-primary{background:#2466b2;border-color:#4389d8}

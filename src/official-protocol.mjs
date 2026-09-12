@@ -78,7 +78,7 @@ export function desktopPolicy(desktop) {
   if (valid && (proof.ipc !== desktop.ipc || desktop.ipc?.socket?.destroyed)) interfaces.initialize = unknown('所有者连接已变化，请重新连接');
   const features = featurePolicy(interfaces);
   return { ...desktopCompatibility(desktop?.identity?.appToolsPipe?.image), policy: 'per-feature-interfaces', interfaces, features,
-    writeSupported: ['send', 'resume', 'create', 'steer', 'queue', 'settings', 'rename', 'browserApproval', 'chatSend'].some(k => features[k].supported) };
+    writeSupported: ['send', 'resume', 'create', 'steer', 'queue', 'settings', 'rename', 'browserApproval', 'commandApproval', 'chatSend'].some(k => features[k].supported) };
 }
 export function requireFeature(desktop, key) {
   const feature = desktopPolicy(desktop).features[key];
