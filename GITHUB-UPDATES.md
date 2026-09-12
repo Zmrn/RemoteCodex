@@ -1,5 +1,26 @@
 # GitHub 直接更新
 
+## 0.10.35 正式发布（2026-09-12）
+
+[GitHub Release v0.10.35](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.35) 已公开。最终版本286项Node22.19.0、接口清单、命令审批UI8组与图片稳定UI6组通过；源码`513b610634112a328d5f7d964d814a62cc562f31`的[Checks34674570785](https://github.com/Zmrn/RemoteCodex/actions/runs/34674570785)成功后，preflight放行，仅派发一次[Build34674760437](https://github.com/Zmrn/RemoteCodex/actions/runs/34674760437)，requestId为`d1056989-3687-4d10-a618-b227dcaa0510`。云端签名前门禁及全部构建步骤首次通过。
+
+本版包含普通终端命令审批和消息日期时间。审批支持一次、拒绝及官方提供的类似前缀规则，显示完整命令和授权范围；以官方待请求为准，ACK不清卡、未知结果不重放。消息时间只取官方字段，按控制端时区显示，时间更新保留正文与图片。请同时更新目标Windows接入端与Windows/Android控制端。未完成Chat工作未纳入。
+
+同次八项产物由标准发布器草稿上传并逐项读回后公开；匿名生产latest双签名清单及固定版本完整EXE/APK、说明下载均核验一致，没有混用或重建。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44162560 | `96c5d226794535cf84944e5ad236aeb1e6befd9cee569279cf1140a0dca8cd1c` |
+| RemoteCodex.apk | 278539 | `0c6aec63ff339be3559d5aa54f9603c7eafa7d0e5e4f61057998f99267ff552e` |
+
+双端RSA更新签名、APK包名`com.anso.remotecodex`/versionCode10035/v2-v3及原证书通过。原APK证书SHA-256仍为`3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`。中央清单SHA-256按提交原始字节及包内核对为`64841e597475442c94e7aa907aee564463ceee84d04e486e671d4cbce60b801b`；双端源码/共享页面/兼容清单/说明/更新渠道一致，包内无本地用户配置或签名私钥。
+
+EXE隔离home、仅System32 PATH下的内嵌运行时、DPAPI和资源检查通过；当前本机官方app-tools管道不可用，包内官方连接验收为未完成，不能用之前官方26.903.9818.0源码只读匹配代替本次包内联通。隔离0.10.34云包源码→0.10.35云包源码的设备保存、强制重启和显式删除检查通过；现有客户端设备、接入、更新、通知设置及通知草稿字节保持。
+
+官方平台为Windows x64；26.901.6511.0/26.903.8094.0是历史行为实测版本，其他版本按运行中实际接口逐功能判断。命令审批在26.903.9818.0开发阶段做过静态协议及真实只读21项接口/24项功能条件匹配，未实际批准请求。普通终端命令外的专用网络策略、文件修改、额外权限与未知选择结构仍交官方处理。Codex核心按接口开放；Chat列表与文字历史保持，续写待专用真实验证，新建/模型/生成图片未完成；Work未独立验证。
+
+本轮未执行APK/模拟器、升级现有客户端、重启官方应用、写真实任务或本地构建，未访问旧服务器。GITHUB-BUILD.json中的published/liveDesktopTested保留云端产出时的值，发布后不改写已验签资源。
+
 ## 0.10.34 正式发布（2026-09-11）
 
 [GitHub Release v0.10.34](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.34) 已公开。最终版本277项Node22.19.0、接口清单和共享图片/历史UI通过，源码`6fd6b7c681d2120371cc15f65692a15ba9a39e7c`的[Checks34550592172](https://github.com/Zmrn/RemoteCodex/actions/runs/34550592172)成功后，只读preflight放行，仅派发一次[Build34550835116](https://github.com/Zmrn/RemoteCodex/actions/runs/34550835116)。requestId为`0bf21bdd-5ed3-4b50-b863-f10f5d1d6d82`，云端签名前门禁及全部构建步骤首次通过。
