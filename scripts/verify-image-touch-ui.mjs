@@ -45,7 +45,19 @@ const snapshot=p=>p.evaluate(()=>{
   toolbar:rect(document.querySelector('.image-viewer-toolbar')),scale:visualViewport.scale,scroll:[scrollX,scrollY],
   underlay:rect(document.querySelector('#underlay')),open:document.querySelector('#image-viewer').open};
 });
-async function open(page){await page.locator('#thumbnail').click();await page.locator('#image-viewer img').evaluate(i=>i.decode());await frame(page);}
+async function open(page){
+ await page.locator('#thumbnail').click();
+ // The viewer replaces the thumbnail's Blob URL with its own retained URL.
+ // decode() against the first URL can reject when that source is replaced.
+ // Wait for the final image's observable load state, including after reopen.
+ await page.waitForFunction(()=>{
+  const dialog=document.querySelector('#image-viewer'),image=dialog?.querySelector('img');
+  return dialog?.open && image?.getAttribute('src')?.startsWith('blob:') && image.getAttribute('src')!==window.fixtureBlob
+   && image.complete && image.naturalWidth===1600 && !image.hidden && !image.classList.contains('image-pending')
+   && !dialog.querySelector('.image-viewer-size').disabled;
+ });
+ await frame(page);
+}
 const touch=(cdp,type,points)=>cdp.send('Input.dispatchTouchEvent',{type,touchPoints:points.map(([id,x,y])=>({id,x,y,radiusX:5,radiusY:5,force:1}))});
 async function pinch(cdp,cx,cy,from,to){
  await touch(cdp,'touchStart',[[1,cx-from,cy],[2,cx+from,cy]]);
