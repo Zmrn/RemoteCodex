@@ -303,10 +303,7 @@ async function checkImagePreview(
     "clicking the image must keep preview open",
   );
   await viewer.locator(".image-viewer-size").click();
-  assert.equal(
-    await viewer.locator("img").evaluate((e) => e.clientWidth),
-    dimensions.naturalWidth,
-  );
+  assert.ok(Math.abs(await viewer.locator("img").evaluate((e) => e.getBoundingClientRect().width) - dimensions.naturalWidth) < 1);
   await viewer.locator(".image-viewer-size").click();
   if (download) {
     const waiting = page.waitForEvent("download");

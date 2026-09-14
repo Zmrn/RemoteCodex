@@ -1,4 +1,5 @@
 import { imageLoadState } from "./image-load-state.mjs";
+import { imageGestures } from "./image-gestures.mjs";
 let viewer;
 
 function createViewer() {
@@ -23,7 +24,8 @@ function createViewer() {
   const canvas = element("div", "image-viewer-canvas");
   const image = element("img");
   image.draggable = false;
-  const loading = imageLoadState(image, { retry: () => {
+  let gestures;
+  const loading = imageLoadState(image, { ready: () => { size.disabled = false; gestures?.measure(); }, failed: () => { size.disabled = true; }, retry: () => {
     const src = image.getAttribute("src");
     if (!src) return;
     loading.loading(); image.removeAttribute("src"); image.src = src;
@@ -35,19 +37,18 @@ function createViewer() {
   document.body.append(dialog);
   let ownedUrl = null,
     sequence = 0;
-  const resize = (original) => {
-    dialog.classList.toggle("original-size", original);
-    size.textContent = original ? "适应窗口" : "原始尺寸";
-    size.setAttribute("aria-pressed", String(original));
-    stage.scrollTo(0, 0);
-  };
-  size.onclick = () => resize(!dialog.classList.contains("original-size"));
-  image.ondblclick = size.onclick;
+  gestures = imageGestures(stage, image, { changed: zoomed => {
+    size.textContent = zoomed ? "适应窗口" : "原始尺寸";
+    size.setAttribute("aria-pressed", String(zoomed));
+  } });
+  size.onclick = () => gestures.toggleSize();
   close.onclick = () => dialog.close();
   stage.onclick = (event) => {
     if (event.target === stage || event.target === canvas) dialog.close();
   };
   const clear = () => {
+    gestures.reset();
+    size.disabled = true;
     if (ownedUrl) URL.revokeObjectURL(ownedUrl);
     ownedUrl = null;
     image.removeAttribute("src");
@@ -60,7 +61,6 @@ function createViewer() {
   return async (src, name, downloadRoute) => {
     const request = ++sequence;
     clear();
-    resize(false);
     title.textContent = name;
     title.title = name;
     image.alt = name;
