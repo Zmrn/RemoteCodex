@@ -1,5 +1,26 @@
 # GitHub 直接更新
 
+## 0.10.36 正式发布（2026-09-14）
+
+[GitHub Release v0.10.36](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.36) 已公开，包含官方自建任务漏列、创建任务卡片和长历史已读同步修复。请同时更新Windows接入端及Windows/Android控制端；未完成Chat改动未纳入。
+
+最终版本290项Node22.19.0、新共享UI3组、原已读UI7组与兼容清单通过，源码`067079f167dea3e4d74447831bc040ba90a23437`的[Checks34832593399](https://github.com/Zmrn/RemoteCodex/actions/runs/34832593399)成功后preflight放行。[Build34832989160](https://github.com/Zmrn/RemoteCodex/actions/runs/34832989160)仅实际派发一次，requestId为`f628bfdc-5c2a-4f23-9271-daba2f331661`。首次入口联网检查报fetch failed，发生在输出requestId和派发前；只读status确认没有新Build，再preflight恢复。云端签名前门禁及构建首次成功，没有重复构建或本地重建。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44167168 | `c6db6ad70c436a02f7ea56065986aeae40049ee06b780813806513f46e647f83` |
+| RemoteCodex.apk | 278539 | `fdec467324e55614f5f1560c1e3c43b4d1a7b161baf77812ea24c178809bb14e` |
+
+双端原RSA更新签名、APK v2/v3与原证书、包名com.anso.remotecodex/versionCode10036、源码/共享页面/兼容清单/发布说明/GitHub更新渠道均核验一致。APK证书SHA-256为`3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`；中央清单SHA-256为`7df1101ddd4a3b422e6026a42fe1aeee318d846234283e234bc5e8f7d75cd392`，按构建提交及包内实际字节核对。包内无用户配置或私钥。
+
+EXE隔离home、PATH仅System32下的内嵌运行时、DPAPI、资源及官方项目/任务只读自检通过。当前官方为Windows x64 **26.908.4834.0 / PID9088**：20/21接口匹配，22/24功能条件满足；官方`thread-follower-update-thread-settings`已从v1升至v2，因此**修改会话设置、新建时指定权限暂不可用**。该接口待后续适配，其余功能按自身依赖判断，不应全局禁用。旧“全部接口匹配”的验收断言失败日志保留，不把本轮标为完全兼容或真实写入实测。
+
+新包的列表读取22项，其中从官方只读索引补5项，包含此前反馈的漏列任务；没有向真实任务发送消息或已读通知。历史26.901.6511.0/26.903.8094.0仍只是既有行为验证记录，其他版本按当前接口判断。Chat列表与文字历史保持，续写待专用真实验证；新建/模型/生成图片和Work的未完成适配未纳入。
+
+隔离0.10.35云包→0.10.36云包的设备保存、强制重启和显式删除通过，现有客户端设备、接入、更新、通知设置及通知草稿字节保持。标准发布器八项资源上传逐项读回后公开，再匿名使用生产更新函数读取latest双签名清单及固定版本完整APK/EXE和说明，全部核验一致。没有执行APK/模拟器、升级现有客户端、重启官方应用或写真实任务。
+
+证据在会话`work/release-036/work/`：checks-watch.log、preflight.json、build-pre-dispatch-network-error.log、dispatch-recovery-status.json、preflight-recovered.json、build-dispatch.log、build-watch.log、package-verification.json、packaged-policy.json、packaged-index.json、agent-restart.log、installed-data-after.json、release-state.json、online-verification.json。发布记录提交不再次构建，已发布资源仍对应上述构建SHA；GITHUB-BUILD.json保留云端产出时的published/liveDesktopTested值，不修改已验签资源。
+
 ## 0.10.35 正式发布（2026-09-12）
 
 [GitHub Release v0.10.35](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.35) 已公开。最终版本286项Node22.19.0、接口清单、命令审批UI8组与图片稳定UI6组通过；源码`513b610634112a328d5f7d964d814a62cc562f31`的[Checks34674570785](https://github.com/Zmrn/RemoteCodex/actions/runs/34674570785)成功后，preflight放行，仅派发一次[Build34674760437](https://github.com/Zmrn/RemoteCodex/actions/runs/34674760437)，requestId为`d1056989-3687-4d10-a618-b227dcaa0510`。云端签名前门禁及全部构建步骤首次通过。
