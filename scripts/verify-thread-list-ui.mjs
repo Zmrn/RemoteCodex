@@ -54,7 +54,18 @@ const until = async fn => { for (let i = 0; i < 500; i++) { if (await fn()) retu
 const card = value => page.locator('.thread-card[data-thread-id="' + value + '"]');
 const menu = () => page.locator('.thread-context-menu');
 const dialog = () => page.locator('.thread-rename-dialog');
-const refresh = async () => { const n = lists; await page.locator('#refresh').click(); await until(() => lists > n); };
+const viewport = async (width, height) => {
+  await page.setViewportSize({ width, height });
+  // Resize returns before the media-query change necessarily runs syncLayout.
+  await until(() => page.locator('body').evaluate((e, mobile) => e.classList.contains('mobile-layout') === mobile, width < 820));
+};
+const sidebar = async open => {
+  if (!await page.locator('body').evaluate(e => e.classList.contains('mobile-layout'))) return;
+  const expanded = await page.locator('#mobile-menu').getAttribute('aria-expanded') === 'true';
+  if (expanded !== open) await page.locator(open ? '#mobile-menu' : '#drawer-close').click();
+  await until(() => page.locator('#sidebar').evaluate((e, visible) => e.inert === !visible, open));
+};
+const refresh = async () => { await sidebar(true); const n = lists; await page.locator('#refresh').click(); await until(() => lists > n); };
 const edit = async value => { await card(value).click({ button: 'right' }); await menu().getByRole('menuitem', { name: '重命名', exact: true }).click(); };
 try {
   await page.goto(address); await card(id).click();
@@ -96,8 +107,8 @@ try {
   await page.locator('#mode-picker').click(); await page.locator('[data-mode="chat"]').click(); await card(chatId).click({ button: 'right' });
   assert.equal(await menu().getByRole('menuitem').isDisabled(), true); await page.keyboard.press('Escape');
   await page.locator('#mode-picker').click(); await page.locator('[data-mode="codex"]').click();
-  await page.setViewportSize({ width: 390, height: 844 });
-  if (!await card(id).isVisible()) await page.locator('#mobile-menu').click();
+  await viewport(390, 844);
+  await sidebar(true);
   await card(id).dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 80, clientY: 180 }); await menu().waitFor();
   await card(id).dispatchEvent('pointerup', { pointerType: 'touch' });
   await menu().getByRole('menuitem', { name: '重命名', exact: true }).click();
@@ -108,8 +119,8 @@ try {
   // Bind the draft assertion to that restored task, not the temporary new view.
   await until(async()=> await card(id).evaluate(e=>e.classList.contains('selected')));
   for (const width of [1300,390]) {
-    await page.setViewportSize({width,height:844});
-    if (!await card(id).isVisible()) await page.locator('#mobile-menu').click();
+    await viewport(width, 844);
+    await sidebar(false);
     await page.locator('#prompt').fill('列表失败时保留的草稿');
     listState='partial'; await refresh();
     await until(async()=> (await page.locator('#thread-list-sync').innerText()).includes('本机索引'));
