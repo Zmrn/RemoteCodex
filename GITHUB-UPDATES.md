@@ -1,5 +1,26 @@
 # GitHub 直接更新
 
+## 0.10.37 正式发布（2026-09-15）
+
+[GitHub Release v0.10.37](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.37) 已公开，包含图片内双指缩放/拖动、官方总列表超时后的部分读取、草稿保留及实际列表诊断。请同时更新目标Windows接入端和Windows/Android控制端；未完成Chat改动未纳入。
+
+最终版本298项Node22.19.0、图片手势4组、列表UI11组、诊断UI9组及接口清单通过。源码`56f22d19900f4dddd9a08f54fbe3aba367518a41`的[Checks34926631879](https://github.com/Zmrn/RemoteCodex/actions/runs/34926631879)全部成功后preflight放行，[Build34926865877](https://github.com/Zmrn/RemoteCodex/actions/runs/34926865877)仅派发一次，requestId为`5ef41f65-bf46-4560-8903-5ad09d767eb6`。同SHA云端签名前门禁及构建首次成功，没有本地构建或重复派发。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44171776 | `06d2fe7708e0210b60f5a8b699ecbb9b934419e536e757fab7d857133845e4ee` |
+| RemoteCodex.apk | 282710 | `f26eb799ed7d1d113fe93358a9bae9e9be9a2c0f18ca4e63982cfcf0252ad623` |
+
+双端原RSA更新签名、APK v2/v3及原证书、包名com.anso.remotecodex/versionCode10037、包内源码/共享UI/发布说明/兼容清单和GitHub更新渠道均核验一致。APK证书SHA-256为`3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`；中央清单SHA-256为`7df1101ddd4a3b422e6026a42fe1aeee318d846234283e234bc5e8f7d75cd392`，与构建提交及包内字节一致。包内没有用户配置或签名私钥。
+
+EXE在隔离home、PATH仅System32下的内嵌Node/Python、DPAPI、资源与官方只读项目/列表自检通过。包内实际连接官方Windows x64 **26.908.4834.0 / PID9088**；21项接口20项匹配、24项功能条件22项满足。官方settings v2仍未适配，**修改会话设置、新建时指定权限暂不可用**；其他功能独立判断。本次只读列表22项、补齐5项，约343ms返回；不是实际发送或审批往返验证，也未在最终包上重新断开公司电脑RDP实测。
+
+官方总列表异常时只从核对过的官方本机索引读取可确认Codex任务，不保存另一份目录、推断蓝点/运行状态或授权写入。Chat完整列表、实时状态和发送仍依赖对应官方接口，不修补官方后台调度。Chat文字续写待专用真实验证，普通Chat新建/模型/生成图片与Work未完成适配未纳入。
+
+隔离0.10.36云包→0.10.37云包的设备保存、强制重启、显式删除通过；现有设备、接入、更新、通知设置及通知草稿字节保持。标准发布器八项资源先上传草稿并逐项读回再公开；随后匿名使用生产更新函数读取latest双签名清单，按固定v0.10.37完整下载APK/EXE与发布说明，全部核验一致。没有执行APK/模拟器、升级现有客户端、重启官方应用或写真实任务。
+
+证据在会话`work/release-037/work/`：all-tests-node22.log、checks-watch.log、preflight.json、build-dispatch.log、build-watch.log、build-jobs.json、package-verification.json、packaged-official.json、agent-restart.log、installed-data-after.json、publish.log、release-state.json、online-verification.json。发布记录提交不再次构建，资源仍对应构建SHA；GITHUB-BUILD.json的published/liveDesktopTested保留云端产出时的值，不改写已验签资源。
+
 ## 0.10.36 正式发布（2026-09-14）
 
 [GitHub Release v0.10.36](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.36) 已公开，包含官方自建任务漏列、创建任务卡片和长历史已读同步修复。请同时更新Windows接入端及Windows/Android控制端；未完成Chat改动未纳入。
