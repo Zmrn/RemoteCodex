@@ -104,6 +104,9 @@ try {
   assert.equal(await dialog().evaluate(e => e.scrollWidth <= e.clientWidth), true); await page.screenshot({ path: path.join(dir, 'rename-mobile.png') });
   checks.push('Chat unsupported action is disabled; touch long press opens the shared rename form within narrow viewport');
   await dialog().getByRole('button', { name: '取消', exact: true }).click();
+  // The sidebar can render before mode restoration selects its previous task.
+  // Bind the draft assertion to that restored task, not the temporary new view.
+  await until(async()=> await card(id).evaluate(e=>e.classList.contains('selected')));
   for (const width of [1300,390]) {
     await page.setViewportSize({width,height:844});
     if (!await card(id).isVisible()) await page.locator('#mobile-menu').click();

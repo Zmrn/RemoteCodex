@@ -12,6 +12,8 @@
 
 复测：`test/thread-list-availability.test.mjs`、原thread-sync-read/thread-metadata/task-reports/review-reliability测试，以及`scripts/verify-thread-list-ui.mjs`的11组界面场景；后者已纳Checks。新增场景覆盖Windows/390px部分列表与错误保留、恢复、Chat与切设备隔离。版本仍0.10.36，未运行APK/模拟器、未打包发布安装；现有.36包不含此源码改动。
 
+首次Checks34917926127的298项Node和此前界面通过，新列表测试在模式恢复尚未选中原任务时填写了临时新会话草稿；随后自动回到原任务，触发测试的输入框断言。测试现在先等待原任务被正式选中，再验证列表错误前后同一任务的草稿，保留原断言；生产代码不因该测试时序而变动。
+
 ## 2026-09-12：官方创建任务漏列及创建卡片
 
 真实问题任务可以由官方read_thread直接读取，当前list_threads只有17条且遗漏该任务。官方state_5.sqlite中任务存在、未归档，旧title为空，新name已有正式标题；官方thread-project-assignments已将其分配到原项目。不是Remote本地创建记录丢失。
