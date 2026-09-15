@@ -69,6 +69,7 @@ let agents = [],
   taskData = null,
   projects = [],
   threads = [],
+  threadListNotice = '',
   turns = [],
   cursor = null,
   pageProtocol = null,
@@ -1095,8 +1096,9 @@ function renderThreads() {
   }
   if (pendingCreated?.generation === generation && threads.some(t => t.id === pendingCreated.id)) pendingCreated = null;
   const synchronizing = pendingCreated?.generation === generation;
-  $('thread-list-sync').hidden = !synchronizing;
-  $('thread-list-sync').textContent = synchronizing ? '新会话已创建，正在等待官方列表同步。内容已可直接查看。' : '';
+  const listNotice = [threadListNotice, synchronizing ? '新会话已创建，正在等待官方列表同步。内容已可直接查看。' : ''].filter(Boolean).join(' ');
+  $('thread-list-sync').hidden = !listNotice;
+  $('thread-list-sync').textContent = listNotice;
   const currentTitle = threads.find(t => t.id === selected)?.title;
   if (currentTitle) $('title').textContent = currentTitle;
   const query = $("search").value.toLocaleLowerCase(),
@@ -1165,7 +1167,7 @@ function renderThreads() {
       node(
         "div",
         "list-empty",
-        status.connected ? "没有匹配的对话" : "连接设备后显示对话",
+        threadListNotice ? "当前列表可能不完整，请稍后刷新" : status.connected ? "没有匹配的对话" : "连接设备后显示对话",
       ),
     );
   $("mobile-suggestions").replaceChildren();
@@ -1205,8 +1207,12 @@ async function refresh(g = generation, options = {}) {
   if (listSequence >= listAppliedSequence) {
     listAppliedSequence = listSequence;
     status = s;
-    if (t.t) threads = modeCatalog(t.t.data, mode);
-    else if (t.error) error(Error('会话列表暂不可用；其他功能保持连接。' + t.error.message));
+    if (t.t) {
+      threadListNotice = t.t.listNotice ?? '';
+      if (mode !== 'chat' || t.t.data.listAvailability !== 'partial') threads = modeCatalog(t.t.data, mode);
+    } else if (t.error) {
+      threadListNotice = '官方会话列表暂不可用，已显示的内容已保留；其他功能保持连接，稍后自动重试。';
+    }
     for (const thread of threads)
       rememberSidebarStatus(
         thread.id,
@@ -1254,8 +1260,12 @@ async function pollSidebar() {
       return;
     }
     status = { ...status, ...snapshot };
-    if (list.list) threads = modeCatalog(list.list.data, mode);
-    else if (list.error) error(Error('会话列表暂不可用；其他功能保持连接。' + list.error.message));
+    if (list.list) {
+      threadListNotice = list.list.listNotice ?? '';
+      if (mode !== 'chat' || list.list.data.listAvailability !== 'partial') threads = modeCatalog(list.list.data, mode);
+    } else if (list.error) {
+      threadListNotice = '官方会话列表暂不可用，已显示的内容已保留；其他功能保持连接，稍后自动重试。';
+    }
     for (const t of threads)
       rememberSidebarStatus(
         t.id,
@@ -1307,6 +1317,7 @@ async function switchAgent(id, record = true, resumeId = null, nextMode = mode) 
   resetUsage();
   taskData = null;
   threads = [];
+  threadListNotice = '';
   projects = [];
   turns = [];
   cursor = null;

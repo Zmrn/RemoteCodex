@@ -93,7 +93,7 @@ export class TaskReports {
       }));
       current();
     } finally { reader.close(); }
-    return { schemaVersion: 2, statePolicy: 'official-only', observedAt: this.now(), source: 'fresh official list and owner snapshots',
+    return { schemaVersion: 2, statePolicy: 'official-only', observedAt: this.now(), source: list.listAvailability === 'partial' ? 'fresh official local index and owner snapshots' : 'fresh official list and owner snapshots',
       officialReadState: { status: available ? 'available' : reader.supported() ? 'unavailable' : 'unsupported', modes: ['codex'], source: 'official-owner-snapshot' },
       complete: (list.threads?.length ?? 0) < 50 && !(list.unavailableHosts?.length || list.unavailableSources?.length) && !result.some(t => t.unknown),
       listLimited: (list.threads?.length ?? 0) >= 50, threads: result };

@@ -19,7 +19,7 @@ import { TaskReports } from "./task-reports.mjs";
 import { DurableJson } from "./durable-json.mjs";
 import { markOfficialReportRead } from "./official-report-read.mjs";
 import { resolveOfficialHome } from "./official-read-state.mjs";
-import { readOfficialThreadIndex, supplementOfficialThreads } from './official-thread-index.mjs';
+import { readThreadList } from './thread-list-read.mjs';
 import { visibleOwnerReport, ownerReport } from './visible-report.mjs';
 import { renameThread } from "./thread-titles.mjs";
 import { SubscriptionLeases } from "./subscriptions.mjs";
@@ -115,6 +115,7 @@ export class Bridge extends EventEmitter {
     }
   }
   async _connect(generation) {
+    this.threadListRead = null;
     this.rolloutHistory.clear();
     this.media.deferred.clear();
     this.desktop?.close();
@@ -161,6 +162,7 @@ export class Bridge extends EventEmitter {
     return desktop.identity;
   }
   disconnect() {
+    this.threadListRead = null;
     this.rolloutHistory.clear();
     this.media.deferred.clear();
     this.subscriptions.clear();
@@ -386,20 +388,7 @@ export class Bridge extends EventEmitter {
     };
   }
   async threads(limit = 50, options) {
-    this.requireConnection();
-    const desktop = this.desktop, identity = desktop.identity, home = this.officialDataHome();
-    const [data,index] = await Promise.all([
-      desktop.call(TOOLS.listThreads, { limit: Math.min(limit, 50) }, undefined, options),
-      readOfficialThreadIndex(home),
-    ]);
-    this.requireConnection();
-    if (desktop !== this.desktop || identity!==desktop.identity || home!==this.officialDataHome()) throw Error('列表读取期间官方连接已变化，请重新读取');
-    const view = supplementOfficialThreads(data,index,limit);
-    return {
-      source: view===data ? "official-desktop-tool-live" : "official-desktop-tool-live + official-local-index",
-      observedAt: new Date().toISOString(),
-      data: view,
-    };
+    return readThreadList(this, limit, options);
   }
   async read(id, cursor, { compact = false } = {}) {
     this.requireConnection();
@@ -1188,6 +1177,7 @@ export class Bridge extends EventEmitter {
     const can = key => this.connected && compatibility.features[key]?.supported === true && this.stateStore.health.writable;
     return {
       connected: this.connected,
+      threadListRead: this.connected ? this.threadListRead ?? null : null,
       source: "official-desktop-IPC-live",
       officialPid: this.desktop?.identity?.officialPid ?? null,
       desktopConnection: this.connected ? this.desktop?.identity?.connection ?? null : null,

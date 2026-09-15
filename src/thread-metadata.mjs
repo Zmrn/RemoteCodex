@@ -4,7 +4,7 @@ import { OFFICIAL, TOOLS } from './official-protocol.mjs';
 // official list reads runtime metadata without serializing whole turns.
 export async function readCodexThreadMetadata(desktop, id, check) {
   let list;
-  try { list = await desktop.call(TOOLS.listThreads, { limit: 50 }); }
+  try { list = await desktop.call(TOOLS.listThreads, { limit: 50 }, undefined, {timeoutMs:6000}); }
   catch { check(); } // A missing/broken list must not disable a healthy read tool.
   check();
   const matches = [...(Array.isArray(list?.pinnedThreads) ? list.pinnedThreads : []),

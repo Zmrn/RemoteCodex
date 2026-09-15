@@ -12,7 +12,7 @@ const browser = await chromium.launch({ headless: true, executablePath: process.
 const page = await browser.newPage({ viewport: { width: 1300, height: 950 } });
 const id = '99999999-9999-4999-8999-999999999999', newId = '99999999-9999-4999-8999-999999999998', chatId = '99999999-9999-4999-8999-999999999997';
 let title = '官方原会话名', includeNew = false, created = false, holdProjects = false, projectFinish, nextListHeld = false, listFinish, outcome = 'accepted', renameFinish;
-let lists = 0, taskReads = 0; const writes = [], errors = [], events = [], checks = [];
+let lists = 0, taskReads = 0, listState = 'ready'; const writes = [], errors = [], events = [], checks = [];
 const rows = remote => [{ id, kind: 'codex', title: remote ? '另一设备任务' : title, status: 'idle' },
   ...(includeNew && !remote ? [{ id: newId, kind: 'codex', title: '官方自动生成的标题', status: 'idle' }] : []),
   { id: chatId, kind: 'chatgpt', title: '官方 Chat', status: 'idle' }];
@@ -31,6 +31,8 @@ await page.route(address + '/api/**', async route => {
   if (p.endsWith('/threads')) {
     if (req.method() === 'POST') { writes.push({ p, body: req.postDataJSON() }); created = true; return json({ status: 'accepted', result: { threadId: newId } }); }
     const data = { threads: rows(remote) }; lists++;
+    if (remote && listState === 'failed') return route.fulfill({status:400,contentType:'application/json',body:'{"error":"timeout tools/call"}'});
+    if (remote && listState === 'partial') return json({listNotice:'官方会话列表暂未响应，先显示官方本机索引中的 Codex 任务。列表可能不完整，Chat 列表暂不可用。',data:{...data,listAvailability:'partial',threads:data.threads.filter(t=>t.kind==='codex').map(t=>({...t,status:'unknown'}))}});
     if (nextListHeld) { nextListHeld = false; await new Promise(r => { listFinish = r; }); }
     return json({ data });
   }
@@ -101,6 +103,27 @@ try {
   await menu().getByRole('menuitem', { name: '重命名', exact: true }).click();
   assert.equal(await dialog().evaluate(e => e.scrollWidth <= e.clientWidth), true); await page.screenshot({ path: path.join(dir, 'rename-mobile.png') });
   checks.push('Chat unsupported action is disabled; touch long press opens the shared rename form within narrow viewport');
+  await dialog().getByRole('button', { name: '取消', exact: true }).click();
+  for (const width of [1300,390]) {
+    await page.setViewportSize({width,height:844});
+    if (!await card(id).isVisible()) await page.locator('#mobile-menu').click();
+    await page.locator('#prompt').fill('列表失败时保留的草稿');
+    listState='partial'; await refresh();
+    await until(async()=> (await page.locator('#thread-list-sync').innerText()).includes('本机索引'));
+    assert.equal(await card(id).count(),1);assert.equal(await page.locator('#prompt').inputValue(),'列表失败时保留的草稿');
+    assert.equal(await page.locator('#thread-list-sync').evaluate(e=>e.scrollWidth<=e.clientWidth+1),true);
+    await page.screenshot({path:path.join(dir,'partial-list-'+width+'.png')});
+    listState='failed';await refresh();await until(async()=> (await page.locator('#thread-list-sync').innerText()).includes('已保留'));
+    assert.equal(await card(id).count(),1);assert.equal(await page.locator('#prompt').inputValue(),'列表失败时保留的草稿');
+    listState='ready';await refresh();await until(async()=> !await page.locator('#thread-list-sync').isVisible());
+    checks.push(width+': partial official index and failed reads preserve task/draft; persistent notice clears after live recovery');
+  }
+  await page.locator('#mode-picker').click(); await page.locator('[data-mode="chat"]').click();await card(chatId).waitFor();
+  listState='partial';await refresh();await until(async()=> (await page.locator('#thread-list-sync').innerText()).includes('Chat'));
+  assert.equal(await card(chatId).count(),1,'a Codex-only fallback cannot erase a previously visible Chat list');
+  await page.locator('#footer-agent').click();await page.locator('#agents button').filter({hasText:'测试电脑'}).click();
+  await until(async()=> !await page.locator('#thread-list-sync').isVisible());
+  checks.push('partial Codex index preserves visible Chat rows and its notice never leaks to another device');
   assert.deepEqual(errors, []); fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ status: 'PASS', checks, writes: writes.length, scope: 'Synthetic official APIs on production UI; no real task writes, no APK' }, null, 2));
   console.log(JSON.stringify({ status: 'PASS', checks: checks.length, directory: dir }));
 } catch (error) { await page.screenshot({ path: path.join(dir, 'failure.png') }); fs.writeFileSync(path.join(dir, 'failure.json'), JSON.stringify({ error: error.stack, errors, checks }, null, 2)); throw error; }

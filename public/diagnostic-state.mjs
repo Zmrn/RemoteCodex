@@ -1,9 +1,11 @@
 // Shared projection: only connectivity and capabilities, never tasks or secrets.
 const version=v=>typeof v==='string'&&/^\d+\.\d+\.\d+(?:\.\d+)?$/.test(v)?v:null;
 const array=v=>Array.isArray(v)?v:[];
+const listRead=v=>v&&['available','partial','unavailable'].includes(v.status)&&typeof v.checkedAt==='string'&&/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(v.checkedAt)?{status:v.status,checkedAt:v.checkedAt}:null;
 export function diagnosticStatus(status){
   const c=status?.desktopCompatibility??{};
   return {bridgeVersion:version(status?.bridgeVersion),connected:status?.connected===true,
+    threadListRead:listRead(status?.threadListRead),
     officialVersion:version(c.detectedVersion),verifiedVersions:array(c.verifiedVersions).slice(0,20).map(version).filter(Boolean),
     codexWritable:status?.existingCodexWritable===true,chatRead:status?.chat?.read===true,chatSend:status?.chat?.sendText===true,
     chatCreate:status?.chat?.create===true,chatImages:status?.chat?.images===true,
@@ -21,8 +23,10 @@ export function diagnosticChecks(o){
     add('auth','访问鉴权',!o.tcp?'skipped':[401,403].includes(o.httpStatus)?'error':o.bridge?'ok':'unknown',[401,403].includes(o.httpStatus)?'目标拒绝了当前访问密钥，请重新配对。':o.bridge?'已获得有效桥接状态响应。':'未获得有效鉴权结果，请核对目标是否为 Remote Codex。',[401,403].includes(o.httpStatus)?'edit':null);
   }
   const b=o.bridge;
+  const recentList = listRead(b?.threadListRead);
   add('bridge','Remote Codex 桥接',b?'ok':config?'skipped':'error',b?'桥接状态接口可用'+(b.bridgeVersion?' · '+b.bridgeVersion:' · 旧端未提供版本')+'。':o.failure==='response-timeout'?'端口已连通，但状态响应超时。请检查目标电脑的 Remote Codex。':'未取得有效桥接状态；请核对目标软件和访问端口。','retry');
   add('official','官方桌面连接',!b?'skipped':b.connected?'ok':'error',!b?'等待桥接状态。':b.connected?'桥接已连接官方桌面。':'桥接可以访问，但尚未连接官方桌面。请在目标电脑确认官方应用已打开并登录，再重试。','retry');
+  add('list','会话列表读取',!b?'skipped':!recentList?'unknown':recentList.status==='available'?'ok':recentList.status==='partial'?'warning':'error',!recentList?'尚无会话列表实际读取结果；连接成功不代表会话列表可用。':(recentList.status==='available'?'最近一次官方列表读取成功。':recentList.status==='partial'?'官方列表读取失败，当前仅能显示官方本机索引中的部分任务。':'官方列表读取失败，当前无法确认列表。')+' 最近检查：'+recentList.checkedAt+'。','retry');
   add('compatibility','版本与能力',!b?'skipped':!b.connected?'unknown':b.codexWritable?'ok':'warning',!b?'等待官方版本信息。':
     (b.officialVersion?'官方版本 '+b.officialVersion+'。':'官方版本尚未确认。')+(b.codexWritable?' 部分 Codex 写入入口可用，具体功能见官方接口兼容性。':' Codex 写入当前不可用，请查看配置保护与具体接口原因。')+(b.officialOnly?' 统计使用官方状态，无法读取的任务仍为未知。':' 官方状态统计协议未确认，请检查目标更新。')+' Chat 新建'+(b.chatCreate?'可用':'未支持')+'，图片输入'+(b.chatImages?'可用':'未支持')+'；生成图片显示仍需独立验证。','updates');
   if(b?.storage?.some(s=>s.status!=='healthy'))add('storage','配置保护',b.storage.some(s=>!s.writable)?'error':'warning',b.storage.some(s=>!s.writable)?'部分配置处于保护状态，相关写入已暂停。原数据已保留，请重新启动 Remote Codex 读取；若仍失败请联系维护，勿清空数据。':'部分配置从校验副本恢复，原文件已保留。');
@@ -31,6 +35,6 @@ export function diagnosticChecks(o){
 }
 export function diagnosticExport(o){
   const b=o.bridge,failures=['device-missing','config-unreadable','key-unavailable','endpoint-invalid','dns-timeout','dns-failed','diagnostic-busy','authentication-failed','http-error','invalid-response','connection-interrupted','connection-refused','response-timeout','connection-timeout','target-changed'];
-  const safe=b?diagnosticStatus({bridgeVersion:b.bridgeVersion,connected:b.connected,desktopCompatibility:{detectedVersion:b.officialVersion,verifiedVersions:b.verifiedVersions},existingCodexWritable:b.codexWritable,chat:{read:b.chatRead,sendText:b.chatSend,create:b.chatCreate,images:b.chatImages},taskSummary:b.officialOnly?{schemaVersion:2,statePolicy:'official-only'}:null,storageHealth:b.storage}):null;
+  const safe=b?diagnosticStatus({bridgeVersion:b.bridgeVersion,connected:b.connected,threadListRead:b.threadListRead,desktopCompatibility:{detectedVersion:b.officialVersion,verifiedVersions:b.verifiedVersions},existingCodexWritable:b.codexWritable,chat:{read:b.chatRead,sendText:b.chatSend,create:b.chatCreate,images:b.chatImages},taskSummary:b.officialOnly?{schemaVersion:2,statePolicy:'official-only'}:null,storageHealth:b.storage}):null;
   return JSON.stringify({schemaVersion:1,checkedAt:typeof o.checkedAt==='string'&&/^\d{4}-\d{2}-\d{2}T[\d:.+-]+Z?$/.test(o.checkedAt)?o.checkedAt:null,local:!!o.local,failure:failures.includes(o.failure)?o.failure:null,resolved:!!o.resolved,tcp:!!o.tcp,httpStatus:Number.isInteger(o.httpStatus)&&o.httpStatus>=100&&o.httpStatus<=599?o.httpStatus:null,bridge:safe},null,2);
 }

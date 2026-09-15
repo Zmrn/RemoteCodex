@@ -6,7 +6,7 @@ const dir=fs.mkdtempSync(path.join(ROOT,'work/diagnostics-ui-'));
 const A='11111111-1111-4111-8111-111111111111',B='22222222-2222-4222-8222-222222222222',C='33333333-3333-4333-8333-333333333333';
 const agents=[{id:B,kind:'remote',name:'设备 B',host:'100.70.0.2',port:43128,hasKey:true},{id:C,kind:'remote',name:'设备 C',host:'100.70.0.3',port:43128,hasKey:true}];
 let scenario='healthy',delay=0;const requests=[],streams=new Set(),errors=[],checks=[];
-const bridge={bridgeVersion:'0.10.24',connected:true,officialVersion:'26.903.8094.0',codexWritable:true,chatRead:true,chatSend:true,chatCreate:false,chatImages:false,officialOnly:true,storage:[]};
+const bridge={bridgeVersion:'0.10.24',connected:true,officialVersion:'26.903.8094.0',codexWritable:true,chatRead:true,chatSend:true,chatCreate:false,chatImages:false,officialOnly:true,storage:[],threadListRead:{status:'available',checkedAt:'2026-09-15T01:00:00.000Z'}};
 const server=http.createServer(async(req,res)=>{
  const url=new URL(req.url,'http://fixture'),p=url.pathname;const json=x=>{if(!res.destroyed){res.setHeader('content-type','application/json');res.end(JSON.stringify(x));}};
  if(p==='/seed.html'){res.setHeader('content-type','text/html');return res.end('<html><body>Fixture</body></html>');}
@@ -17,6 +17,8 @@ const server=http.createServer(async(req,res)=>{
   const chosen=url.searchParams.get('agent'),state=scenario;const result={schemaVersion:1,checkedAt:'2026-09-10T00:00:00Z',resolved:true,tcp:true,httpStatus:200,bridge:{...bridge,bridgeVersion:chosen===C?'0.10.25':'0.10.24'}};
   if(state==='auth'){result.httpStatus=401;result.bridge=null;result.failure='authentication-failed';}
   if(state==='official')result.bridge.connected=false;
+  if(state==='partial')result.bridge.threadListRead={status:'partial',checkedAt:'2026-09-15T01:00:00.000Z'};
+  if(state==='old')delete result.bridge.threadListRead;
   if(state==='timeout'){result.tcp=false;result.bridge=null;result.failure='connection-timeout';}
   if(delay&&chosen===B)await new Promise(r=>setTimeout(r,delay));return json(result);
  }
@@ -45,6 +47,7 @@ try{
  await page.locator('#mobile-menu').click();await page.locator('#diagnose-connection').click();await page.locator('#diagnostic-checks [data-check="official"][data-status="ok"]').waitFor();
  await page.locator('#connection-diagnostics button').filter({hasText:'复制脱敏诊断'}).click();const copied=await page.evaluate(()=>window.fixtureClipboard);assert.ok(copied.includes('0.10.24'));for(const secret of [A,B,C,'100.70','只能原设备','设备 B'])assert.ok(!copied.includes(secret));checks.push('healthy diagnostic and copied report exclude device identity, address and draft content');
  for(const [state,key] of [['auth','auth'],['official','official'],['timeout','tcp']]){scenario=state;await page.locator('#connection-diagnostics button').filter({hasText:'重新检测'}).click();await page.locator(`[data-check="${key}"][data-status="error"]`).waitFor();checks.push(state+' has a distinct diagnosis');}
+ for(const [state,status] of [['partial','warning'],['old','unknown']]){scenario=state;await page.locator('#connection-diagnostics button').filter({hasText:'重新检测'}).click();await page.locator(`[data-check="list"][data-status="${status}"]`).waitFor();assert.equal(await page.locator('[data-check="official"]').getAttribute('data-status'),'ok');checks.push(state+' list is distinguished from healthy official transport');}
  scenario='healthy';delay=450;await page.locator('#connection-diagnostics button').filter({hasText:'重新检测'}).click();await page.locator('#diagnostic-device').selectOption(C);await page.waitForFunction(()=>document.querySelector('#diagnostic-checks').textContent.includes('0.10.25'));await page.waitForTimeout(550);assert.ok(!(await page.locator('#diagnostic-checks').innerText()).includes('0.10.24'));checks.push('late response cannot replace newly selected device diagnosis');
  for(const width of [390,1300]){await page.setViewportSize({width,height:844});const box=await page.locator('#connection-diagnostics').boundingBox();assert.ok(box.x>=0&&box.x+box.width<=width&&box.y>=0&&box.y+box.height<=844);await page.screenshot({path:path.join(dir,`diagnostics-${width}.png`)});}checks.push('diagnostic dialog fits mobile and desktop');
  assert.deepEqual(errors,[]);assert.equal(requests.filter(r=>r.method==='POST'&&(/\/messages$/.test(r.path)||/\/bridge\/threads$/.test(r.path))).length,0);
