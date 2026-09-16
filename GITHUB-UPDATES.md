@@ -1,5 +1,28 @@
 # GitHub 直接更新
 
+## 0.10.38 正式发布（2026-09-16）
+
+[GitHub Release v0.10.38](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.38) 已公开。包含GIF87a/GIF89a原动画接收、消息/放大预览、原文件名下载，GIF接收和二进制原图保存上限64MiB，其他图片25MiB与发送限制保持；Windows页面可读取自身Blob以保留独立预览引用。请同时更新目标Windows接入端与Windows/Android控制端。
+
+最终版本302项Node22.19.0、接口清单、GIF UI双尺寸与图片稳定UI6组通过；源码`1a21668f4e16114ebfda076e74d55fcf9b267b21`的[Checks 35088701633](https://github.com/Zmrn/RemoteCodex/actions/runs/35088701633)成功后preflight放行，[Build 35089145952](https://github.com/Zmrn/RemoteCodex/actions/runs/35089145952)仅派发一次，requestId为`cd7bc990-edb4-4802-b2bc-a5b85defe898`。云端签名前门禁和构建首次成功，无本地构建。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44172288 | `011cc7e15f890d4e1bd419ac62e2f3e034da2e2547206f08c8459e9264a8dc4d` |
+| RemoteCodex.apk | 282710 | `b9ff7bc6439ac649f0a3f0d5b28371649d391f7fb09b9d56a7e110aab234e714` |
+
+双端原RSA更新签名、APK v2/v3原证书、包名com.anso.remotecodex/versionCode10038、包内源码/共享页面/发布说明/GitHub渠道一致；包内无用户配置或私钥。APK证书SHA-256为`3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`，中央清单SHA-256为`7df1101ddd4a3b422e6026a42fe1aeee318d846234283e234bc5e8f7d75cd392`，按构建提交及包内原字节核对。APK内ReceivedImage类及GIF MIME已核对，未执行APK或模拟器。
+
+EXE隔离home、PATH仅System32下的内嵌运行时、DPAPI与资源自检通过。包内源码对当前官方Windows x64 **26.908.9136.0** 只读连接，列表读取22项，20/21接口匹配，22/24功能条件满足。未满足功能：settings, createPermissions。settings v2仍待适配；接口匹配不等于真实写入往返验证，不扩大历史行为版本名单。
+
+包内代码经当前官方工具读取和owner合并后，目标GIF对应1张可读取图片（当前回复另有其他图片），原图28560590字节、SHA256 `af18bf2016e9e8978dfd86857c2663bcf9c8371ad62653a6f87ac63453d6fdfa`与媒体读取一致；没有发送消息、清除已读或修改任务。私人图片/正文未上传仓库，CI使用合成动画。未重新进行RDP断开试验。
+
+隔离0.10.37云包→0.10.38云包的设备保存、强制重启与显式删除通过；现有客户端设备、接入、更新、通知设置与通知草稿字节保持。标准发布器八项资源先上传草稿并逐项读回再公开；匿名latest双签名清单、固定版本完整APK/EXE和说明均核验一致。没有升级现有客户端、重启官方软件或使用旧服务器。
+
+Chat列表与文字历史保持，续写待专用真实验证；普通Chat新建、模型、生成图片与Work的未完成适配未纳入。原8份Chat工作独立保全。
+
+证据在会话`work/release-038/work/`：all-tests-node22.log、checks-watch.log、preflight.json、build-dispatch.log、build-watch.log、package-verification.json、packaged-official.json、official-gif-packaged.json、agent-restart.log、installed-data-after.json、publish.log、release-state.json、online-verification.json。发布记录提交不再次构建，已发布产物仍对应构建SHA；不修改已验签资源的云端GITHUB-BUILD.json。
+
 ## 0.10.37 正式发布（2026-09-15）
 
 [GitHub Release v0.10.37](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.37) 已公开，包含图片内双指缩放/拖动、官方总列表超时后的部分读取、草稿保留及实际列表诊断。请同时更新目标Windows接入端和Windows/Android控制端；未完成Chat改动未纳入。

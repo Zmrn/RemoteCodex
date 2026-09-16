@@ -1,5 +1,6 @@
 # Remote Codex 开发与发布约定
 
+- 2026-09-16 最新发布：0.10.38从1a21668f4e16114ebfda076e74d55fcf9b267b21经同SHA Checks35088701633及preflight通过后，由Build35089145952同次生成APK/EXE并正式发布Releases/v0.10.38，包含GIF动画接收/预览/原图保存、64MiB GIF上限及Windows自身Blob读取修复。仅派发一次，云构建首次成功。302 Node22.19.0、相关共享UI、原签名/证书、双端源码/界面/清单、EXE隔离运行时与DPAPI、0.10.37→0.10.38设备保存/强制重启/删除和匿名完整下载通过。包内实际官方26.908.9136.0只读连接、列表及真实GIF原字节通过；20/21接口匹配，22/24功能条件满足。未执行APK/模拟器、升级现有客户端或写真实任务，未完成Chat未纳入；完整哈希和范围见GITHUB-UPDATES.md。
 - 2026-09-16：用户明确“打包”，准备0.10.38 GitHub双端发布，包含GIF动画接收/预览/原图保存、64MiB GIF上限及Windows自身Blob读取修复。先验证最终版本Node22.19.0/接口清单/相关UI，再提交等待同SHA Checks成功、preflight后单次Build；未完成Chat独立保全。不本地构建、不执行APK/模拟器、不升级现有客户端、不改真实任务或扩大settings v2适配；正式产物与当前官方连接验证结果见GITHUB-UPDATES.md后续记录。
 
 - 2026-09-16：修复官方回复 GIF 被拆成文字/文件卡及大于 25 MiB 无法读取。接收/历史延迟媒体支持 GIF87a/GIF89a 原动画字节，GIF 单张上限 64 MiB，其他格式仍 25 MiB，发送限制不变。共享消息/预览保留动画、加载重试与节点稳定；本地 GIF 下载保留原文件名，Android 保存检查 MIME/签名，Windows 允许读取页面自身 Blob。真实官方26.908.9136.0只读原文件28,482,324字节，修复后1张图片且原字节一致，无真实任务写入；详见GIF-IMAGES.md。回归入口test/gif-media.test.mjs、scripts/verify-gif-ui.mjs、scripts/verify-received-image.py，后两者已纳Checks。本轮版本仍0.10.37，未打包发布安装或执行APK/模拟器，未完成Chat独立保留；后续明确打包时接入端与控制端需一起更新。
