@@ -1,5 +1,26 @@
 # GitHub 直接更新
 
+## 0.10.39 正式发布（2026-09-16）
+
+[GitHub Release v0.10.39](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.39) 已公开。已有Codex/Chat会话在离线、历史未读入或刷新失败时继续编辑和保存本地草稿；Codex图片支持离线添加、粘贴和移除，只添加图片也会触发备份。重连不覆盖新输入，不自动补发。更新使用中的Windows/Android控制端后生效。
+
+最终版本302项Node22.19.0、接口清单、共享离线UI12组、Chat与功能独立兼容UI通过；源码`7811a4be94c17e27c1c613b3db55578b1b0b74ef`的[Checks 35093965107](https://github.com/Zmrn/RemoteCodex/actions/runs/35093965107)成功后preflight放行，[Build 35094374884](https://github.com/Zmrn/RemoteCodex/actions/runs/35094374884)仅派发一次，requestId为`26da6d8f-a482-4c2b-8c56-1bde0fde734f`。云端签名前门禁及构建首次成功，没有本地构建。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44172288 | `245df69f76bc7c87e651be2e960c17e2b35894e9c86162967e26940c678b9876` |
+| RemoteCodex.apk | 282710 | `c4672c31d65a82eba1d1963ba1b40a1941087990b26132b88989e78e217bf6db` |
+
+双端原RSA更新签名、APK v2/v3原证书、包名com.anso.remotecodex/versionCode10039、包内源码/共享页面/发布说明/GitHub渠道一致；包内无用户配置或私钥。APK证书SHA-256为`3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`，中央清单SHA-256为`7df1101ddd4a3b422e6026a42fe1aeee318d846234283e234bc5e8f7d75cd392`，按构建提交及包内字节核对。未执行APK或模拟器。
+
+EXE隔离home、PATH仅System32下的内嵌运行时、DPAPI与资源自检通过；同次包内源码对当前官方Windows x64 **26.908.9136.0** 只读连接与列表读取通过，返回22项。20/21接口匹配，22/24功能条件满足；未满足功能：settings, createPermissions。接口匹配不代表真实写入往返验证，不扩大历史行为版本名单。
+
+本地编辑不授权发送或更改官方状态。受保护任务Ctrl+Enter仍受限，队列和调整方向按各自能力判断；官方notLoaded任务的图片只能留草稿，文字续接沿用原流程。初始恢复/正在提交的防覆盖保护保持。Chat新建/图片和未完成Work适配不在本版中，未完成Chat工作独立保全。
+
+隔离0.10.38云包→0.10.39云包的设备保存、强制重启与显式删除通过；现有客户端设备、接入、更新、通知设置及通知草稿字节保持。标准发布器八项资源先上传草稿并逐项读回再公开；匿名latest双签名清单、固定版本完整APK/EXE及说明均核验一致。没有升级现有客户端、重启官方软件、重新测试RDP断开或写真实任务/已读状态。
+
+证据在会话`work/release-039/work/`：all-tests-node22.log、checks-watch.log、preflight.json、build-dispatch.log、build-watch.log、package-verification.json、packaged-official.json、agent-restart.log、installed-data-after.json、publish.log、release-state.json、online-verification.json。发布记录提交不再次构建，已发布产物仍对应构建SHA；不修改已验签资源中的GITHUB-BUILD.json。
+
 ## 0.10.38 正式发布（2026-09-16）
 
 [GitHub Release v0.10.38](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.38) 已公开。包含GIF87a/GIF89a原动画接收、消息/放大预览、原文件名下载，GIF接收和二进制原图保存上限64MiB，其他图片25MiB与发送限制保持；Windows页面可读取自身Blob以保留独立预览引用。请同时更新目标Windows接入端与Windows/Android控制端。
