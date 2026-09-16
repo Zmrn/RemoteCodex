@@ -705,18 +705,20 @@ function composerFeature() {
 function questionAccess() {
   return { request: featureAvailable('questions'), async: featureAvailable(taskData?.thread?.status?.type === 'active' ? 'steer' : 'send') };
 }
+function isReadOnlyTask() {
+  return (status.readOnlyThreadIds ?? status.protectedThreadIds ?? [status.protectedThreadId]).includes(selected);
+}
 function permissions() {
   const fresh = selected === null;
-  const canDraft = fresh && mode === "codex" && !!currentAgent();
-  const readOnlyTask = (
-    status.readOnlyThreadIds ??
-    status.protectedThreadIds ?? [status.protectedThreadId]
-  ).includes(selected);
+  const readOnlyTask = isReadOnlyTask();
   const chat = mode === "chat";
   const chatAccess = chatComposer(status, taskData?.thread);
   const writable = chat ? !readOnlyTask && chatAccess.writable : !readOnlyTask && featureAvailable(composerFeature()) &&
     ((fresh && !!currentAgent()) || taskData?.thread?.kind === "codex");
-  const canEdit = chat ? chatAccess.writable : !readOnlyTask && !!currentAgent() && (fresh || !!taskData);
+  // Local drafts belong to the selected target, not its current connection,
+  // history or write capability. Initial recovery and pending writes still lock
+  // editing so a late restore/ack cannot overwrite newly entered text or files.
+  const canEdit = !!currentAgent() && (!chat || !fresh);
   const inFlight = busy.has(fresh ? agentId + ":create" : taskKey());
   projectPicker.update({ agentId, mode, fresh, projects, status, busy: inFlight, booting });
   const settingsAvailable =
@@ -732,12 +734,8 @@ function permissions() {
   $("create").disabled = $("mobile-new").disabled = busy.has(
     agentId + ":create",
   );
-  $("prompt").disabled = booting || !(canEdit || canDraft) || submitting;
-  $("image").disabled =
-    chat || (!fresh && !status.connected) ||
-    !(canEdit || canDraft) ||
-    inFlight ||
-    taskData?.thread?.status?.type === "notLoaded";
+  $("prompt").disabled = booting || !recoveryLoaded || !canEdit || submitting;
+  $("image").disabled = chat || $("prompt").disabled;
   $("attach-label").title = fresh && status.imageCreation?.supported !== true
     ? "可先添加图片；更新目标电脑的 Remote Codex 后发送"
     : "添加图片（最多 20 张，每张 5 MB，合计 10 MB；PNG / JPEG / WebP）";
@@ -749,6 +747,7 @@ function permissions() {
     !!projectPicker.reason() ||
     (chat ? !chatAccess.canSend : (!idle && taskData?.thread?.status?.type !== "active")) ||
     queueUI.busy ||
+    (!chat && taskData?.thread?.status?.type === "notLoaded" && composerImages.length > 0) ||
     (fresh && composerImages.length > 0 && status.imageCreation?.supported !== true) ||
     (!$("prompt").value.trim() && !composerImages.length);
   $("send").title = submitting
@@ -802,8 +801,13 @@ function permissions() {
             : "";
   if (writable && fresh && composerImages.length && status.imageCreation?.supported !== true)
     $("writable").textContent = "目标电脑尚不支持带图新建，请更新目标电脑；文字和图片已保留";
-  if (chat && !readOnlyTask) $("writable").textContent = inFlight ? "正在转交官方 Chat…" : chatAccess.reason;
+  if (chat && !readOnlyTask) $("writable").textContent = inFlight ? "正在转交官方 Chat…"
+    : status.connected && !fresh && !taskData ? "会话内容尚未读入，请等待或刷新重试" : chatAccess.reason;
   if (!chat && projectPicker.reason()) $("writable").textContent = projectPicker.reason();
+  if (!chat && status.connected && taskData?.thread?.status?.type === "notLoaded" && composerImages.length)
+    $("writable").textContent = "此会话尚未加载，图片暂不能发送；可继续编辑草稿，或在官方桌面打开后重试";
+  else if (!$("prompt").disabled && (!status.connected || !writable))
+    $("writable").textContent += " · 可继续编辑本地草稿，暂不能发送";
   $("destination").textContent = currentAgent()?.name ?? "";
   queueUI.render();
 }
@@ -2155,7 +2159,7 @@ function renderAttachment() {
 function appendImages(files) {
   const combined = validateImageBatch([...composerImages, ...files]);
   setImages(combined);
-  saveDraft(); renderAttachment(); permissions(); clearError();
+  saveDraft(); renderAttachment(); permissions(); clearError(); scheduleDraftBackup();
 }
 async function fileData(file) {
   if (!file) return undefined;
@@ -2272,7 +2276,8 @@ $("form").onsubmit = async (e) => {
 async function submitMessage({ steer = false } = {}) {
   const direct = steer && mode === 'codex' && selected !== null && taskData?.thread?.status?.type === 'active';
   if (direct) {
-    if (booting || !status.connected || busy.has(taskKey()) || queueUI.busy) return;
+    if (booting || !status.connected || !currentAgent() || isReadOnlyTask() ||
+        taskData?.thread?.kind !== 'codex' || busy.has(taskKey()) || queueUI.busy) return;
   } else if ($("send").disabled) return;
   if (!recoveryLoaded) { error(Error('草稿存储尚未读取，已暂停发送，请重新打开 Remote Codex')); return; }
   saveDraft();
@@ -2432,9 +2437,8 @@ $("prompt").addEventListener("paste", event => {
   if (!files.length) return;
   event.preventDefault();
   if ($("image").disabled) {
-    toast(!status.connected ? "请等待目标设备连接后再粘贴图片" : selected === null
-      ? "目标设备尚不支持带图新建，请更新目标电脑；原有草稿已保留"
-      : "请等待会话连接并加载完成后再粘贴图片");
+    toast(mode === "chat" ? "Chat 暂不支持图片草稿"
+      : "草稿正在恢复或提交中，请稍后再粘贴图片");
     return;
   }
   try { appendImages(files); } catch (e) { error(e); }

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { Bridge, ROOT } from '../src/bridge.mjs';
 import { OfficialQueue, composeQueuedMessage } from '../src/queue.mjs';
 import { startServer } from '../src/server.mjs';
+import { fixtureEvidence } from '../test/fixtures/interface-evidence.mjs';
 const {chromium}=await import(process.env.REMOTE_BRIDGE_PLAYWRIGHT || 'playwright-core');
 const dir=fs.mkdtempSync(path.join(ROOT,'work/draft-discard-ui-'));
 fs.writeFileSync(path.join(dir,'update-settings.json'),'{"automatic":false}');
@@ -18,11 +19,11 @@ b.codexThread=async()=>({thread:{id,kind:'codex',cwd:'C:/Fixture',status:{type:'
 const file=path.join(dir,'official-fixture.json');
 fs.writeFileSync(file,JSON.stringify({'queued-follow-ups':{[id]:[composeQueuedMessage('take-me','取回后删除的文字','C:/Fixture',[png,png]),composeQueuedMessage('keep-me','保留的官方排队消息','C:/Fixture')]}}));
 const q=b.queue=new OfficialQueue(b,file);
-b.desktop={identity:{appToolsPipe:{image:'OpenAI.Codex_26.903.8094.0_x64__fixture'}},ipc:{request:async(method,params)=>{
+b.desktop=fixtureEvidence({identity:{appToolsPipe:{image:'OpenAI.Codex_26.903.8094.0_x64__fixture'}},ipc:{request:async(method,params)=>{
   actions.push(method);assert.equal(method,'thread-follower-set-queued-follow-ups-state');
   q.frame({type:'broadcast',method:'thread-queued-followups-changed',sourceClientId:owner,params:{conversationId:id,messages:params.state[id]}});
   return {handledByClientId:owner,result:{ok:true}};
-}}};
+}}});
 const addBackup=(key,threadId=id)=>{b.db.queueRecoveries??={};b.db.queueRecoveries[key]={threadId,state:'draft',message:composeQueuedMessage(key,'遗留恢复记录 '+key,'C:/Fixture')};b.save();};
 const {server,address}=await startServer({port:0,bridge:b});
 const browser=await chromium.launch({executablePath:'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',headless:true});

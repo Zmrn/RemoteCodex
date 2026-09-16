@@ -71,7 +71,9 @@ try{
  runtime='active';await page.locator('#refresh').click();await page.waitForFunction(()=>!document.querySelector('#activity').hidden);
  await page.locator('#prompt').fill('Running Chat draft');assert.equal(await page.locator('#send').isDisabled(),true);
  assert.ok(await page.locator('[data-thread-id="'+cid+'"] .thread-spinner').count());
- runtime='idle';capable=false;await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#prompt').disabled);
+ runtime='idle';capable=false;await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#writable').textContent.includes('尚未开放'));
+ assert.equal(await page.locator('#prompt').isEnabled(),true);assert.equal(await page.locator('#send').isDisabled(),true);
+ await page.locator('#prompt').fill('Running Chat draft');
  capable=true;await page.locator('#refresh').click();await page.waitForFunction(()=>!document.querySelector('#prompt').disabled);
  await page.locator('#open').click();
  assert.ok(!calls.some(c=>c.path.includes('/threads/'+cid+'/follow')||c.path.includes('/threads/'+cid+'/queue')));

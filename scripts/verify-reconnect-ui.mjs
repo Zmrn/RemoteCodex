@@ -254,6 +254,9 @@ try {
   );
   assert.match(await page.locator("#task-state").innerText(), /未知/);
   assert.match(await page.locator("#messages").innerText(), /revision 0/);
+  assert.equal(await page.locator("#prompt").isEnabled(), true);
+  await page.locator("#prompt").fill("unsent draft edited while offline");
+  assert.equal(await page.locator("#send").isDisabled(), true);
   revision = 1;
   unavailable = false;
   await connected();
@@ -263,14 +266,14 @@ try {
   assert.ok(follows.laptop > followBefore);
   assert.equal(
     await page.locator("#prompt").inputValue(),
-    "unsent draft kept through reconnect",
+    "unsent draft edited while offline",
   );
   assert.equal(
     await page.locator("#image").evaluate((e) => e.files[0].name),
     "probe.png",
   );
   checks.push(
-    "live SSE plus lost official IPC invokes connect and follow; draft and image survive",
+    "live SSE plus lost official IPC allows local edits; reconnect keeps edited draft and image",
   );
   outage = true;
   streams.get("laptop").destroy();
@@ -330,7 +333,7 @@ try {
   await connected();
   assert.equal(
     await page.locator("#prompt").inputValue(),
-    "unsent draft kept through reconnect",
+    "unsent draft edited while offline",
   );
   checks.push(
     "online wake and manual reconnect preserve current task and draft",
