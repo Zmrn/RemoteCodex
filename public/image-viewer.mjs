@@ -58,7 +58,7 @@ function createViewer() {
     sequence++;
     clear();
   });
-  return async (src, name, downloadRoute) => {
+  return async (src, name, downloadRoute, downloadName) => {
     const request = ++sequence;
     clear();
     title.textContent = name;
@@ -77,7 +77,7 @@ function createViewer() {
       download.target = "_blank";
       download.rel = "noopener noreferrer";
     } else {
-      download.download = name;
+      download.download = downloadName;
       download.removeAttribute("target");
     }
     dialog.showModal();
@@ -96,7 +96,7 @@ function createViewer() {
   };
 }
 
-export function zoomableImage(image, name = image.alt || "image.png") {
+export function zoomableImage(image, name = image.alt || "image.png", downloadName = name) {
   image.classList.add("zoomable-image");
   image.tabIndex = 0;
   image.setAttribute("role", "button");
@@ -106,7 +106,7 @@ export function zoomableImage(image, name = image.alt || "image.png") {
   image.onclick = () => {
     const src = image.currentSrc || image.getAttribute("src");
     if (!src || image.hidden || image.classList.contains("image-pending")) return;
-    (viewer ??= createViewer())(src, name, image.dataset.downloadRoute);
+    (viewer ??= createViewer())(src, name, image.dataset.downloadRoute, downloadName);
   };
   image.onkeydown = (event) => {
     if (event.key === "Enter" || event.key === " ") {

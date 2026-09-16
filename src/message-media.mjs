@@ -3,8 +3,20 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { userContent, itemText } from "../public/message-content.mjs";
 
-const dataImage = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+const dataImage = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+// Receiving/saving originals has a separate limit from sending images.
+const GIF_BYTES = 64 * 1024 * 1024;
+const imageLimit = type => type === 'image/gif' ? GIF_BYTES : 25 * 1024 * 1024;
+const sizeError = '图片格式不受支持或超过上限（GIF 64 MiB，其他图片 25 MiB）';
+function readDataImage(source) {
+  if (typeof source !== 'string' || source.length > 4 * Math.ceil(GIF_BYTES / 3) + 32 || !dataImage.test(source)) throw Error(sizeError);
+  const bytes = Buffer.from(source.slice(source.indexOf(',') + 1), 'base64'), type = imageType(bytes);
+  if (!type || bytes.length > imageLimit(type)) throw Error(sizeError);
+  return {bytes, type};
+}
 export function imageType(bytes) {
+  if (['GIF87a', 'GIF89a'].some(header => bytes.subarray(0, 6).equals(Buffer.from(header))))
+    return 'image/gif';
   if (
     bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
   )
@@ -105,14 +117,14 @@ export class MessageMedia {
       return { id, name: this.inline.get(key).name };
     }
     let file = source;
-    if (!path.isAbsolute(file) || !/\.(png|jpe?g|webp)$/i.test(file))
+    if (!path.isAbsolute(file) || /^[\\/]{2}/.test(file) || !/\.(png|jpe?g|webp|gif)$/i.test(file))
       return null;
     const id = createHash("sha256").update(file).digest("hex");
     let entries = this.threads.get(threadId);
     if (!entries) this.threads.set(threadId, (entries = new Map()));
     if (entries.size < 1000)
       entries.set(id, { file, name: name ?? path.basename(file) });
-    return { id, name: name ?? path.basename(file) };
+    return { id, name: name ?? path.basename(file), ...(/\.gif$/i.test(file) ? {downloadName:path.basename(file)} : {}) };
   }
   decorate(threadId, data, { externalImages = false } = {}) {
     this.recentThreads.delete(threadId);
@@ -152,7 +164,7 @@ export class MessageMedia {
             const parsed = userContent(text);
             text = parsed.text;
             for (const file of parsed.files) {
-              if (/\.(png|jpe?g|webp)$/i.test(file.path))
+              if (/\.(png|jpe?g|webp|gif)$/i.test(file.path))
                 add(file.path, file.name);
               else {
                 const ref = this.addFile(threadId, file.path, file.name);
@@ -219,32 +231,27 @@ export class MessageMedia {
     const deferred = this.deferred.get(threadId + ':' + id);
     if (deferred) {
       const source = deferred.read();
-      if (typeof source !== 'string' || source.length > 36 * 1024 * 1024 || !dataImage.test(source)) throw Error('官方图片格式不受支持或超过 25 MB');
-      const bytes = Buffer.from(source.slice(source.indexOf(',') + 1), 'base64'), type = imageType(bytes);
-      if (!type || bytes.length > 25 * 1024 * 1024) throw Error('官方图片文件不可用或大于 25 MB');
-      return {bytes,type,name:deferred.name};
+      return {...readDataImage(source), name:deferred.name};
     }
     const inline = this.inline.get(threadId + ":" + id);
     if (inline) {
-      const bytes = Buffer.from(
-        inline.source.slice(inline.source.indexOf(",") + 1),
-        "base64",
-      );
-      const type = imageType(bytes);
-      if (!type || bytes.length > 25 * 1024 * 1024)
-        throw Error("图片文件不可用或大于 25 MB");
-      return { bytes, type, name: inline.name };
+      return {...readDataImage(inline.source), name:inline.name};
     }
     const entry = this.threads.get(threadId)?.get(id);
     if (!entry) throw Error("图片未出现在已读取的此会话中，请刷新会话");
     const fd = fs.openSync(entry.file, "r");
     try {
       const stat = fs.fstatSync(fd);
-      if (!stat.isFile() || stat.size > 25 * 1024 * 1024)
-        throw Error("图片文件不可用或大于 25 MB");
+      const header = Buffer.alloc(12);
+      if (!stat.isFile()) throw Error('图片文件不可用');
+      fs.readSync(fd, header, 0, header.length, 0);
+      const declared = imageType(header);
+      if (!declared) throw Error("附件不是支持的图片文件");
+      if (stat.size > imageLimit(declared)) throw Error(sizeError);
       const bytes = fs.readFileSync(fd),
         type = imageType(bytes);
       if (!type) throw Error("附件不是支持的图片文件");
+      if (bytes.length > imageLimit(type)) throw Error(sizeError);
       return { bytes, type, name: entry.name };
     } finally {
       fs.closeSync(fd);

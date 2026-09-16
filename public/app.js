@@ -49,7 +49,9 @@ if (android) {
       }
       if (!/^(blob:|data:image\/)/.test(link.href)) throw Error('此下载格式暂不支持');
       const blob = await (await fetch(link.href)).blob();
-      if (blob.size > 25 * 1024 * 1024) throw Error('图片超过 25 MiB 下载上限');
+      const header = new TextDecoder('ascii').decode(await blob.slice(0, 6).arrayBuffer());
+      const limit = header === 'GIF87a' || header === 'GIF89a' ? 64 : 25;
+      if (blob.size > limit * 1024 * 1024) throw Error('图片超过 ' + limit + ' MiB 下载上限');
       const response = await fetch('/api/downloads/image?name=' + encodeURIComponent(link.download || 'image.png'), { method: 'POST', headers: { 'X-Bridge-CSRF': csrf, 'Content-Type': 'application/octet-stream' }, body: blob, signal: AbortSignal.timeout(75000) });
       if (!response.ok) throw Error((await response.json()).error || '图片保存失败');
       toast('请选择原图保存位置');
@@ -612,9 +614,9 @@ function messageImage(ref, reuse) {
     img = node("img"),
     link = node("a", "image-download", "下载原图");
   img.alt = ref.name ?? "图片附件";
-  zoomableImage(img, ref.name ?? "image.png");
+  zoomableImage(img, ref.name ?? "image.png", ref.downloadName ?? ref.name ?? "image.png");
   img.decoding = "async";
-  link.download = ref.name ?? "image.png";
+  link.download = ref.downloadName ?? ref.name ?? "image.png";
   link.hidden = true;
   const imageAgent = agentId, imageThread = selected;
   let imageSignals = [agentReads.signal, taskReads.signal];
@@ -1500,7 +1502,7 @@ function renderItem(item, turnId, previous) {
     images = (item.content ?? item.input ?? []).filter(
       (c) =>
         c.type === "image" &&
-        /^data:image\/(png|jpeg|webp);base64,/.test(c.url),
+        /^data:image\/(png|jpeg|webp|gif);base64,/.test(c.url),
     );
   } else if (item.type === "agentMessage")
     text = item.bridgeDisplay?.text ?? item.text;

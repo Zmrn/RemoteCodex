@@ -11,6 +11,16 @@ import { messageTime } from '../public/message-content.mjs';
 import { readOfficialHistory } from '../src/history-read.mjs';
 import { Bridge } from '../src/bridge.mjs';
 import { EventEmitter } from 'node:events';
+import { animatedGif } from './fixtures/gif.mjs';
+
+test('rollout pages retain GIF originals behind lazy task-scoped media references', async t=>{
+ const bytes=animatedGif(),url='data:image/gif;base64,'+bytes.toString('base64');
+ const s=setup(t,[record({type:'item_completed',thread_id:id,turn_id:a,item:{type:'UserMessage',id:'gif',content:[{type:'image',url}]}})]);
+ const page=s.media.decorate(id,await s.read({}),{externalImages:true});
+ const image=page.turns[0].items[0].bridgeDisplay.images[0];
+ assert.equal(image.src,undefined);assert.equal(s.media.read(id,image.id).type,'image/gif');
+ assert.deepEqual(s.media.read(id,image.id).bytes,bytes);assert.throws(()=>s.media.read(b,image.id),/未出现/);
+});
 const id='11111111-2222-4333-8444-555555555555', a='aaaaaaaa-2222-4333-8444-555555555555', b='bbbbbbbb-2222-4333-8444-555555555555';
 const thread={id,kind:'codex',hostId:'local',title:'History',status:'active'};
 const png='data:image/png;base64,'+Buffer.from([137,80,78,71,13,10,26,10,0,0]).toString('base64');

@@ -65,6 +65,8 @@ jobs:
           node scripts/verify-image-stability-ui.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/verify-image-touch-ui.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/verify-gif-ui.mjs
       - name: Windows placement and notification regressions
         shell: pwsh
         run: |
@@ -74,6 +76,9 @@ jobs:
       - name: GitHub update network regressions
         # Host Java classes only; this does not build an APK.
         run: python -X utf8 scripts/verify-update-network.py
+      - name: Received image format and size regressions
+        # Host Java classes only; this does not build an APK.
+        run: python -X utf8 scripts/verify-received-image.py
       - name: Scope
         shell: pwsh
         run: |

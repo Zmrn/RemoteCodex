@@ -22,7 +22,7 @@ public final class LocalServer {
     String source=h.get("origin");if(source!=null&&!origin.equals(source)){reply(out,403,"application/json","{}".getBytes());return;}
     URI uri=new URI(target);String route=uri.getPath();if(route==null||!target.startsWith("/")||target.startsWith("//"))throw new Exception("Invalid path");
     boolean api=route.startsWith("/api/");if(api&&!csrf.equals(h.get("x-bridge-csrf"))){reply(out,403,"application/json","{}".getBytes());return;}
-    if(h.containsKey("transfer-encoding"))throw new Exception("Chunked requests are not supported");byte[] body=read(in,Integer.parseInt(h.getOrDefault("content-length","0")),(route.equals("/api/downloads/image")?25:24)*1024*1024);
+    if(h.containsKey("transfer-encoding"))throw new Exception("Chunked requests are not supported");byte[] body=read(in,Integer.parseInt(h.getOrDefault("content-length","0")),route.equals("/api/downloads/image")?ReceivedImage.MAX_BYTES:24*1024*1024);
     if(route.equals("/api/downloads/image")&&method.equals("POST")){
       MainActivity a=app.activity.get();if(a==null)throw new Exception("请打开应用后保存文件");
       String name=android.net.Uri.parse(target).getQueryParameter("name");a.downloadImage(body,name==null?"image.png":name);
