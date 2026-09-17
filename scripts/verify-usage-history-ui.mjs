@@ -98,10 +98,14 @@ try {
     assert.equal(await dialog.locator('.usage-chart-dot').count(),1);
     assert.match(await page.locator('#usage-history-selected').textContent(),/65%/);
     await page.getByRole('button',{name:'关闭额度历史',exact:true}).click();
+    // HTMLDialogElement.close queues its close event. Wait for that lifecycle
+    // cleanup before asserting released data or reopening a new request.
+    await page.waitForFunction(()=>!document.querySelector('#usage-history-dialog').open&&!document.querySelector('#usage-history-sample'));
     assert.equal(await page.locator('#usage-history-sample').count(),0);
     const count=requests.length;await page.locator('#open-usage-history').click();await page.locator('#usage-history-sample').waitFor();
     assert.equal(requests.length,count+1);
     await page.getByRole('button',{name:'关闭额度历史',exact:true}).click();
+    await page.waitForFunction(()=>!document.querySelector('#usage-history-dialog').open&&!document.querySelector('#usage-history-sample'));
     await page.locator('#footer-agent').click();await page.locator('#menu-usage-history').click();await page.locator('#usage-history-sample').waitFor();
     checks.push(width+'px: unsupported/failed targets clear chart and retry; single record stays a dot; close clears data; both nearby buttons reopen with fresh fetch');
   }catch(e){await page.screenshot({path:path.join(dir,'failure-'+width+'.png')});console.log(JSON.stringify({width,error:e.message,errors}));throw e;}
