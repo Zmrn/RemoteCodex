@@ -58,13 +58,13 @@ test('large raw payload does not block bounded text pages or copy images into th
  assert.throws(()=>s.media.read(b,image.id),/图片未出现/);
  assert.equal(s.media.inlineBytes,0);
 });
-test('display times distinguish official completed records from turn starts and never use the observation time',()=>{
+test('display times retain official completed records and never fall back to turn or observation time',()=>{
  const turn={startedAt:Date.parse('2026-09-10T11:00:00Z')/1000};
  const time=messageTime({bridgeRecordedAt:'2026-09-10T20:00:00+08:00'},turn);
  assert.equal(time.iso,'2026-09-10T12:00:00.000Z');assert.match(time.text,/^记录于 /);
  for(const value of [undefined,null,0,'bad','2026-09-10T12:00:00']){
   const fallback=messageTime({bridgeRecordedAt:value},turn);
-  assert.equal(fallback.iso,'2026-09-10T11:00:00.000Z');assert.match(fallback.text,/^本轮开始 /);
+  assert.equal(fallback.iso,null);assert.equal(fallback.text,'时间未知');
  }
  for(const startedAt of [undefined,null,0,-1,NaN,Infinity,1e20,'2026-09-10']){
   assert.equal(messageTime({}, {startedAt,observedAt:Date.now(),updatedAt:Date.now()}).iso,null);

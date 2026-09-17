@@ -51,23 +51,24 @@ export function itemText(item) {
     .join("\n");
 }
 
-// Display only official timestamps. A turn's start is not a message's send time.
-export function messageTime(item, turn) {
+// Display only per-message official timestamps, never the turn or local read time.
+export function messageTime(item) {
+  const startedMs = item.bridgeMessageStartedAtMs;
+  const isStarted = item.type === 'agentMessage' &&
+    Number.isSafeInteger(startedMs) && startedMs > 0 && startedMs <= 8.64e15;
   const recorded = item.bridgeRecordedAt;
   const recordMs = typeof recorded === 'string' &&
     /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(recorded)
     ? Date.parse(recorded) : NaN;
-  const turnMs = typeof turn.startedAt === 'number' ? turn.startedAt * 1000 : NaN;
-  const isRecord = Number.isFinite(recordMs);
-  const date = new Date(isRecord ? recordMs : turnMs);
+  const date = new Date(isStarted ? startedMs : recordMs);
   if (!Number.isFinite(date.getTime()) || date.getTime() <= 0) return {
-    text: '时间未知', title: '官方记录未提供可用时间', iso: null,
+    text: '时间未知', title: '官方未提供此条消息的时间；不使用本轮开始或本设备加载时间代替', iso: null,
   };
   const pad = n => String(n).padStart(2, '0');
   const text = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   return {
-    text: `${isRecord ? '记录于' : '本轮开始'} ${text}`,
-    title: (isRecord ? '官方消息完成记录时间' : '官方仅提供本轮开始时间，并非此条消息的准确发送时间') +
+    text: `${isStarted ? '开始接收' : '记录于'} ${text}`,
+    title: (isStarted ? '官方此条回复开始到达的时间（item/started），不是整轮开始或本设备加载时间' : '官方消息完成记录时间') +
       '；按当前设备时区显示（' + Intl.DateTimeFormat().resolvedOptions().timeZone + '）',
     iso: date.toISOString(),
   };

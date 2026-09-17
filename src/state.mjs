@@ -44,6 +44,19 @@ export function mergeLiveTurnItems(
       : {}),
     ...(Object.hasOwn(t, "error") ? { error: t.error } : {}),
   });
+  const timedItems = (items, turn) => {
+    const times = turn.aeonAssistantMessageStartedAtMsById;
+    return items.map((item) => {
+      // This is the official item/started event time, keyed by message ID.
+      // Never reuse a prior projection when the current owner lacks evidence.
+      const { bridgeMessageStartedAtMs: previous, ...rest } = item;
+      const ms = item.type === "agentMessage" && typeof item.id === "string" &&
+        times && typeof times === "object" && !Array.isArray(times) &&
+        Object.hasOwn(times, item.id) ? times[item.id] : undefined;
+      return Number.isSafeInteger(ms) && ms > 0 && ms <= 8.64e15
+        ? { ...rest, bridgeMessageStartedAtMs: ms } : rest;
+    });
+  };
   const turns = data.turns.map((t) => {
     const current = live.get(t.id);
     if (!current) return t;
@@ -52,7 +65,7 @@ export function mergeLiveTurnItems(
       ...liveFields(current),
       // An owner turn contains its current item array, including removals.
       // Only a missing array falls back to the official history tool.
-      items: Array.isArray(current.items) ? current.items : (t.items ?? []),
+      items: timedItems(Array.isArray(current.items) ? current.items : (t.items ?? []), current),
       itemsSource: Array.isArray(current.items) ? "official-desktop-IPC-live" : "official-tool-read",
     };
   });
@@ -72,7 +85,7 @@ export function mergeLiveTurnItems(
         continue;
       turns.push({
         ...liveFields(t),
-        items: t.items ?? [],
+        items: timedItems(t.items ?? [], t),
         itemsSource: "official-desktop-IPC-live",
       });
     }

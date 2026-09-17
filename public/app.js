@@ -1609,7 +1609,7 @@ function displayTurns() {
       const n = renderItem(item, t.id, previousItems.get(t.id + ':' + item.id));
       if (n) {
         n.dataset.itemId = item.id;
-        const time = messageTime(item, t);
+        const time = messageTime(item);
         let stamp = n.querySelector('.message-time');
         if (!stamp) {
           stamp = node('time', 'message-time');
