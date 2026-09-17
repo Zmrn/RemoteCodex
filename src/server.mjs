@@ -19,6 +19,8 @@ import { collectCompatibilityReport } from "./compatibility-report.mjs";
 import { diagnoseDevice } from "./diagnostics.mjs";
 import { NotificationSource } from './notification-source.mjs';
 import { DesktopNotifications } from './desktop-notifications.mjs';
+import { UsageHistory } from './usage-history.mjs';
+import { UsageRecorder } from './usage-recorder.mjs';
 export async function startServer({
   port = 43127,
   bridge = new Bridge(),
@@ -39,6 +41,7 @@ export async function startServer({
   const diagnostics = new Map();
   let compatibilityReportJob = null;
   const notificationSource = new NotificationSource(bridge);
+  const usageRecorder = new UsageRecorder(bridge, new UsageHistory(bridge.dataDir ?? DATA_DIR));
   let desktopNotifications;
   const notifications = () => desktopNotifications ??= new DesktopNotifications(agents, bridge.dataDir ?? DATA_DIR);
   const secret = randomBytes(32).toString("hex"),
@@ -67,6 +70,7 @@ export async function startServer({
     ["/image-reuse.mjs", "text/javascript; charset=utf-8"],
     ["/project-picker.mjs", "text/javascript; charset=utf-8"],
     ["/usage-view.mjs", "text/javascript; charset=utf-8"],
+    ["/usage-history-view.mjs", "text/javascript; charset=utf-8"],
     ["/questions-ui.mjs", "text/javascript; charset=utf-8"],
     ["/approvals-ui.mjs", "text/javascript; charset=utf-8"],
     ["/thread-menu.mjs", "text/javascript; charset=utf-8"],
@@ -252,6 +256,8 @@ export async function startServer({
         return json(res, 200, await bridge.models(url.searchParams.get("mode") ?? "codex"));
       if (req.method === "GET" && url.pathname === "/api/usage")
         return json(res, 200, await bridge.usage());
+      if (req.method === "GET" && url.pathname === "/api/usage/history")
+        return json(res, 200, usageRecorder.read(Number(url.searchParams.get("days") ?? 7)));
       const match =
         /^\/api\/threads\/([\w-]+)(?:\/(messages|follow|open|files|file|interrupt|settings|queue|questions|approvals|title|media|read-receipt))?$/.exec(
           url.pathname,
@@ -492,6 +498,7 @@ export async function startServer({
   }, 15000);
   heartbeat.unref();
   server.on("close", () => {
+    usageRecorder.close();
     desktopNotifications?.close();
     bridge.disconnect();
     access.close();
@@ -512,6 +519,7 @@ export async function startServer({
     server.close();
     throw e;
   }
+  if (!closing) usageRecorder.start();
   if (!closing)
     await bridge
       .connect()

@@ -23,6 +23,7 @@ import { imageLoadState } from "./image-load-state.mjs";
 import { imageReuse, releaseDetachedImages } from "./image-reuse.mjs";
 import { ProjectPicker } from "./project-picker.mjs";
 import { renderQuota, updateQuotaCountdowns } from "./usage-view.mjs";
+import { UsageHistoryView } from "./usage-history-view.mjs";
 import {
   windowId,
   saveRecovery,
@@ -421,6 +422,7 @@ function updateHistoryNotice() {
 // Request deduplication for the current viewing episode, never an unread state.
 const reportReadAttempts = new Map();
 function reportIsVisible(report) {
+  if (document.querySelector('dialog[open]')) return false;
   if (mode !== "codex" || report.a !== agentId || report.g !== generation || report.id !== selected ||
       !status.connected || document.hidden || !document.hasFocus() || document.querySelector(".conversation").inert) return false;
   const item = $("messages").querySelector('[data-item-id="' + CSS.escape(report.itemId) + '"] .message-body');
@@ -2505,6 +2507,11 @@ $("edit-agent").onclick = () => {
   editAgent(agentId);
 };
 $("refresh-usage").onclick = refreshUsage;
+const usageHistoryView = new UsageHistoryView({
+  request: (id, route, options) => api(base(id) + route, undefined, options),
+  getAgents: () => agents, getAgent: currentAgent,
+});
+for (const id of ['open-usage-history', 'menu-usage-history']) $(id).onclick = () => { closeAgentMenu(); usageHistoryView.open(); };
 document.addEventListener("pointerdown", (e) => {
   if (
     !$("agent-menu").contains(e.target) &&

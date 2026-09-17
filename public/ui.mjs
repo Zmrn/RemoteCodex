@@ -1,6 +1,7 @@
 export { markdown, inline } from "./markdown.mjs";
 export { copyMarkdown } from "./citations.mjs";
 const paths = {
+  chart: "M4 3v17h17 M7 14l4-5 4 3 5-7",
   image: "M3 3h18v18H3Z M3 16l5-5 4 4 3-3 6 6 M15 7h.1",
   bolt: "m14 2-10 12h7l-1 8 10-12h-7Z",
   queue: "M4 5v10a2 2 0 0 0 2 2h12 m-3-3 3 3-3 3 M9 5h10 M9 9h7",

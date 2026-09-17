@@ -160,6 +160,9 @@
           </span>
           <span class="device-chevron" data-icon="chevron"></span>
         </button>
+        <button id="open-usage-history" class="icon-button" aria-label="查看额度历史" title="查看额度历史">
+          <span data-icon="chart"></span>
+        </button>
         <button
           id="help"
           class="icon-button"
@@ -211,8 +214,9 @@
           <div id="agent-endpoint" hidden></div>
           <section class="device-usage" aria-label="当前设备额度">
             <div class="usage-heading">
-              <strong>额度剩余</strong
-              ><button
+              <strong>额度剩余</strong>
+              <button id="menu-usage-history" title="查看额度历史">历史</button>
+              <button
                 id="refresh-usage"
                 class="icon-button"
                 aria-label="刷新额度"

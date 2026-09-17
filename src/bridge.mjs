@@ -223,12 +223,14 @@ export class Bridge extends EventEmitter {
   }
   async usage() {
     this.requireConnection();
-    const desktop = this.desktop;
+    const desktop = this.desktop, identity = desktop.identity, generation = this.connectionGeneration;
     const raw = await desktop.call(TOOLS.usage, {});
     this.requireConnection();
-    if (desktop !== this.desktop)
+    if (desktop !== this.desktop || identity !== desktop.identity || generation !== this.connectionGeneration)
       throw Error("额度读取期间连接已更换，请重新读取");
-    return accountUsage(raw);
+    const usage = accountUsage(raw);
+    this.emit('usage', usage);
+    return usage;
   }
   async updateSettings(id, key, input) {
     this.requireSupportedBuild("settings");

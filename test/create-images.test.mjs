@@ -16,6 +16,7 @@ function fixture(t) {
     catalog: [{ namespace: "codex_app", name: "send_message_to_thread", inputSchema: { properties: { model: { description: "fixture (Fixture; supported reasoning efforts: low)" } } } }],
     call: async (tool, args) => {
       calls.push({ tool, args });
+      if (tool === "get_usage_limits") return {};
       if (tool === "create_thread") return { threadId: id };
       if (tool === "read_thread") return { thread: { id, kind: "codex", status: { type: "idle" } } };
       throw Error("Unexpected tool");
@@ -74,7 +75,9 @@ test("new-task HTTP request carries the full image batch to the official owner a
     const post = body => fetch(address + "/api/threads", { method: "POST", headers: { "X-Bridge-CSRF": secret, "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const body = { mode: "codex", requestId: "http-image-create-test", prompt: "HTTP image test", imageDataUrls: images };
     assert.equal((await post({ ...body, imageDataUrls: ["invalid"] })).status, 400);
-    assert.equal(calls.length, 0);
+    // Target-side history now performs a background quota read at startup.
+    // Rejecting malformed images still must not call create or any owner write.
+    assert.deepEqual(calls, [{ tool: "get_usage_limits", args: {} }]);
     const response = await post(body);
     assert.equal(response.status, 200);
     assert.equal((await response.json()).result.threadId, id);

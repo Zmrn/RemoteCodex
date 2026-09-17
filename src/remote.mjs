@@ -6,6 +6,7 @@ import { isTailAddress, resolveAgent } from "./agents.mjs";
 import { validateAccessKey } from "./access-key.mjs";
 export function allowedRoute(method, url) {
   const u = new URL(url, "http://bridge.invalid");
+  if (method === "GET" && u.pathname === "/api/usage/history") return true;
   if (method === "GET" && ["/api/compatibility", "/api/compatibility/probe", "/api/compatibility/report"].includes(u.pathname)) return true;
   if (method === "POST" && u.pathname === "/api/compatibility/probe") return true;
   if (
