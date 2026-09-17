@@ -1,5 +1,28 @@
 # GitHub 直接更新
 
+## 0.10.40 正式发布（2026-09-18）
+
+[GitHub Release v0.10.40](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.40) 已公开。额度旁新增历史入口，按目标设备查看1/7/30天及已有记录的额度窗口；目标Windows服务每5分钟保存官方实际采样，仅保留365天，控制端按需拉取。逐条AI回复优先使用官方逐条“开始接收”时间，缺失则保留官方“记录于”或显示未知。目标Windows接入端与使用中的Windows/Android控制端需一同更新；历史从更新运行后开始积累，不补造旧数据。
+
+最终版本319项Node22.19.0、接口清单、双尺寸额度历史8组/逐条时间8组、Chat与按功能兼容UI通过。源码`c6e00883ede61a71abb051f46d4329d0d0cd0236`的[Checks 35242523620](https://github.com/Zmrn/RemoteCodex/actions/runs/35242523620)成功后preflight放行，[Build 35243098074](https://github.com/Zmrn/RemoteCodex/actions/runs/35243098074)使用requestId `6bc997b2-3162-4ddc-a429-6a51d02817e3`。仅派发一次，云端签名前门禁及构建首次成功；只使用这次云产物，没有本地构建。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44181504 | `97f7f092b5e03872a908a203f7d531a8796e4bef951a1a34b4f7c7ee14cced8a` |
+| RemoteCodex.apk | 286885 | `2587bbdb2dd1f6c7527d4d77241816d1c0b9030b992d2dba1caa92a0bab279b5` |
+
+双端原RSA更新签名、APK v2/v3原证书、包名com.anso.remotecodex/versionCode10040、包内源码/共享页面/说明/GitHub渠道一致；无用户配置或私钥。APK证书SHA-256为`3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`，中央清单SHA-256为`7df1101ddd4a3b422e6026a42fe1aeee318d846234283e234bc5e8f7d75cd392`，按构建提交及包内字节核对。未执行APK或模拟器。
+
+EXE隔离home、PATH仅System32下的内嵌运行时、DPAPI与资源自检通过；同次包内源码对当前官方Windows x64 **26.908.9136.0** 只读连接及列表读取通过，共24项。20/21接口匹配，22/24功能条件满足；未满足功能：settings, createPermissions。接口匹配不代表真实写入往返验证，不扩大历史行为版本名单26.901.6511.0/26.903.8094.0。
+
+包内Node 22.19.0 的SQLite实际可用，独立目标服务读取官方额度并持久保存，与官方实际采样原值一致；重启服务并令官方连接离线后，1/7/30天读取均保留原记录。未把实际额度值上传或写入此文档。开发阶段已验证一年清理、强杀未提交事务恢复、多实例、损坏及未来schema保留，见USAGE.md；本轮包内读取验证分别记于packaged-usage.json。
+
+隔离0.10.39云包→0.10.40云包的设备保存、强制重启与显式删除通过；现有客户端设备、接入、更新、通知设置及通知草稿字节保持。标准发布器八项资源先上传草稿并逐项读回再公开；匿名latest双签名清单、固定版本完整APK/EXE及说明均核验一致。没有升级现有客户端、重启官方软件或写真实任务/已读状态。
+
+官方settings v2仍待适配，修改会话设置、新建指定权限暂不可用。Chat只含已完成范围，普通Chat新建/图片和未完成Work适配未纳入；8份未完成Chat修改独立保全。未执行Android真机行为测试，由用户更新后验证。
+
+证据在会话work/release-040/work/：all-tests-node22.log、checks-watch.log、preflight.json、build-dispatch.log、build-watch.log、package-verification.json、packaged-official.json、packaged-usage.json、agent-restart.log、installed-data-after.json、publish.log、release-state.json、online-verification.json。发布记录提交不再次构建，已发布产物仍对应构建SHA。
+
 ## 0.10.39 正式发布（2026-09-16）
 
 [GitHub Release v0.10.39](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.39) 已公开。已有Codex/Chat会话在离线、历史未读入或刷新失败时继续编辑和保存本地草稿；Codex图片支持离线添加、粘贴和移除，只添加图片也会触发备份。重连不覆盖新输入，不自动补发。更新使用中的Windows/Android控制端后生效。
