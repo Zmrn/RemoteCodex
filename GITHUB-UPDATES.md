@@ -1,5 +1,28 @@
 # GitHub 直接更新
 
+## 0.10.42 正式发布（2026-09-18）
+
+[GitHub Release v0.10.42](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.42) 已公开。Windows解压逐文件请求落盘，完整校验后同卷发布并复核；缓存缺失、截断或哈希不符时，从同一EXE内置资源重建到独立目录，保留原缓存和data。启动、自检、更新预检共用跨进程锁，孤立临时目录永不执行，文件占用/权限问题不当损坏。Windows接入端和控制端均可更新获得保护；Android同次发布保持版本一致。无需重新配对。
+
+最终版本323项Node22.19.0、兼容清单、缓存生产C#测试DLL15组和更新界面8组通过。[Checks 35340743746](https://github.com/Zmrn/RemoteCodex/actions/runs/35340743746)与构建SHA `9f8169e87c17640cd98c8f28ebd436bf1ce98523`一致，preflight后仅派发一次[Build 35341106342](https://github.com/Zmrn/RemoteCodex/actions/runs/35341106342)，requestId `82828793-cfdd-408c-946d-a589f5ca4f7f`，签名前门禁和云构建首次成功。没有本地构建。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44188672 | `b68f783560f90f337b316dadf8aa8d8b5865f02a69354098901f608ecd965f44` |
+| RemoteCodex.apk | 291056 | `f498734b8a4ad638f7825ec6226814a2b560ba0b62d9065bcc290fff4f2aff7a` |
+
+双端原RSA更新签名、APK v2/v3原证书、包名com.anso.remotecodex/versionCode10042、包内源码/共享页面/说明/渠道/兼容清单一致，无用户配置或私钥。APK证书SHA256 `3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`；中央清单SHA256 `7df1101ddd4a3b422e6026a42fe1aeee318d846234283e234bc5e8f7d75cd392`。
+
+正式云EXE在独立home通过5组实际进程验收：首次解压及重复启动；两个文件全零后4进程并发恢复且只产生一份恢复目录；恢复缓存再次损坏后重建；文件缺失恢复；解压中途强杀自己启动的EXE后重新完整恢复。每次按同包全部155个文件哈希比对，旧缓存、合成设备和草稿哨兵原字节保持。没有人为断电，不声称物理存储绝对可靠。原目录和中断临时目录保留。
+
+EXE在隔离home及仅System32 PATH下通过内嵌运行时/DPAPI/资源自检。包内源码连接当前官方Windows x64 **26.911.7940.0**，只读列表25项，20/21接口匹配、22/24功能条件满足。未满足：settings, createPermissions。接口匹配不等于全部写操作实测，不扩大既有行为验证版本26.901.6511.0/26.903.8094.0。
+
+包内Node22.19.0的SQLite、真实官方额度保存、新进程及官方断开后的服务重启1/7/30天读回通过。隔离0.10.41云包→0.10.42云包设备保存、强制重启和显式删除通过；现有设备、接入、更新、通知配置与通知草稿字节保持。八项资源草稿上传、逐项读回核验后公开，匿名latest双签名清单、固定版本完整双包和说明一致。
+
+settings v2仍待适配，修改会话设置和新建指定权限暂不可用。Chat只包含已完成范围，普通Chat新建/图片及未完成Work不在包中；原8份未完成Chat独立保全。未运行APK/模拟器、升级现有客户端、重启官方或写真实任务。EXE自身损坏仍需重新下载。
+
+证据：会话work/release-042/work/，包括all-tests-node22.log、cache-test.log、checks-watch.log、preflight.json、build-dispatch.log、build-watch.log、package-verification.json、packaged-cache.json、packaged-official.json、packaged-usage.json、agent-restart.log、installed-data-after.json、publish.log和online-verification.json。发布记录不再触发构建，产物仍对应上述SHA。
+
 ## 0.10.41 正式发布（2026-09-18）
 
 [GitHub Release v0.10.41](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.41) 已公开。修复官方Markdown `/C:/...` 图片及文件链接在Windows被解析为重复盘符而立即失败的问题。会话附件图片显示实际下载百分比、已接收量/总大小和具体错误；没有总量时不伪造百分比，Android转发保留未编码响应长度。刷新保留正在下载的请求和已加载图片，失败后显式重试。目标Windows接入端与使用中的Windows/Android控制端需同时更新。
