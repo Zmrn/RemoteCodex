@@ -1,5 +1,28 @@
 # GitHub 直接更新
 
+## 0.10.41 正式发布（2026-09-18）
+
+[GitHub Release v0.10.41](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.41) 已公开。修复官方Markdown `/C:/...` 图片及文件链接在Windows被解析为重复盘符而立即失败的问题。会话附件图片显示实际下载百分比、已接收量/总大小和具体错误；没有总量时不伪造百分比，Android转发保留未编码响应长度。刷新保留正在下载的请求和已加载图片，失败后显式重试。目标Windows接入端与使用中的Windows/Android控制端需同时更新。
+
+最终版本323项Node22.19.0、接口清单、双尺寸进度6组/原稳定6组/GIF2组、Chat与按功能兼容UI通过。源码`198d2f4a9209e19fa6789f306a24940b5b3647e4`的[Checks 35314888628](https://github.com/Zmrn/RemoteCodex/actions/runs/35314888628)成功后preflight放行，[Build 35315332244](https://github.com/Zmrn/RemoteCodex/actions/runs/35315332244)仅派发一次，requestId `f3d12d88-7c3b-442e-9c41-435d197a8e1e`。云端签名前门禁与构建首次成功，没有本地构建。
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44184576 | `c5f540fe8759869da4e43d58676d89edd04a1ae44e145b781327441a28195405` |
+| RemoteCodex.apk | 291056 | `a632e5e6c015d8b3258ef2c0cf0ecc89636334927e2b25b3ad0c31a19b071ec7` |
+
+双端原RSA更新签名、APK v2/v3原证书、包名com.anso.remotecodex/versionCode10041、包内源码/共享页面/说明/GitHub渠道一致；无用户配置或私钥。APK证书SHA256 `3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`；中央清单SHA256 `7df1101ddd4a3b422e6026a42fe1aeee318d846234283e234bc5e8f7d75cd392`。未执行APK或模拟器。
+
+EXE隔离home和仅System32的PATH下，包内运行时/DPAPI/资源自检通过。同次包内源码对当前官方Windows x64 **26.908.9136.0** 只读连接及列表读取通过，共24项；20/21接口匹配，22/24功能条件满足。未满足功能：settings, createPermissions。不将接口匹配视为写操作往返实测，不扩大既有行为验证版本26.901.6511.0/26.903.8094.0。
+
+同次包内源码对用户问题任务获取当前官方owner只读快照，再读取原图：HTTP200、image/jpeg、335737字节，SHA256 `6fc56dc52245df58339f092939c4cbf424fb973308a2735b7fb5c4e5b2d171c7`与原文件一致，浏览器解码1322×1368。私人图片和消息未上传至仓库；任务/已读写入0。共享进度用真实分块HTTP隔离回归验证，未宣称Android真机行为实测。
+
+包内Node22.19.0的SQLite可用，真实官方额度保存后，新进程及官方断开后的重启服务均能完整读回1/7/30天记录。隔离0.10.40云包→0.10.41云包的设备保存、强制重启和显式删除通过；现有设备、接入、更新、通知设置及通知草稿字节保持。八项资源先上传草稿、逐项读回后公开；匿名latest双签名清单、固定版本完整APK/EXE及说明下载一致。
+
+第三方HTTPS图片仍由浏览器直接读取，不新增带凭据代理，数值进度仅用于可读取响应字节的附件图片。settings v2仍待适配，修改会话设置和新建指定权限暂不可用。Chat只含已完成范围，普通Chat新建/图片及未完成Work适配未纳入；原8份未完成Chat独立保全。未安装升级现有客户端、重启官方或执行真实任务写入。
+
+证据在会话work/release-041/work/，关键文件：all-tests-node22.log、checks-watch.log、preflight.json、build-dispatch.log、build-watch.log、package-verification.json、packaged-official.json、packaged-image.json、packaged-usage.json、agent-restart.log、installed-data-after.json、publish.log、online-verification.json。发布记录提交不再触发构建，产物仍对应上述构建SHA。
+
 ## 0.10.40 正式发布（2026-09-18）
 
 [GitHub Release v0.10.40](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.40) 已公开。额度旁新增历史入口，按目标设备查看1/7/30天及已有记录的额度窗口；目标Windows服务每5分钟保存官方实际采样，仅保留365天，控制端按需拉取。逐条AI回复优先使用官方逐条“开始接收”时间，缺失则保留官方“记录于”或显示未知。目标Windows接入端与使用中的Windows/Android控制端需一同更新；历史从更新运行后开始积累，不补造旧数据。
