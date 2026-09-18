@@ -1150,6 +1150,10 @@ body[data-mode="chat"] .composer-footnote { line-height: 1.5; }
   font-size: 13px;
 }
 .image-load-state button { color: var(--blue); padding: 6px 10px; }
+.image-load-detail { width: 100%; text-align: center; overflow-wrap: anywhere; line-height: 1.5; }
+.image-load-state progress { width: 100%; height: 6px; accent-color: var(--blue); }
+.image-load-state progress::-webkit-progress-bar { background: var(--line); border-radius: 3px; }
+.image-load-state progress::-webkit-progress-value { background: var(--blue); border-radius: 3px; }
 .image-load-state[data-state="loading"] > a { display: none; }
 .image-load-state[hidden], .image-load-state [hidden], .message-image img[hidden] { display: none; }
 /* Preserve an on-screen lazy-load target while concealing alt/broken glyphs. */

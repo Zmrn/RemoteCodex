@@ -8,6 +8,13 @@ const dataImage = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 const GIF_BYTES = 64 * 1024 * 1024;
 const imageLimit = type => type === 'image/gif' ? GIF_BYTES : 25 * 1024 * 1024;
 const sizeError = '图片格式不受支持或超过上限（GIF 64 MiB，其他图片 25 MiB）';
+// Official Markdown uses /C:/... as an absolute Windows link. Passing it
+// directly to fs resolves to C:\C:\... on Windows. Strip only that exact prefix;
+// UNC/device paths, relative paths and URL escapes keep the existing checks.
+export function messageLocalPath(source) {
+  return process.platform === 'win32' && typeof source === 'string' && /^\/[a-z]:[\\/]/i.test(source)
+    ? source.slice(1) : source;
+}
 function readDataImage(source) {
   if (typeof source !== 'string' || source.length > 4 * Math.ceil(GIF_BYTES / 3) + 32 || !dataImage.test(source)) throw Error(sizeError);
   const bytes = Buffer.from(source.slice(source.indexOf(',') + 1), 'base64'), type = imageType(bytes);
@@ -49,6 +56,7 @@ export class MessageMedia {
   addFile(threadId, source, name) {
     // Only exact local paths actually present in a read message become download IDs.
     // Never follow UNC/device paths or accept arbitrary paths from HTTP callers.
+    source = messageLocalPath(source);
     if (
       typeof source !== "string" ||
       !path.isAbsolute(source) ||
@@ -116,7 +124,7 @@ export class MessageMedia {
       }
       return { id, name: this.inline.get(key).name };
     }
-    let file = source;
+    let file = messageLocalPath(source);
     if (!path.isAbsolute(file) || /^[\\/]{2}/.test(file) || !/\.(png|jpe?g|webp|gif)$/i.test(file))
       return null;
     const id = createHash("sha256").update(file).digest("hex");
@@ -239,7 +247,13 @@ export class MessageMedia {
     }
     const entry = this.threads.get(threadId)?.get(id);
     if (!entry) throw Error("图片未出现在已读取的此会话中，请刷新会话");
-    const fd = fs.openSync(entry.file, "r");
+    let fd;
+    try { fd = fs.openSync(entry.file, "r"); }
+    catch (e) {
+      if (['ENOENT', 'ENOTDIR'].includes(e.code)) throw Error('找不到原图，文件可能已移动或删除');
+      if (['EACCES', 'EPERM'].includes(e.code)) throw Error('目标设备没有读取原图的权限');
+      throw e;
+    }
     try {
       const stat = fs.fstatSync(fd);
       const header = Buffer.alloc(12);

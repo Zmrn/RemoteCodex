@@ -20,6 +20,7 @@ import { HelpUpdates } from "./help-updates.mjs";
 import { DeviceConnections } from "./device-connections.mjs";
 import { zoomableImage } from "./image-viewer.mjs";
 import { imageLoadState } from "./image-load-state.mjs";
+import { imageTransfer, imageFailure } from "./image-transfer.mjs";
 import { imageReuse, releaseDetachedImages } from "./image-reuse.mjs";
 import { ProjectPicker } from "./project-picker.mjs";
 import { renderQuota, updateQuotaCountdowns } from "./usage-view.mjs";
@@ -633,8 +634,9 @@ function messageImage(ref, reuse) {
     if (ref.id) img.dataset.downloadRoute = link.dataset.downloadRoute = base(imageAgent) + '/threads/' + imageThread + '/media?id=' + encodeURIComponent(ref.id);
   };
   box.updateReference(ref);
-  let started = false, ready, ownedUrl;
+  let started = false, ready, ownedUrl, unsubscribe;
   box.releaseImage = () => {
+    unsubscribe?.(); unsubscribe = null;
     if (ownedUrl) URL.revokeObjectURL(ownedUrl);
     ownedUrl = null;
   };
@@ -657,8 +659,8 @@ function messageImage(ref, reuse) {
     ready = messageImageCache.get(key);
     if (!ready) {
       ready = ref.src
-        ? Promise.resolve(ref.src)
-        : fetch(
+        ? { promise: Promise.resolve(ref.src), subscribe: () => () => {} }
+        : imageTransfer(() => fetch(
             base(imageAgent) +
               "/threads/" +
               imageThread +
@@ -671,10 +673,7 @@ function messageImage(ref, reuse) {
                 AbortSignal.timeout(75000),
               ]),
             },
-          ).then(async (r) => {
-            if (!r.ok) throw Error("原图不可用（源文件可能已移动或删除）");
-            return r.blob();
-          });
+          ));
       messageImageCache.set(key, ready);
       if (messageImageCache.size > 100) {
         const first = messageImageCache.keys().next().value;
@@ -683,15 +682,19 @@ function messageImage(ref, reuse) {
         messageImageCache.delete(first);
       }
     }
-    ready
+    unsubscribe?.();
+    unsubscribe = ready.subscribe(progress => {
+      if (box.isConnected && !imageSignals.some(signal => signal.aborted)) state.progress(progress);
+    });
+    ready.promise
       .then((source) => {
         if (!box.isConnected || imageSignals.some(signal => signal.aborted)) return;
         img.src = typeof source === 'string' ? source : (ownedUrl = URL.createObjectURL(source));
         link.rel = "noopener";
       })
-      .catch(() => {
+      .catch(e => {
         forget();
-        if (!imageSignals.some(signal => signal.aborted)) state.error();
+        if (box.isConnected && !imageSignals.some(signal => signal.aborted)) state.error(imageFailure(e));
       });
   };
   return box;
