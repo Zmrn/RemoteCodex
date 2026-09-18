@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Management;
-using System.IO.Compression;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -247,69 +246,19 @@ internal static class PortableLauncher {
     private static string Hash(byte[] bytes) {
         using (SHA256 sha = SHA256.Create()) { return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant(); }
     }
-    private static string HashFile(string file) {
-        using (SHA256 sha = SHA256.Create())
-        using (Stream stream = File.OpenRead(file)) { return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant(); }
-    }
     private static void EnsureDirectory(string folder) {
         for (DirectoryInfo current = new DirectoryInfo(folder); current != null; current = current.Parent) {
             if (current.Exists && (current.Attributes & FileAttributes.ReparsePoint) != 0) throw new Exception("程序缓存目录不能使用目录链接：" + folder);
         }
         Directory.CreateDirectory(folder);
     }
-    private static string Inside(string root, string name) {
-        string target = Path.GetFullPath(Path.Combine(root, name.Replace('/', Path.DirectorySeparatorChar)));
-        if (!target.StartsWith(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-            throw new Exception("压缩包包含越界路径。");
-        return target;
-    }
     private static string ResourceText(string name) {
         using (Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(name))
         using (StreamReader reader = new StreamReader(stream, Encoding.UTF8)) { return reader.ReadToEnd(); }
     }
-    private static void VerifyFiles(string root) {
-        foreach (string line in ResourceText("payload.files").Split('\n')) {
-            if (String.IsNullOrWhiteSpace(line)) continue;
-            string[] fields = line.TrimEnd('\r').Split('\t');
-            string file = Inside(root, fields[1]);
-            EnsureDirectory(Path.GetDirectoryName(file));
-            if (!File.Exists(file) || (File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0 || HashFile(file) != fields[0])
-                throw new Exception("程序缓存校验失败，请停止桥接器后移除版本缓存再重新打开：" + root);
-        }
-    }
     private static string Extract() {
-        string versions = Path.Combine(home, "versions");
-        EnsureDirectory(versions);
-        string root = Path.Combine(versions, PortableBuild.Version + "-" + PortableBuild.PayloadHash.Substring(0, 12));
-        if (Directory.Exists(root)) { VerifyFiles(root); return root; }
-        string staging = Path.Combine(versions, ".extract-" + Guid.NewGuid().ToString("N"));
-        EnsureDirectory(staging);
-        using (Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("payload.zip")) {
-            using (SHA256 sha = SHA256.Create()) {
-                string hash = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
-                if (hash != PortableBuild.PayloadHash) throw new Exception("EXE 内置资源校验失败，请重新复制完整文件。");
-            }
-            stream.Position = 0;
-            using (ZipArchive zip = new ZipArchive(stream, ZipArchiveMode.Read)) {
-                foreach (ZipArchiveEntry entry in zip.Entries) {
-                    string target = Inside(staging, entry.FullName);
-                    if (entry.FullName.EndsWith("/")) { EnsureDirectory(target); continue; }
-                    EnsureDirectory(Path.GetDirectoryName(target));
-                    using (Stream input = entry.Open())
-                    using (Stream output = new FileStream(target, FileMode.CreateNew, FileAccess.Write)) { input.CopyTo(output); }
-                }
-            }
-        }
-        VerifyFiles(staging);
-        // Windows scanners can briefly hold newly extracted runtime DLLs open.
-        // Retry only this private staging rename; never overwrite another version.
-        for (int attempt = 0; ; attempt++) {
-            try { Directory.Move(staging, root); break; }
-            catch (IOException) { if (attempt >= 29) throw; }
-            catch (UnauthorizedAccessException) { if (attempt >= 29) throw; }
-            Thread.Sleep(200);
-        }
-        return root;
+        return new PortableCache(home, PortableBuild.Version, PortableBuild.PayloadHash,
+            ResourceText("payload.files"), () => Assembly.GetExecutingAssembly().GetManifestResourceStream("payload.zip")).Ensure();
     }
 
     // Windows command-line quoting; paths with spaces, Unicode and trailing slashes remain intact.

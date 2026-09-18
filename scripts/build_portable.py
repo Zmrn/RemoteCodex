@@ -130,7 +130,7 @@ def main():
         "/win32icon:" + str(ROOT / "public/app-icon.ico"),
         "/resource:" + str(payload) + ",payload.zip",
         "/resource:" + str(manifest) + ",payload.files",
-        "/out:" + str(dest), str(ROOT / "windows/PortableLauncher.cs"), str(ROOT / "windows/OwnedProcesses.cs"), str(generated),
+        "/out:" + str(dest), str(ROOT / "windows/PortableLauncher.cs"), str(ROOT / "windows/PortableCache.cs"), str(ROOT / "windows/OwnedProcesses.cs"), str(generated),
     ], check=True)
     result = {
         "file": dest.name, "version": version, "bytes": dest.stat().st_size,
