@@ -1,6 +1,6 @@
 # 官方设置接口 v1 / v2
 
-2026-09-19：适配 `thread-follower-update-thread-settings` v2，同时保留 v1。当前源码版本 0.10.43；本机源码验证已完成，正式发布结果另见 GITHUB-UPDATES.md。
+2026-09-19：适配 `thread-follower-update-thread-settings` v2，同时保留 v1。已随 0.10.43 经 GitHub 同次双端构建并正式发布；包内与线上验收结果见 GITHUB-UPDATES.md。
 
 ## 已核对的官方实现
 
