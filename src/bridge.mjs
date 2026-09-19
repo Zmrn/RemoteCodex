@@ -1,4 +1,4 @@
-import { OFFICIAL, TOOLS, EVENTS, requireFeature, desktopPolicy, protocolRequest, protocolBroadcast } from "./official-protocol.mjs";
+import { OFFICIAL, TOOLS, EVENTS, requireFeature, desktopPolicy, protocolRequest, protocolVersion, protocolBroadcast } from "./official-protocol.mjs";
 import { validateImageUrls, IMAGE_LIMITS } from "../public/image-input.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -234,6 +234,12 @@ export class Bridge extends EventEmitter {
   }
   async updateSettings(id, key, input) {
     this.requireSupportedBuild("settings");
+    const desktop = this.desktop, identity = desktop.identity, ipc = desktop.ipc;
+    const checkConnection = () => {
+      this.requireConnection();
+      if (desktop !== this.desktop || identity !== desktop.identity || ipc !== desktop.ipc)
+        throw Error('官方连接已变化，设置未发送，请重新连接');
+    };
     const read = await this.codexThread(id);
     if (
       !input ||
@@ -259,6 +265,9 @@ export class Bridge extends EventEmitter {
       await new Promise((r) => setTimeout(r, 100));
     const current = this.live.get(id)?.state?.latestThreadSettings;
     if (!current) throw Error("官方实时设置尚不可用");
+    checkConnection();
+    if (this.live.get(id)?.owner && this.live.get(id).owner !== owner.handledByClientId)
+      throw Error('官方设置所有者已变化，设置未发送');
     const modelInput = Object.fromEntries(
       ["model", "effort"]
         .filter((k) => input[k] !== undefined)
@@ -275,7 +284,9 @@ export class Bridge extends EventEmitter {
     };
     if (!Object.keys(settings).length) throw Error("没有选择需要修改的设置");
     return this.once(key, "settings", { id, settings }, async () => {
-      const r = await protocolRequest(this.desktop.ipc, "settings",
+      checkConnection();
+      const version = protocolVersion(ipc, "settings");
+      const r = await protocolRequest(ipc, "settings",
         { conversationId: id, threadSettings: settings },
         {
           targetClientId: owner.handledByClientId,
@@ -284,6 +295,11 @@ export class Bridge extends EventEmitter {
       );
       if (r.handledByClientId !== owner.handledByClientId)
         throw Error("Unexpected settings owner; outcome unknown");
+      // v2 explicitly reports whether the next-turn update was applied. An ACK
+      // alone must never authorize the subsequent message or replace live state.
+      if (version === 2 && r.result?.applied !== true)
+        throw Error(r.result?.applied === false ? '官方未应用所选设置；消息未发送，草稿已保留'
+          : '官方设置回执缺少应用确认，结果未知；请核对官方任务，不要重复发送');
       this.emitEvent("settings-updated", {
         threadId: id,
         ownerClientId: r.handledByClientId,

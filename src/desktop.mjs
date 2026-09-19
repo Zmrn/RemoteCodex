@@ -138,7 +138,7 @@ export class Desktop {
       const ipc = this.ipc;
       if (ipc) ipc.assertInterface = key => {
         if (this.ipc !== ipc) throw Error("Official IPC connection changed");
-        requireInterface(this, key);
+        return requireInterface(this, key);
       };
       return this.identity;
     } catch (error) {

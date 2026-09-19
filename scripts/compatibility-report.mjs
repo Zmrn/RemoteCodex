@@ -17,7 +17,9 @@ export function validateCatalog() {
   for (const [kind, entries] of Object.entries({ tools: OFFICIAL.tools, ipc: OFFICIAL.ipc })) {
     for (const [key, row] of Object.entries(entries)) {
       if (!(row.method || row.name) || !row.purpose || !row.consumer || !Array.isArray(row.request) || !row.response ||
-          !fs.existsSync(path.join(root, row.test)) || (kind === "ipc" && !Number.isInteger(row.version)))
+          !fs.existsSync(path.join(root, row.test)) || (kind === "ipc" && (!Number.isInteger(row.version) ||
+            (row.supportedVersions && (!Array.isArray(row.supportedVersions) || !row.supportedVersions.includes(row.version) ||
+              new Set(row.supportedVersions).size !== row.supportedVersions.length || row.supportedVersions.some(v => !Number.isInteger(v) || v < 1))))))
         throw Error("Incomplete desktop interface entry: " + key);
     }
   }
@@ -64,7 +66,7 @@ export function interfaceMarkdown() {
     "",
     "| 方法 | 协议版本 | 用途 | 请求字段 | 返回字段 | 调用位置 | 回归 |",
     "| --- | --- | --- | --- | --- | --- | --- |",
-    ...Object.values(OFFICIAL.ipc).map(r => "| " + [r.method, r.version, r.purpose, r.request, r.response, r.consumer, r.test].map(cell).join(" | ") + " |"),
+    ...Object.values(OFFICIAL.ipc).map(r => "| " + [r.method, r.supportedVersions?.join(' / ') ?? r.version, r.purpose, r.request, r.response, r.consumer, r.test].map(cell).join(" | ") + " |"),
     "",
     "## 功能与所需接口",
     "",

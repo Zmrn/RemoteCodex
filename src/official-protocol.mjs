@@ -29,6 +29,7 @@ export function desktopCompatibility(image) {
   return { ...supportManifest(), detectedVersion: version, behaviorVerified: supportedBuild(image) };
 }
 const unknown = detail => ({ status: 'unknown', detail });
+export const protocolVersions = spec => spec.supportedVersions ?? [spec.version];
 export function protocolObservation(records, spec) {
   if (!records?.length) return unknown('无法读取此版本的协议表');
   if (records.some(r => Object.hasOwn(r.methods, spec.method) && !Number.isInteger(r.methods[spec.method])))
@@ -36,8 +37,9 @@ export function protocolObservation(records, spec) {
   const versions = [...new Set(records.map(r => r.methods[spec.method]).filter(Number.isInteger))];
   if (!versions.length) return { status: 'missing', detail: '官方协议表中未找到此指令' };
   if (versions.length !== 1) return unknown('协议表存在多个版本，需运行验证');
-  return { status: versions[0] === spec.version ? 'matched' : 'mismatch', version: versions[0],
-    detail: versions[0] === spec.version ? '协议版本一致；来自包内静态声明' : `预期 v${spec.version}，官方为 v${versions[0]}` };
+  const matched = protocolVersions(spec).includes(versions[0]);
+  return { status: matched ? 'matched' : 'mismatch', version: versions[0],
+    detail: matched ? '协议版本已适配；来自包内静态声明' : `预期 ${protocolVersions(spec).map(v => 'v' + v).join(' / ')}，官方为 v${versions[0]}` };
 }
 export function interfaceObservations({ connected = false, ipcConnected = connected, catalog = [], protocols = [] } = {}) {
   const rows = Object.entries(OFFICIAL.tools).map(([id, spec]) => {
@@ -89,13 +91,21 @@ export function requireInterface(desktop, key) {
   const value = OFFICIAL.ipc[key] && rows.initialize?.status !== "matched" ? rows.initialize : rows[key];
   if (value?.status !== 'matched') throw Error('官方接口 ' + (OFFICIAL.tools[key]?.name ?? OFFICIAL.ipc[key]?.method ?? key) +
     ' 暂不可用：' + (value?.detail ?? '尚无当前连接证据') + '。请求未发送。(Unavailable official interface)');
+  return value;
+}
+export function protocolVersion(pipe, key) {
+  const spec = OFFICIAL.ipc[key];
+  if (!spec) throw Error('Unknown official protocol: ' + key);
+  const observed = pipe?.assertInterface?.(key);
+  const version = observed?.version ?? spec.version;
+  if (!protocolVersions(spec).includes(version)) throw Error('Unsupported official protocol version');
+  return version;
 }
 export function protocolRequest(pipe, key, params, options = {}) {
   const spec = OFFICIAL.ipc[key];
   if (!spec || key === "following" || key === "readStateChanged") throw Error("Unknown official request: " + key);
   if (Object.hasOwn(options, "version")) throw Error("Official protocol versions must come from the catalog");
-  pipe?.assertInterface?.(key);
-  return pipe.request(spec.method, params, { ...options, version: spec.version });
+  return pipe.request(spec.method, params, { ...options, version: protocolVersion(pipe, key) });
 }
 export function protocolBroadcast(pipe, key, params, targets) {
   const spec = OFFICIAL.ipc[key];

@@ -270,12 +270,14 @@
     "settings": {
       "method": "thread-follower-update-thread-settings",
       "version": 1,
+      "supportedVersions": [1, 2],
       "request": [
         "conversationId",
         "threadSettings"
       ],
       "response": [
-        "handledByClientId"
+        "handledByClientId",
+        "result.applied (v2)"
       ],
       "purpose": "设置下一轮模型/权限/速度",
       "consumer": "src/bridge.mjs:updateSettings",

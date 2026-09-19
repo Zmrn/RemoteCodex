@@ -363,7 +363,12 @@ try {
     document.querySelector("#messages").textContent.includes("图片正文"),
   );
   assert.equal(await page.locator("#model-display").isDisabled(), true);
-  assert.equal(await page.locator("#permission-display").isDisabled(), true);
+  assert.equal(await page.locator("#permission-display").isEnabled(), true);
+  await page.locator('#permission-display').click();
+  assert.equal(await page.locator('#settings-menu [data-value="keep"]').isEnabled(), true);
+  for (const value of ['read-only', 'workspace', 'full'])
+    assert.equal(await page.locator('#settings-menu [data-value="' + value + '"]').isDisabled(), true);
+  await page.keyboard.press('Escape');
   runtime = "active";
   connected = false;
   await page.reload();
@@ -371,7 +376,12 @@ try {
     document.querySelector("#writable").textContent.includes("连接中断"),
   );
   assert.equal(await page.locator("#model-display").isDisabled(), true);
-  assert.equal(await page.locator("#permission-display").isDisabled(), true);
+  assert.equal(await page.locator("#permission-display").isEnabled(), true);
+  await page.locator('#permission-display').click();
+  assert.equal(await page.locator('#settings-menu [data-value="keep"]').isEnabled(), true);
+  for (const value of ['read-only', 'workspace', 'full'])
+    assert.equal(await page.locator('#settings-menu [data-value="' + value + '"]').isDisabled(), true);
+  await page.keyboard.press('Escape');
   assert.equal(writes.length, count);
   runtime = "idle";
   connected = true;

@@ -45,7 +45,7 @@ export function buildCompatibilityReport({ activeVersion = null, connected = fal
   for (const [id, spec] of Object.entries(OFFICIAL.ipc)) {
     const running = observations[id];
     const latest = same ? running : !latestVersion ? unknown('尚未取得官方最新版') : id === 'initialize' ? unknown('需新版运行后验证握手') : protocolObservation(latestProtocols, spec);
-    rows.push({ id, kind: 'ipc', name: spec.method, purpose: spec.purpose, expected: { version: spec.version, request: spec.request }, running, latest });
+    rows.push({ id, kind: 'ipc', name: spec.method, purpose: spec.purpose, expected: { version: spec.version, supportedVersions: spec.supportedVersions, request: spec.request }, running, latest });
   }
   const features = featurePolicy(observations), latestFeatures = featurePolicy(Object.fromEntries(rows.map(r => [r.id, r.latest])));
   const writable = f => ['send', 'resume', 'create', 'steer', 'queue', 'settings', 'rename', 'browserApproval', 'chatSend'].some(k => f[k].supported);

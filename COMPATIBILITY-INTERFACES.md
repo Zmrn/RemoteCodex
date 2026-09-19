@@ -38,7 +38,7 @@ Chat：列表/历史读取；文字续写待专用真实会话验证；新建/�
 | initialize | 1 | 连接桥接客户端 | clientType | result.clientId | src/transport.mjs:connect | test/core.test.mjs |
 | thread-owner-discovery | 1 | 发现任务所有者 | hostId, conversationId | handledByClientId | src/desktop.mjs:owner | test/queue.test.mjs |
 | thread-stream-following-changed | 1 | 订阅/取消订阅；broadcast | hostId, conversationId, following |  | src/desktop.mjs, src/bridge.mjs | test/subscriptions.test.mjs |
-| thread-follower-update-thread-settings | 1 | 设置下一轮模型/权限/速度 | conversationId, threadSettings | handledByClientId | src/bridge.mjs:updateSettings | test/settings.test.mjs |
+| thread-follower-update-thread-settings | 1 / 2 | 设置下一轮模型/权限/速度 | conversationId, threadSettings | handledByClientId, result.applied (v2) | src/bridge.mjs:updateSettings | test/settings.test.mjs |
 | thread-follower-submit-user-input | 1 | 回答官方待处理问题 | conversationId, requestId, response.answers | handledByClientId | src/bridge.mjs:answerQuestions | test/messages.test.mjs |
 | thread-follower-steer-turn | 1 | 向同一个运行中任务调整方向 | conversationId, input, restoreMessage, clientUserMessageId, attachments | handledByClientId, result.result.turnId | src/bridge.mjs:answerQuestions/nativeSteer, src/queue.mjs:mutate | test/steer.test.mjs |
 | thread-follower-set-queued-follow-ups-state | 1 | 替换该任务完整队列 | conversationId, state | handledByClientId, result.ok | src/queue.mjs:write | test/queue.test.mjs |

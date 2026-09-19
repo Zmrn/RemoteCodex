@@ -702,6 +702,10 @@ function messageImage(ref, reuse) {
 function featureAvailable(key, legacy = status.existingCodexWritable === true) {
   return status.capabilities ? status.capabilities[key]?.supported === true : legacy;
 }
+function permissionChoiceAvailable() {
+  return status.connected && featureAvailable(selected === null ? 'createPermissions' : 'settings') &&
+    (selected === null || ['idle', 'active', 'notLoaded'].includes(taskData?.thread?.status?.type));
+}
 function composerFeature() {
   return selected === null ? composerImages.length ? 'createImages' : 'create'
     : taskData?.thread?.status?.type === 'active' ? 'queue'
@@ -731,7 +735,8 @@ function permissions() {
     !readOnlyTask && featureAvailable(fresh ? 'create' : 'settings') &&
     (fresh ||
       ["idle", "active", "notLoaded"].includes(taskData?.thread?.status?.type));
-  if (settingsTarget && !settingsAvailable) closeSettingsMenu(false);
+  const permissionMenuAvailable = !chat && !!currentAgent() && !readOnlyTask;
+  if (settingsTarget && !(settingsTarget.kind === 'permission' ? permissionMenuAvailable : settingsAvailable)) closeSettingsMenu(false);
   const submitting = inFlight || queueUI.busy;
   queueWritable = !chat && !readOnlyTask && featureAvailable("queue") && !booting;
   const idle =
@@ -768,9 +773,9 @@ function permissions() {
   }
   $("model-display").disabled =
     $("effort-display").disabled =
-    $("permission-display").disabled =
     $("settings-nav").disabled =
       !settingsAvailable || inFlight;
+  $("permission-display").disabled = !permissionMenuAvailable || inFlight || booting || !recoveryLoaded;
   const stopSupported = status.interrupt?.supported === true;
   const stopRunning = taskData?.live?.status?.confirmed
     ? ["running", "waiting-approval", "waiting-user-input"].includes(taskData.live.status.type)
@@ -2312,7 +2317,7 @@ async function submitMessage({ steer = false } = {}) {
   if (!steering && !enqueue && sendSettings && status.capabilities &&
       ((fresh && sendSettings.permissionMode && sendSettings.permissionMode !== 'keep' && !featureAvailable('createPermissions')) ||
        (!fresh && (sendSettings.permissionMode || sendSettings.serviceTier !== undefined) && !featureAvailable('settings')))) {
-    error(Error('所选设置接口暂不可用，请恢复默认设置后发送；草稿已保留')); return;
+    error(Error('所选设置暂不可用；请在权限菜单选择“沿用官方权限”，或取消不可用的预选设置后发送。草稿已保留')); return;
   }
   const creationProject = fresh && m === "codex" ? projectPicker.selection() : null;
   busy.add(k);
@@ -2878,7 +2883,7 @@ function renderSettingsMenu(focus = false) {
     { model: "选择模型", effort: "推理强度", permission: "权限设置" }[t.kind],
   );
   menu.setAttribute("role", t.kind === "effort" ? "group" : "menu");
-  if (!t.models)
+  if (!t.models && t.kind !== 'permission')
     menu.append(node("p", "setting-note", t.error ?? "读取官方模型目录…"));
   else if (t.kind === "model") {
     menu.append(node("div", "setting-heading", "选择模型"));
@@ -2907,6 +2912,10 @@ function renderSettingsMenu(focus = false) {
   } else if (t.kind === "permission") {
     menu.append(node("div", "setting-heading", "此会话的访问权限"));
     const selectedMode = choice.permissionMode ?? permissionMode(t.current);
+    const available = permissionChoiceAvailable();
+    menu.append(settingOption('沿用官方权限', 'keep', choice.permissionMode ? selectedMode : t.loaded ? null : 'keep',
+      () => applySetting({ permissionMode: 'keep' }),
+      t.id ? '取消本地权限预选，保留官方当前权限' : '取消本地权限预选，新对话使用官方默认权限'));
     for (const [mode, name, description, symbol] of [
       ["read-only", "只读", "查看文件；审批由官方策略决定", "shield"],
       [
@@ -2930,7 +2939,7 @@ function renderSettingsMenu(focus = false) {
         description,
         symbol,
       );
-      row.disabled = false;
+      row.disabled = !available;
       if (mode === "full") row.classList.add("full-access");
       menu.append(row);
     }
@@ -2938,7 +2947,8 @@ function renderSettingsMenu(focus = false) {
       node(
         "p",
         "setting-note",
-        t.loaded
+        !available ? '目标设备暂不支持修改权限；可沿用官方权限继续。'
+          : t.loaded
           ? "点击即应用到此会话，下一轮生效。"
           : "已选权限将在发送时应用；新对话的首条消息也使用该权限。",
       ),
@@ -3089,6 +3099,7 @@ async function openSettingsMenu(kind) {
   trigger.setAttribute("aria-expanded", "true");
   $("settings-menu").showPopover();
   renderSettingsMenu();
+  if (kind === 'permission') { renderSettingsMenu(true); return; }
   try {
     const data = await agentApi(target.a, "/models");
     if (
@@ -3108,13 +3119,18 @@ async function openSettingsMenu(kind) {
 }
 async function applySetting(choice, keepOpen = false) {
   const t = settingsTarget;
+  const resetPermission = choice.permissionMode === 'keep';
+  const permissionChoice = Object.hasOwn(choice, 'permissionMode');
   if (
     !settingsContextMatches(t) ||
     t.saving ||
-    !t.models ||
-    $("model-display").disabled
+    (!permissionChoice && (!t.models || $("model-display").disabled)) ||
+    (permissionChoice && $("permission-display").disabled)
   )
     return;
+  if (permissionChoice && !resetPermission && !permissionChoiceAvailable()) {
+    t.error = '目标设备暂不支持修改权限，请选择“沿用官方权限”'; renderSettingsMenu(); return;
+  }
   const { a, id, g, v, loaded } = t;
   const key = taskKey(a, id),
     busyKey = id ? key : a + ":create";
@@ -3124,7 +3140,7 @@ async function applySetting(choice, keepOpen = false) {
   permissions();
   renderSettingsMenu();
   try {
-    if (!loaded || choice.model === "") {
+    if (!loaded || choice.model === "" || resetPermission) {
       const next = { ...(pendingSettings.get(key) ?? {}), ...choice };
       if (choice.model && choice.effort === undefined && !t.models.find(m => m.id === choice.model)?.efforts.includes(next.effort))
         delete next.effort;
@@ -3132,13 +3148,19 @@ async function applySetting(choice, keepOpen = false) {
         delete next.model;
         delete next.effort;
       }
+      if (resetPermission) delete next.permissionMode;
       if (Object.keys(next).length) pendingSettings.set(key, next);
       else pendingSettings.delete(key);
       modelSettings(liveSettingsState);
       t.choice = pendingSettings.get(key) ?? t.current ?? {};
+      saveDraft();
+      await backupDrafts();
+      if (!settingsContextMatches(t)) return;
       if (!keepOpen) closeSettingsMenu();
+      if (resetPermission) clearError();
       toast(
-        Object.keys(next).length
+        resetPermission ? '已取消本地权限预选，沿用官方权限'
+          : Object.keys(next).length
           ? "已选择，下一次发送时使用"
           : "已沿用官方模型设置",
       );

@@ -107,7 +107,8 @@ export class CompatibilityView {
       const heading = node('div', '', 'diagnostic-heading'); heading.append(node('code', r.name), node('span', ({error:'不兼容',warning:'待验证',ok:'声明一致'})[status], 'badge'));
       row.append(heading, node('p', r.purpose, 'field-help'));
       const compare = node('dl', '', 'compatibility-columns');
-      const expected = r.expected.version ? `v${r.expected.version}` : '工具目录 + 参数';
+      const expected = r.expected.supportedVersions?.length ? r.expected.supportedVersions.map(v => `v${v}`).join(' / ')
+        : r.expected.version ? `v${r.expected.version}` : '工具目录 + 参数';
       for (const [name, value, observed] of [['Remote 使用', expected, null], ['官方运行版', null, r.running], ['官方最新版', null, r.latest]]) {
         const cell = node('div'), dt = node('dt', name), dd = node('dd', value || (({matched:'一致',missing:'缺失',mismatch:'不匹配',unknown:'待验证'})[observed?.status] || '未知') + (observed?.version ? ` · v${observed.version}` : ''));
         if (observed) { cell.dataset.status = bad(observed) ? 'error' : observed.status === 'matched' ? 'ok' : 'warning'; dd.append(node('small', observed.detail)); }
