@@ -9,6 +9,7 @@ import { Bridge, ROOT } from "./bridge.mjs";
 import { listFiles, resolveFile, saveUpload } from "./files.mjs";
 import { Agents } from "./agents.mjs";
 import { proxyAgent, allowedRoute } from "./remote.mjs";
+import { mediaResponse } from "./media-response.mjs";
 import { LocalAccess } from "./local-access.mjs";
 import { Updater } from "./updater.mjs";
 import { DATA_DIR, INSTANCE } from "./runtime.mjs";
@@ -260,21 +261,14 @@ export async function startServer({
       if (req.method === "GET" && url.pathname === "/api/usage/history")
         return json(res, 200, usageRecorder.read(Number(url.searchParams.get("days") ?? 7)));
       const match =
-        /^\/api\/threads\/([\w-]+)(?:\/(messages|follow|open|files|file|interrupt|settings|queue|questions|approvals|title|media|read-receipt))?$/.exec(
+        /^\/api\/threads\/([\w-]+)(?:\/(messages|follow|open|activate|files|file|interrupt|settings|queue|questions|approvals|title|media|read-receipt))?$/.exec(
           url.pathname,
         );
       if (req.method === "GET" && match) {
         const id = match[1];
         if (match[2] === "media") {
           const file = bridge.media.read(id, url.searchParams.get("id"));
-          res.writeHead(200, {
-            "Content-Type": file.type,
-            "Content-Length": file.bytes.length,
-            "Cache-Control": "no-store",
-            "Content-Disposition":
-              "inline; filename*=UTF-8''" + encodeURIComponent(file.name),
-          });
-          return res.end(file.bytes);
+          return mediaResponse(req, res, file);
         }
         if (match[2] === "queue") return json(res, 200,
           url.searchParams.has("recoveryId")
@@ -448,6 +442,7 @@ export async function startServer({
           );
         if (match[2] === "follow")
           return json(res, 200, body.following === false ? bridge.unfollow(id, body.viewerId) : await bridge.follow(id, body.viewerId));
+        if (match[2] === "activate") return json(res, 200, await bridge.activate(id, body.viewerId));
         if (match[2] === "open") return json(res, 200, await bridge.open(id));
         if (match[2] === "read-receipt") return json(res, 200, await bridge.taskReports.acknowledge(id, body.token));
         if (match[2] === "settings")

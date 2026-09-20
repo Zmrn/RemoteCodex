@@ -20,7 +20,7 @@ import { HelpUpdates } from "./help-updates.mjs";
 import { DeviceConnections } from "./device-connections.mjs";
 import { zoomableImage } from "./image-viewer.mjs";
 import { imageLoadState } from "./image-load-state.mjs";
-import { imageTransfer, imageFailure } from "./image-transfer.mjs";
+import { imageTransfer, imageFailure, ImagePartials } from "./image-transfer.mjs";
 import { imageReuse, releaseDetachedImages } from "./image-reuse.mjs";
 import { ProjectPicker } from "./project-picker.mjs";
 import { renderQuota, updateQuotaCountdowns } from "./usage-view.mjs";
@@ -497,7 +497,7 @@ async function api(route, body, options = {}) {
   }
 }
 function agentApi(id, route, body, options = {}) {
-  if (route.endsWith('/follow') && body && body.following !== false && id === agentId && route === '/threads/' + selected + '/follow') {
+  if (/\/(follow|activate)$/.test(route) && body && body.following !== false && id === agentId && route.startsWith('/threads/' + selected + '/')) {
     body = { ...body, viewerId: windowId + '-' + viewEpoch };
     viewingSubscription = { agent: id, thread: selected, viewerId: body.viewerId, leased: status.viewerLeases === true };
   }
@@ -513,7 +513,9 @@ function agentApi(id, route, body, options = {}) {
     ...(signals.length ? { signal: AbortSignal.any(signals) } : {}),
   });
 }
+let taskActivation = null;
 function resetTaskReads() {
+  taskActivation = null;
   releaseViewing();
   readSequence++;
   clearTimeout(readTimer);
@@ -598,6 +600,7 @@ function scheduleSidebar() {
   sidebarTimer = setTimeout(() => { sidebarTimer = null; if (g === generation) pollSidebar(); }, 200);
 }
 const messageImageCache = new Map();
+const imagePartials = new ImagePartials();
 releaseDetachedImages($("messages"));
 const messageImageObserver = new IntersectionObserver(
   (entries) => {
@@ -660,20 +663,21 @@ function messageImage(ref, reuse) {
     if (!ready) {
       ready = ref.src
         ? { promise: Promise.resolve(ref.src), subscribe: () => () => {} }
-        : imageTransfer(() => fetch(
+        : imageTransfer(({headers, signal}) => fetch(
             base(imageAgent) +
               "/threads/" +
               imageThread +
               "/media?id=" +
               encodeURIComponent(ref.id),
             {
-              headers: { "X-Bridge-CSRF": csrf },
-              signal: AbortSignal.any([
-                ...imageSignals,
-                AbortSignal.timeout(75000),
-              ]),
+              headers: { "X-Bridge-CSRF": csrf, ...headers },
+              signal,
             },
-          ));
+          ), {
+            signal: AbortSignal.any(imageSignals),
+            partial: imagePartials.get(identity),
+            savePartial: partial => imagePartials.set(identity, partial),
+          });
       messageImageCache.set(key, ready);
       if (messageImageCache.size > 100) {
         const first = messageImageCache.keys().next().value;
@@ -757,6 +761,7 @@ function permissions() {
     !!projectPicker.reason() ||
     (chat ? !chatAccess.canSend : (!idle && taskData?.thread?.status?.type !== "active")) ||
     queueUI.busy ||
+    taskActivation?.pending ||
     (!chat && taskData?.thread?.status?.type === "notLoaded" && composerImages.length > 0) ||
     (fresh && composerImages.length > 0 && status.imageCreation?.supported !== true) ||
     (!$("prompt").value.trim() && !composerImages.length);
@@ -819,6 +824,13 @@ function permissions() {
   else if (!$("prompt").disabled && (!status.connected || !writable))
     $("writable").textContent += " · 可继续编辑本地草稿，暂不能发送";
   $("destination").textContent = currentAgent()?.name ?? "";
+  const loading = taskActivation && (taskActivation.pending || taskActivation.error);
+  if (loading) $('writable').textContent = '';
+  $('task-activation').hidden = !loading;
+  $('task-activation').querySelector('span').textContent = loading
+    ? taskActivation.pending ? '正在加载官方会话… 可继续编辑草稿' : taskActivation.error : '';
+  $('retry-activation').hidden = !taskActivation?.error;
+  $('retry-activation').disabled = !status.connected;
   queueUI.render();
 }
 function modelSettings(state) {
@@ -1416,6 +1428,27 @@ async function switchAgent(id, record = true, resumeId = null, nextMode = mode) 
     if (resumeId) await selectThread(resumeId, false, { preserveDrawer: true });
   }
 }
+function maybeActivateTask(retry = false) {
+  const thread = taskData?.thread ?? threads.find(t => t.id === selected);
+  const type = typeof thread?.status === 'string' ? thread.status : thread?.status?.type;
+  if (mode !== 'codex' || !selected || !status.connected || isReadOnlyTask() ||
+      status.capabilities?.activate?.supported !== true ||
+      (taskActivation && (!retry || taskActivation.pending)) || (!retry && type !== 'notLoaded')) return;
+  const a = agentId, id = selected, g = generation, seq = readSequence;
+  const job = taskActivation = { pending: true, error: null };
+  const current = () => taskActivation === job && a === agentId && id === selected && g === generation && seq === readSequence;
+  permissions();
+  agentApi(a, '/threads/' + id + '/activate', {}, { signal: taskReads.signal }).then(result => {
+    if (!current()) return;
+    if (result.threadId !== id || result.ready !== true) throw Error('官方未确认加载完成，可重试加载；草稿已保留');
+    job.pending = false;
+    // Read official state again; never fabricate status from the activation ACK.
+    read();
+  }).catch(e => {
+    if (current() && e.name !== 'AbortError') { job.pending = false; job.error = e.message; }
+  }).finally(() => { if (current()) permissions(); });
+}
+$('retry-activation').onclick = () => maybeActivateTask(true);
 async function selectThread(id, record = true, { preserveDrawer = false } = {}) {
   const a = agentId,
     g = generation;
@@ -1809,6 +1842,7 @@ function read(older = false) {
   job.promise = readTask(job, older).finally(() => {
     if (readInFlight !== job) return;
     readInFlight = null;
+    maybeActivateTask();
     $("older").disabled = !status.connected;
     $("older").textContent = historyFailure ? "重试更早的消息" : "加载更早的消息";
     if (job.failed && job.retryable) {
@@ -1884,6 +1918,8 @@ async function readTask(job, older) {
       visibleReport = r.reportReceipt ? { ...r.reportReceipt, a, id, g }
         : r.currentReportToken && r.currentReportToken===visibleReport?.token ? visibleReport : null;
       taskData = { ...r.data, live: r.live };
+      if (taskActivation?.error && r.live?.status?.confirmed && ['idle', 'active'].includes(taskData.thread.status?.type))
+        taskActivation.error = null;
       modelSettings(r.live?.state);
     }
     clearError();

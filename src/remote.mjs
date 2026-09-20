@@ -25,7 +25,7 @@ export function allowedRoute(method, url) {
   )
     return true;
   const m =
-    /^\/api\/threads\/[\w-]+(?:\/(follow|open|messages|interrupt|files|file|settings|queue|questions|approvals|title|media|read-receipt))?$/.exec(
+    /^\/api\/threads\/[\w-]+(?:\/(follow|open|activate|messages|interrupt|files|file|settings|queue|questions|approvals|title|media|read-receipt))?$/.exec(
       u.pathname,
     );
   return (
@@ -36,6 +36,7 @@ export function allowedRoute(method, url) {
         [
           "follow",
           "open",
+          "activate",
           "messages",
           "interrupt",
           "settings",
@@ -90,6 +91,10 @@ export function relay(req, res, { hostname, port, route, headers }) {
         method: req.method,
         headers: {
           ...headers,
+          ...(req.method === 'GET' && /\/media(?:\?|$)/.test(route) ? {
+            ...(req.headers.range ? {range:req.headers.range} : {}),
+            ...(req.headers['if-range'] ? {'if-range':req.headers['if-range']} : {}),
+          } : {}),
           ...(req.headers["accept-encoding"]
             ? { "accept-encoding": req.headers["accept-encoding"] }
             : {}),
@@ -107,6 +112,9 @@ export function relay(req, res, { hostname, port, route, headers }) {
           "content-disposition",
           "content-encoding",
           "vary",
+          "etag",
+          "accept-ranges",
+          "content-range",
         ])
           if (r.headers[h]) responseHeaders[h] = r.headers[h];
         res.writeHead(r.statusCode, responseHeaders);

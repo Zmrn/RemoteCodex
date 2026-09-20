@@ -7,6 +7,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { Desktop, localContext } from "./desktop.mjs";
 import { readCodexThreadMetadata } from "./thread-metadata.mjs";
+import { activateThread } from './thread-activation.mjs';
 import { applyPatches, runtimeStatus, mergeLiveTurnItems, activeTurnId } from "./state.mjs";
 import { accountUsage } from "./usage.mjs";
 import { OfficialQueue, composeQueuedMessage } from "./queue.mjs";
@@ -240,7 +241,7 @@ export class Bridge extends EventEmitter {
       if (desktop !== this.desktop || identity !== desktop.identity || ipc !== desktop.ipc)
         throw Error('官方连接已变化，设置未发送，请重新连接');
     };
-    const read = await this.codexThread(id);
+    let read = await this.codexThread(id);
     if (
       !input ||
       typeof input !== "object" ||
@@ -251,8 +252,13 @@ export class Bridge extends EventEmitter {
       )
     )
       throw Error("Invalid settings");
-    // The desktop owner applies these settings to the next turn while the
-    // current turn continues. Unknown/unloaded states are not write evidence.
+    if (read.thread.status?.type === 'notLoaded') {
+      await this.activate(id);
+      checkConnection();
+      read = await this.codexThread(id);
+    }
+    // The desktop owner applies settings to the next turn. Loading alone is
+    // not write evidence: recheck metadata and follow the current owner below.
     if (!["idle", "active"].includes(read.thread.status?.type))
       throw Error("官方会话状态尚不可确认；尚未加载的会话可先在官方桌面打开");
     const owner = await this.follow(id);
@@ -941,6 +947,7 @@ export class Bridge extends EventEmitter {
     this.requireConnection();
     return this.desktop.call(TOOLS.navigate, { threadId: id });
   }
+  activate(id, viewerId) { return activateThread(this, id, viewerId); }
   async interrupt(id, key, expectedTurnId) {
     this.guard(id, "interrupt");
     this.requireConnection();
@@ -1066,17 +1073,12 @@ export class Bridge extends EventEmitter {
         let status = await this.codexThread(id);
         if (
           status.thread.status.type === "notLoaded" &&
-          (settings.permissions || serviceTier !== undefined)
+          (images.length || settings.permissions || serviceTier !== undefined)
         ) {
-          await this.open(id);
-          for (
-            let i = 0;
-            i < 60 && status.thread.status.type === "notLoaded";
-            i++
-          ) {
-            await new Promise((r) => setTimeout(r, 200));
-            status = await this.codexThread(id);
-          }
+          if (beforeDispatch) throw Error('Notification task state changed before dispatch');
+          await this.activate(id);
+          checkConnection();
+          status = await this.codexThread(id);
           if (status.thread.status.type === "notLoaded")
             throw Error("官方会话尚未加载，消息没有发送");
         }
@@ -1206,7 +1208,7 @@ export class Bridge extends EventEmitter {
       protectedThreadIds: [],
       desktopCompatibility: compatibility,
       capabilities: Object.fromEntries(Object.entries(compatibility.features).map(([key, f]) => [key,
-        ['list', 'projects', 'read', 'usage', 'wait', 'taskState', 'open'].includes(key) || this.stateStore.health.writable ? f
+        ['list', 'projects', 'read', 'usage', 'wait', 'taskState', 'open', 'activate'].includes(key) || this.stateStore.health.writable ? f
           : { ...f, supported: false, reason: f.reason || '本地保护记录暂不能保存，请先修复存储；草稿已保留' }])),
       existingCodexWritable: can('send') || can('resume') || can('create') || can('queue') || can('steer'),
       threadTitles: { rename: can('rename'), kinds: ["codex"] },

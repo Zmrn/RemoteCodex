@@ -781,6 +781,16 @@
         "following",
         "commandApproval"
       ]
+    },
+    "activate": {
+      "label": "加载已有会话",
+      "requires": [
+        "initialize",
+        "readThread",
+        "navigate",
+        "owner",
+        "following"
+      ]
     }
   }
 }

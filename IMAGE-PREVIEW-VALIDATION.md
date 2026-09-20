@@ -97,3 +97,6 @@ SHA-256：`8ffa5d8cc5ef430f39b2a460b27ae03d692286cac3b47c8107b0a706614e648f`。
 签名更新源已发布 0.9.11，资源服务器只保留一个 EXE 副本。
 
 本机与已保存的笔记本均通过现有更新入口安装并回读确认 0.9.11，官方 ChatGPT 的 PID 分别保持 131084、10728。桌面 `RemoteCodex.exe` 哈希与上述发布包一致，本机实际服务提供的 `image-viewer.mjs` 与源码逐字一致。安装证据：`evidence/image-preview-release.json`。
+# 2026-09-21 图片断点续传
+
+本次将 75 秒整次下载期限改为无数据闲置超时，并保留有强 ETag 的中断片段供重试。原图变化则整图重新下载，最终校验原字节；已加载节点仍保持。下文早期“失败清缓存”指完成结果缓存，不再丢弃可验证的下载片段。范围、内存上限与复测见 [MEDIA-RESUME-ACTIVATION.md](MEDIA-RESUME-ACTIVATION.md)。尚未打包。

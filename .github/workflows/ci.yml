@@ -62,6 +62,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/verify-settings-versions-ui.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/verify-thread-activation-ui.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/verify-offline-drafts-ui.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/verify-message-times-ui.mjs
@@ -80,6 +82,8 @@ jobs:
       - name: Windows placement and notification regressions
         shell: pwsh
         run: |
+          python -X utf8 scripts/verify-media-resume.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -X utf8 scripts/verify-window-placement.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -X utf8 scripts/verify-desktop-notifications.py

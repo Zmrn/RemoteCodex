@@ -78,6 +78,7 @@ Chat：列表/历史读取；文字续写待专用真实会话验证；新建/�
 | 实时状态、未读统计和通知 | initialize, owner, following |
 | 同步官方已读 | initialize, readThread, owner, following, readStateChanged |
 | 终端命令审批 | initialize, readThread, owner, following, commandApproval |
+| 加载已有会话 | initialize, readThread, navigate, owner, following |
 
 ## 事件和依赖结构
 

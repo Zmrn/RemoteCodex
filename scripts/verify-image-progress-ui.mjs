@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { startServer } from '../src/server.mjs';
 import { ROOT } from '../src/bridge.mjs';
 const {chromium}=await import(process.env.REMOTE_BRIDGE_PLAYWRIGHT||'playwright-core');
@@ -20,8 +21,12 @@ app.server.on('request',(req,res)=>{
  active.requests.push(res);
  res.on('error',()=>{});
  if(active.failure){res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({error:'找不到原图，文件可能已移动或删除'}));}
- res.writeHead(200,{'content-type':'image/png',...(active.known?{'content-length':bytes.length}:{})});
- res.write(bytes.subarray(0,Math.floor(bytes.length/2)));
+ const current=active.source??bytes, etag='"sha256-'+createHash('sha256').update(current).digest('hex')+'"';
+ const start=active.resumable&&req.headers['if-range']===etag ? Number(/^bytes=(\d+)-$/.exec(req.headers.range??'')?.[1]??0):0;
+ res.imageRequestHeaders={...req.headers};res.imageBytes=current;res.imageNext=start+Math.floor((current.length-start)/2);
+ res.writeHead(start?206:200,{'content-type':'image/png',...(active.known?{'content-length':current.length-start}:{}),
+   ...(active.resumable?{etag,'accept-ranges':'bytes'}:{}),...(start?{'content-range':'bytes '+start+'-'+(current.length-1)+'/'+current.length}:{})});
+ res.write(current.subarray(start,res.imageNext));
 });
 try{
  for(const width of [1300,390]){
@@ -45,7 +50,7 @@ try{
   });
   const box=page.locator('.message-image'),state=box.locator('.image-load-state');
   const refresh=async()=>{tick++;await page.locator('#refresh').evaluate(b=>b.click());await page.waitForFunction(t=>document.querySelector('[data-item-id="picture"]')?.textContent.includes('下载示例 '+t),tick);};
-  const finish=()=>active.requests.at(-1).end(bytes.subarray(Math.floor(bytes.length/2)));
+  const finish=()=>{const r=active.requests.at(-1);r.end(r.imageBytes.subarray(r.imageNext));};
   try{
    await page.goto(app.address+'/?thread='+id);
    await state.filter({hasText:'找不到原图'}).waitFor();assert.equal(active.requests.length,1);
@@ -74,6 +79,41 @@ try{
    finish();await page.waitForFunction(()=>document.querySelector('.message-image')?.imageStatus==='ready');
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
    checks.push(width+'px: truncated connection discards partial bytes; retry downloads anew and decodes successfully; responsive layout fits');
+   active.resumable=true;ref='resume';await refresh();
+   await page.waitForFunction(()=>document.querySelector('.image-load-state progress')?.value>40);
+   const first=active.requests.at(-1);first.destroy();
+   await state.filter({hasText:'已保留'}).waitFor();
+   const count=active.requests.length;await refresh();assert.equal(active.requests.length,count);
+   await page.screenshot({path:path.join(dir,'retained-'+width+'.png')});
+   await state.getByRole('button',{name:'重试'}).click();
+   await page.waitForFunction(()=>document.querySelector('.image-load-state progress')?.value>65);
+   assert.equal(active.requests.at(-1).imageRequestHeaders.range,'bytes='+Math.floor(bytes.length/2)+'-');
+   assert.equal(active.requests.length,count+1);
+   await page.screenshot({path:path.join(dir,'resumed-'+width+'.png')});
+   finish();await page.waitForFunction(()=>document.querySelector('.message-image')?.imageStatus==='ready');
+   const original=await box.locator('img').evaluate(async i=>Array.from(new Uint8Array(await (await fetch(i.src)).arrayBuffer())));
+   assert.deepEqual(Buffer.from(original),bytes);
+   checks.push(width+'px: failure retains received bytes; refresh never restarts it; retry resumes correct offset and final original is byte-identical');
+   ref='changed-source';await refresh();
+   await page.waitForFunction(()=>document.querySelector('.image-load-state progress')?.value>40);
+   active.requests.at(-1).destroy();await state.filter({hasText:'已保留'}).waitFor();
+   active.source=Buffer.from(bytes);active.source[active.source.length-1]^=1;
+   await state.getByRole('button',{name:'重试'}).click();
+   await page.waitForFunction(()=>document.querySelector('.image-load-state progress')?.value>40);
+   assert.equal(active.requests.at(-1).imageRequestHeaders.range,'bytes='+Math.floor(bytes.length/2)+'-');
+   assert.equal(active.requests.at(-1).imageNext,Math.floor(bytes.length/2),'changed ETag must restart the whole response');
+   finish();await page.waitForFunction(()=>document.querySelector('.message-image')?.imageStatus==='ready');
+   const changed=await box.locator('img').evaluate(async i=>Array.from(new Uint8Array(await (await fetch(i.src)).arrayBuffer())));
+   assert.deepEqual(Buffer.from(changed),active.source);
+   checks.push(width+'px: changed original replaces retained prefix instead of joining different images');
+   if(width===390&&process.argv.includes('--slow-transfer')){
+     ref='slow-active';await refresh();await page.waitForFunction(()=>document.querySelector('.image-load-state progress')?.value>40);
+     const r=active.requests.at(-1),started=Date.now();
+     while(Date.now()-started<78000){await new Promise(resolve=>setTimeout(resolve,1000));r.write(r.imageBytes.subarray(r.imageNext,r.imageNext+1));r.imageNext++;}
+     assert.equal(await box.evaluate(b=>b.imageStatus),'loading');
+     finish();await page.waitForFunction(()=>document.querySelector('.message-image')?.imageStatus==='ready');
+     checks.push('390px: real HTTP transfer receives continuously beyond 75 seconds and completes without total-duration abort');
+   }
   }catch(e){await page.screenshot({path:path.join(dir,'failure-'+width+'.png')});console.log(JSON.stringify({width,requests:active.requests.length,errors,state:await state.allTextContents(),body:await page.locator('#error').textContent()}));throw e;}
   finally{active.requests.forEach(r=>r.destroy());events.forEach(r=>r());await page.close();}
  }

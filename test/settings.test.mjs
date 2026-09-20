@@ -1,4 +1,5 @@
-import { fixtureEvidence } from "./fixtures/interface-evidence.mjs";
+import { fixtureEvidence, fixtureProtocols } from "./fixtures/interface-evidence.mjs";
+import { observeDesktop } from '../src/official-protocol.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -82,6 +83,9 @@ test("unloaded historical Codex text uses official resume route exactly once", a
   assert.equal(sent, 1);
   assert.equal(native, 0);
   assert.equal(Object.hasOwn(b.db.tests, id), false);
+  // Older/mismatched targets still resume text, but cannot prepare an image.
+  b.desktop.catalog = b.desktop.catalog.filter(t => t.name !== 'navigate_to_codex_page');
+  observeDesktop(b.desktop, fixtureProtocols());
   await assert.rejects(
     () =>
       b.nativeSend(
@@ -90,7 +94,7 @@ test("unloaded historical Codex text uses official resume route exactly once", a
         "hello",
         "data:image/png;base64,AAAA",
       ),
-    /先发送文字/,
+    /Unavailable official feature/,
   );
   assert.equal(sent, 1);
 });
@@ -228,7 +232,10 @@ test("active settings use the existing owner once without starting or interrupti
       serviceTier: "default",
     },
   });
-  for (status of ["notLoaded", "unknown", "systemError"]) {
+  status = 'notLoaded';
+  b.activate = async () => { throw Error('加载失败'); };
+  await assert.rejects(b.updateSettings(id, 'failed-load-settings', input), /加载失败/);
+  for (status of ["unknown", "systemError"]) {
     await assert.rejects(
       () => b.updateSettings(id, "blocked-settings-" + status, input),
       /状态尚不可确认/,
