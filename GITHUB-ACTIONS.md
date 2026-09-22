@@ -1,5 +1,7 @@
 # GitHub 主仓库与按需云端构建
 
+最新发布：[0.10.46](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.46)，同路径图片缓存修复与同次双端验证见GITHUB-UPDATES.md。
+
 最新发布：[0.10.45](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.45)，完整权限预设修复与同次双端验证见GITHUB-UPDATES.md。
 
 最新发布：[0.10.44](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.44)，同次GitHub双端构建及验证结果见GITHUB-UPDATES.md。
