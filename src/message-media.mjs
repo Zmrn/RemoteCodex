@@ -23,7 +23,8 @@ function readDataImage(source) {
 }
 // A path is an authorization handle, not immutable image content. Probe only
 // metadata while reading history; reading/hashing every large GIF on each poll
-// would block the target. ctime/ino also cover restored mtime and file replacement.
+// would block the target. Metadata can collide on coarse filesystems; a new
+// official message is separately scoped below and never trusts an older preview.
 function localImageRevision(file, revisions) {
   if (revisions?.has(file)) return revisions.get(file);
   let stamp;
@@ -118,7 +119,7 @@ export class MessageMedia {
       throw e;
     }
   }
-  add(threadId, source, name, externalImages = false, revisions) {
+  add(threadId, source, name, externalImages = false, revisions, reference) {
     if (typeof source !== "string") return null;
     if (dataImage.test(source)) {
       if (!externalImages) return { src: source, name: name ?? "图片" };
@@ -146,7 +147,8 @@ export class MessageMedia {
     if (!entries) this.threads.set(threadId, (entries = new Map()));
     if (entries.size < 1000)
       entries.set(id, { file, name: name ?? path.basename(file) });
-    return { id, contentKey: localImageRevision(file, revisions), name: name ?? path.basename(file), ...(/\.gif$/i.test(file) ? {downloadName:path.basename(file)} : {}) };
+    const contentKey = createHash('sha256').update(JSON.stringify([localImageRevision(file, revisions), reference ?? null])).digest('hex');
+    return { id, contentKey, name: name ?? path.basename(file), ...(/\.gif$/i.test(file) ? {downloadName:path.basename(file)} : {}) };
   }
   decorate(threadId, data, { externalImages = false } = {}) {
     const revisions = new Map();
@@ -167,6 +169,7 @@ export class MessageMedia {
       turns: (data.turns ?? []).map((turn) => ({
         ...turn,
         items: (turn.items ?? []).map((item) => {
+          const reference = JSON.stringify([turn.id ?? null, item.id ?? null]);
           const user = ["userMessage", "steeringUserMessage"].includes(
             item.type,
           );
@@ -180,7 +183,7 @@ export class MessageMedia {
           const images = [...(item.bridgeHistoryImages ?? [])],
             files = [];
           const add = (source, name) => {
-            const ref = this.add(threadId, source, name, externalImages, revisions);
+            const ref = this.add(threadId, source, name, externalImages, revisions, reference);
             if (ref) images.push(ref);
           };
           if (user || delegated !== undefined) {
@@ -212,7 +215,7 @@ export class MessageMedia {
             text = text.replace(
               /!\[([^\]]*)\]\(<?((?:[A-Za-z]:[\\/]|\/)[^\n]*?)>?\)/g,
               (whole, label, file) => {
-                const ref = this.add(threadId, file, label || undefined, false, revisions);
+                const ref = this.add(threadId, file, label || undefined, false, revisions, reference);
                 if (!ref) return whole;
                 images.push(ref);
                 return "";

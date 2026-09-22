@@ -19,7 +19,7 @@ test('overwriting a referenced local image keeps authorization ID but changes it
   const s=fixture(t);fs.writeFileSync(s.file,s.a);
   const first=s.decorate();assert.match(first.contentKey,/^[a-f0-9]{64}$/);
   assert.deepEqual(s.decorate(),first);
-  assert.equal(s.decorate('new-message','new caption').contentKey,first.contentKey);
+  assert.equal(s.decorate('message','new caption').contentKey,first.contentKey);
   fs.writeFileSync(s.file,s.b);
   const next=s.decorate('new-message');assert.equal(next.id,first.id);assert.notEqual(next.contentKey,first.contentKey);
   assert.deepEqual(s.media.read('task',next.id).bytes,s.b);
@@ -32,13 +32,23 @@ test('same length overwrite with restored mtime, atomic replacement, missing and
   const initial=s.decorate(),stat=fs.statSync(s.file),mtime=fs.statSync(s.file,{bigint:true}).mtimeNs;
   fs.writeFileSync(s.file,b);fs.utimesSync(s.file,stat.atime,stat.mtime);
   assert.equal(fs.statSync(s.file,{bigint:true}).mtimeNs,mtime);
-  const overwritten=s.decorate();assert.notEqual(overwritten.contentKey,initial.contentKey);
+  const overwritten=s.decorate('new-preview');assert.notEqual(overwritten.contentKey,initial.contentKey);
   const replacement=s.file+'.tmp';fs.writeFileSync(replacement,a);fs.renameSync(replacement,s.file);
-  const replaced=s.decorate();assert.notEqual(replaced.contentKey,overwritten.contentKey);
-  fs.unlinkSync(s.file);const missing=s.decorate();assert.notEqual(missing.contentKey,replaced.contentKey);assert.deepEqual(s.decorate(),missing);
+  const replaced=s.decorate('new-preview');assert.notEqual(replaced.contentKey,overwritten.contentKey);
+  fs.unlinkSync(s.file);const missing=s.decorate('new-preview');assert.notEqual(missing.contentKey,replaced.contentKey);assert.deepEqual(s.decorate('new-preview'),missing);
   assert.throws(()=>s.media.read('task',missing.id),/找不到原图/);
-  fs.writeFileSync(s.file,b);const restored=s.decorate();assert.notEqual(restored.contentKey,missing.contentKey);
+  fs.writeFileSync(s.file,b);const restored=s.decorate('new-preview');assert.notEqual(restored.contentKey,missing.contentKey);
   assert.deepEqual(s.media.read('task',restored.id).bytes,b);
+});
+test('a new official preview revalidates even when all filesystem metadata collides',t=>{
+  const s=fixture(t);fs.writeFileSync(s.file,s.a);
+  const stat=fs.statSync(s.file,{bigint:true});
+  t.mock.method(fs,'statSync',()=>stat);
+  const first=s.decorate('old-preview');fs.writeFileSync(s.file,s.b);
+  const next=s.decorate('new-preview');assert.equal(next.id,first.id);
+  assert.notEqual(next.contentKey,first.contentKey);
+  assert.equal(s.decorate('new-preview','caption changes do not invent a new emission').contentKey,next.contentKey);
+  assert.deepEqual(s.media.read('task',next.id).bytes,s.b);
 });
 test('re-reading a large preview checks file metadata without reading its bytes',t=>{
   const s=fixture(t);fs.writeFileSync(s.file,s.a);

@@ -48,7 +48,14 @@ try{
    if(p.endsWith('/threads/'+id)){
     const items=[{id:'preview',type:'agentMessage',text:`图片已更新 · ${tick}\n\n![预览](<${file}>)`}];
     if(second)items.push({id:'second',type:'agentMessage',text:`第二次发送同一路径\n\n![预览](<${file}>)`});
-    return json({data:compactConversation(media.decorate(id,{thread:{id,kind:'codex',status:{type:'idle'}},turns:[{id:'turn',status:'completed',items}]},{externalImages:true})),live:{state:{}}});
+    // Model a filesystem whose timestamps/identity collide. Only decorate's
+    // synchronous metadata query is fixed; actual HTTP media still reads disk.
+    const stat=fs.statSync;let data;
+    try{
+     if(active.frozenStat)fs.statSync=(name,options)=>name===file&&options?.bigint?active.frozenStat:stat(name,options);
+     data=compactConversation(media.decorate(id,{thread:{id,kind:'codex',status:{type:'idle'}},turns:[{id:'turn',status:'completed',items}]},{externalImages:true}));
+    }finally{fs.statSync=stat;}
+    return json({data,live:{state:{}}});
    }
    if(p.endsWith('/queue'))return json({confirmed:true,messages:[],recoveries:[]});
    if(p.endsWith('/models'))return json({models:[]});
@@ -73,13 +80,13 @@ try{
 
    second=true;await refresh();await page.locator('[data-item-id="second"] .message-image img').scrollIntoViewIfNeeded();
    await page.waitForFunction(()=>[...document.querySelectorAll('.message-image')].every(b=>b.imageStatus==='ready'));
-   assert.deepEqual(await bytes(page.locator('[data-item-id="second"] .message-image img')),b);assert.equal(active.requests.length,2);
+   assert.deepEqual(await bytes(page.locator('[data-item-id="second"] .message-image img')),b);assert.equal(active.requests.length,3);
    await image.click();await page.waitForFunction(()=>{const i=document.querySelector('#image-viewer img');return i?.src.startsWith('blob:')&&i.naturalWidth>0&&!i.classList.contains('image-pending');});
    assert.deepEqual(await bytes(page.locator('#image-viewer img')),b);
    assert.deepEqual(Buffer.from(await page.locator('#image-viewer .image-viewer-download').evaluate(async e=>Array.from(new Uint8Array(await(await fetch(e.href)).arrayBuffer())))),b);
    await page.locator('#image-viewer .icon-button').click();await page.waitForFunction(()=>!document.querySelector('#image-viewer').open);
    await page.screenshot({path:path.join(dir,'updated-'+width+'.png')});
-   checks.push(width+': newly sent preview, enlarged view and original download all show new bytes; repeated same-version references coalesce');
+   checks.push(width+': a new official message revalidates the same path; enlarged view and original download all show new bytes');
 
    second=false;overwrite(a);active.hold=true;await refresh();
    await page.waitForFunction(()=>document.querySelector('.message-image')?.imageStatus==='loading');
@@ -98,6 +105,14 @@ try{
    fs.writeFileSync(file,b);await refresh();await ready();assert.deepEqual(await bytes(image),b);
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
    checks.push(width+': atomic replacement refreshes; deletion shows an error without retry loops; recreated image loads current bytes');
+
+   active.frozenStat=fs.statSync(file,{bigint:true});
+   const beforeCollision=active.requests.length;overwrite(a);second=true;await refresh();
+   const collisionImage=page.locator('[data-item-id="second"] .message-image img');await collisionImage.scrollIntoViewIfNeeded();
+   await page.waitForFunction(()=>document.querySelector('[data-item-id="second"] .message-image')?.imageStatus==='ready');
+   assert.deepEqual(await bytes(collisionImage),a);assert.deepEqual(await bytes(image),b);
+   assert.equal(active.requests.length,beforeCollision+1);
+   checks.push(width+': with all metadata fixed to the old value, a newly emitted preview reads overwritten bytes instead of another message cache');
   }catch(e){await page.screenshot({path:path.join(dir,'failure-'+width+'.png')});throw e;}
   finally{active.pending.splice(0).forEach(send=>send());events.forEach(stop=>stop());await page.close();}
  }
