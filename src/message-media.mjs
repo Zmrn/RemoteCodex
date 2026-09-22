@@ -21,6 +21,20 @@ function readDataImage(source) {
   if (!type || bytes.length > imageLimit(type)) throw Error(sizeError);
   return {bytes, type};
 }
+// A path is an authorization handle, not immutable image content. Probe only
+// metadata while reading history; reading/hashing every large GIF on each poll
+// would block the target. ctime/ino also cover restored mtime and file replacement.
+function localImageRevision(file, revisions) {
+  if (revisions?.has(file)) return revisions.get(file);
+  let stamp;
+  try {
+    const s = fs.statSync(file, { bigint: true });
+    stamp = [s.dev, s.ino, s.mode, s.size, s.mtimeNs, s.ctimeNs, s.birthtimeNs].join(':');
+  } catch (e) { stamp = 'unavailable:' + (e.code ?? 'unknown'); }
+  const revision = createHash('sha256').update('local-image:' + file + ':' + stamp).digest('hex');
+  revisions?.set(file, revision);
+  return revision;
+}
 export function imageType(bytes) {
   if (['GIF87a', 'GIF89a'].some(header => bytes.subarray(0, 6).equals(Buffer.from(header))))
     return 'image/gif';
@@ -104,7 +118,7 @@ export class MessageMedia {
       throw e;
     }
   }
-  add(threadId, source, name, externalImages = false) {
+  add(threadId, source, name, externalImages = false, revisions) {
     if (typeof source !== "string") return null;
     if (dataImage.test(source)) {
       if (!externalImages) return { src: source, name: name ?? "图片" };
@@ -132,9 +146,10 @@ export class MessageMedia {
     if (!entries) this.threads.set(threadId, (entries = new Map()));
     if (entries.size < 1000)
       entries.set(id, { file, name: name ?? path.basename(file) });
-    return { id, name: name ?? path.basename(file), ...(/\.gif$/i.test(file) ? {downloadName:path.basename(file)} : {}) };
+    return { id, contentKey: localImageRevision(file, revisions), name: name ?? path.basename(file), ...(/\.gif$/i.test(file) ? {downloadName:path.basename(file)} : {}) };
   }
   decorate(threadId, data, { externalImages = false } = {}) {
+    const revisions = new Map();
     this.recentThreads.delete(threadId);
     this.recentThreads.set(threadId, true);
     while (this.recentThreads.size > 64) {
@@ -165,7 +180,7 @@ export class MessageMedia {
           const images = [...(item.bridgeHistoryImages ?? [])],
             files = [];
           const add = (source, name) => {
-            const ref = this.add(threadId, source, name, externalImages);
+            const ref = this.add(threadId, source, name, externalImages, revisions);
             if (ref) images.push(ref);
           };
           if (user || delegated !== undefined) {
@@ -197,7 +212,7 @@ export class MessageMedia {
             text = text.replace(
               /!\[([^\]]*)\]\(<?((?:[A-Za-z]:[\\/]|\/)[^\n]*?)>?\)/g,
               (whole, label, file) => {
-                const ref = this.add(threadId, file, label || undefined);
+                const ref = this.add(threadId, file, label || undefined, false, revisions);
                 if (!ref) return whole;
                 images.push(ref);
                 return "";

@@ -633,7 +633,9 @@ function messageImage(ref, reuse) {
   box.updateReference = next => {
     if (box.imageStatus === 'ready') imageSignals = [agentReads.signal, taskReads.signal];
     ref = next; box.mediaId = ref.id;
-    key = imageAgent + ":" + imageThread + ":" + (ref.id ?? ref.src);
+    // A local file can be overwritten while its task-scoped download ID stays
+    // unchanged. Revision must select both the decoded node and downloaded bytes.
+    key = JSON.stringify([imageAgent, imageThread, ref.id ?? ref.src, ref.contentKey ?? null]);
     if (ref.id) img.dataset.downloadRoute = link.dataset.downloadRoute = base(imageAgent) + '/threads/' + imageThread + '/media?id=' + encodeURIComponent(ref.id);
   };
   box.updateReference(ref);
