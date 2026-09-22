@@ -1,5 +1,7 @@
 # 官方设置接口 v1 / v2
 
+2026-09-22：补齐内置权限预设的审批策略和审批者，修复完全访问仍成为自定义组合；新建准备须核对完整有效预设。源码、真实复现与验证边界见 [PERMISSION-PRESETS.md](PERMISSION-PRESETS.md)，本次尚未打包。
+
 2026-09-19：适配 `thread-follower-update-thread-settings` v2，同时保留 v1。已随 0.10.43 经 GitHub 同次双端构建并正式发布；包内与线上验收结果见 GITHUB-UPDATES.md。
 
 ## 已核对的官方实现

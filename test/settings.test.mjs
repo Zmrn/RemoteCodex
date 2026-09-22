@@ -46,6 +46,8 @@ test("live catalog fails closed; validate effort per model and reject raw settin
   assert.deepEqual(permissionOverrides("keep", {}, "/probe"), {});
   assert.deepEqual(permissionOverrides("read-only", {}, "/probe"), {
     permissions: ":read-only",
+    approvalPolicy: "on-request",
+    approvalsReviewer: "user",
   });
   assert.throws(() => permissionOverrides("invented", {}, "/probe"), /Invalid/);
   assert.equal(allowedRoute("POST", "/api/threads/probe/settings"), true);
@@ -229,6 +231,8 @@ test("active settings use the existing owner once without starting or interrupti
       model: "gpt-5.4-mini",
       effort: "medium",
       permissions: ":read-only",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
       serviceTier: "default",
     },
   });

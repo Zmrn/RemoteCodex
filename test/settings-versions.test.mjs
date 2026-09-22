@@ -51,7 +51,7 @@ for (const version of [1, 2]) test(`settings v${version} uses the observed wire 
   for (const call of f.calls) {
     assert.equal(call.options.version, version);
     assert.equal(call.options.targetClientId, owner);
-    assert.deepEqual(call.params, { conversationId: id, threadSettings: { permissions: ':workspace' } });
+    assert.deepEqual(call.params, { conversationId: id, threadSettings: { permissions: ':workspace', approvalPolicy: 'on-request', approvalsReviewer: 'user' } });
   }
   assert.equal(f.state.latestThreadSettings.permissions, undefined, 'ACK must not manufacture live settings');
   assert.equal(desktopPolicy(f.desktop).features.createPermissions.supported, true);

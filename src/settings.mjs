@@ -38,15 +38,29 @@ export function modelOverrides(input = {}, models) {
     ...(input.effort === undefined ? {} : { effort: input.effort }),
   };
 }
-export function permissionOverrides(mode, current, cwd) {
+export function permissionOverrides(mode) {
   if (mode === undefined || mode === "keep") return {};
-  // Named profiles let the official application enforce its current requirements.
-  // No global configuration or approval decision is changed here.
+  // These are the official agent-mode presets, not just profile selection.
+  // A profile-only update preserves the previous approval policy/reviewer.
+  // Named profiles still let the official application enforce requirements.
   const permissions = {
     "read-only": ":read-only",
     workspace: ":workspace",
     full: ":danger-full-access",
   }[mode];
   if (!permissions) throw Error("Invalid permission mode");
-  return { permissions };
+  return {
+    permissions,
+    approvalPolicy: mode === "full" ? "never" : "on-request",
+    approvalsReviewer: "user",
+  };
+}
+
+export function permissionPresetMatches(mode, current) {
+  const expected = permissionOverrides(mode);
+  if (!expected.permissions || !current) return false;
+  const profile = current.activePermissionProfile;
+  return profile?.id === expected.permissions &&
+    current.approvalPolicy === expected.approvalPolicy &&
+    current.approvalsReviewer === expected.approvalsReviewer;
 }

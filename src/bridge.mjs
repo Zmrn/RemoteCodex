@@ -41,6 +41,7 @@ import {
   parseModels,
   modelOverrides,
   permissionOverrides,
+  permissionPresetMatches,
 } from "./settings.mjs";
 export const ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -281,7 +282,7 @@ export class Bridge extends EventEmitter {
     );
     const settings = {
       ...modelOverrides(modelInput, Object.keys(modelInput).length ? parseModels(this.desktop.catalog) : []),
-      ...permissionOverrides(input.permissionMode, current, read.thread.cwd),
+      ...permissionOverrides(input.permissionMode),
       ...tierOverride(
         input.serviceTier,
         input.model ?? current.model,
@@ -711,7 +712,7 @@ export class Bridge extends EventEmitter {
     return this.once(key, "create", { prompt, settings, ...(project ? { project } : {}) }, async dispatch => {
       // Resolve on the destination desktop again at send time, never trust a
       // path or stale project metadata supplied by a remote controller.
-      const desktop = this.desktop;
+      const desktop = this.desktop, identity = desktop.identity, ipc = desktop.ipc;
       const context =
         permissionMode && permissionMode !== "keep"
           ? await this.permissionContext(permissionMode)
@@ -725,7 +726,8 @@ export class Bridge extends EventEmitter {
         ? savedProjectTarget(project, await desktop.call(TOOLS.listProjects))
         : null;
       this.requireConnection();
-      if (desktop !== this.desktop) throw Error("创建期间目标桌面连接已更换，未发送");
+      if (desktop !== this.desktop || identity !== desktop.identity || ipc !== desktop.ipc)
+        throw Error("创建期间目标桌面连接已更换，未发送");
       dispatch();
       const r = await this.desktop.call(
         TOOLS.createThread,
@@ -809,6 +811,12 @@ export class Bridge extends EventEmitter {
     if (this.permissionPreparations.has(mode))
       return this.permissionPreparations.get(mode);
     const preparation = (async () => {
+      const desktop = this.desktop, identity = desktop.identity, ipc = desktop.ipc;
+      const checkConnection = () => {
+        this.requireConnection();
+        if (desktop !== this.desktop || identity !== desktop.identity || ipc !== desktop.ipc)
+          throw Error("官方权限准备期间连接已更换，当前消息没有发送");
+      };
       this.db.permissionContexts ??= {};
       let id = this.db.permissionContexts[mode];
       if (!id) {
@@ -829,7 +837,9 @@ export class Bridge extends EventEmitter {
       }
       this.guardProbe(id);
       for (let i = 0; i < 60; i++) {
+        checkConnection();
         const read = await this.codexThread(id);
+        checkConnection();
         if (read.thread.status.type === "notLoaded") {
           await this.open(id);
           await new Promise((r) => setTimeout(r, 300));
@@ -837,32 +847,36 @@ export class Bridge extends EventEmitter {
         }
         if (read.thread.status.type === "idle") {
           const previous = this.live.get(id);
-          await this.follow(id);
+          const owner = await this.follow(id);
           for (let j = 0; j < 30 && this.live.get(id) === previous; j++)
             await new Promise((r) => setTimeout(r, 100));
           if (this.live.get(id) === previous)
             throw Error("官方权限准备状态未知，当前消息没有发送");
-          const expected = permissionOverrides(mode).permissions;
-          if (
-            this.live.get(id)?.state.currentPermissions?.activePermissionProfile
-              ?.id !== expected
-          ) {
+          const currentPermissions = () => {
+            checkConnection();
+            const live = this.live.get(id);
+            if (live?.owner !== owner.handledByClientId || live?.state?.id !== id)
+              throw Error("官方权限准备所有者尚未确认，当前消息没有发送");
+            return live.state.currentPermissions;
+          };
+          if (!permissionPresetMatches(mode, currentPermissions())) {
             // Official creation inherits effective permissions, not a draft
             // setting. Prime only this registered, reusable setup task.
-            await this.nativeSend(
+            const prepared = await this.nativeSend(
               id,
               "permission-prepare-" + randomUUID(),
               "只回复 READY。不要使用工具，不要访问任何文件。",
               undefined,
               { permissionMode: mode },
             );
+            if (prepared.status !== "accepted")
+              throw Error("官方权限准备结果未知，当前消息没有发送；请先核对官方准备会话");
             let ready = false;
             for (let j = 0; j < 90; j++) {
               const state = await this.codexThread(id);
               if (
                 state.thread.status.type === "idle" &&
-                this.live.get(id)?.state.currentPermissions
-                  ?.activePermissionProfile?.id === expected
+                permissionPresetMatches(mode, currentPermissions())
               ) {
                 ready = true;
                 break;
