@@ -16,7 +16,7 @@ const browser=await chromium.launch({headless:true,executablePath:process.env.RE
 const page=await browser.newPage({viewport:{width:1280,height:850}});
 const calls=[],errors=[];let created=false;
 page.on("pageerror",e=>errors.push(e.message));
-await page.route(local.address+"/api/**",async route=>{
+const handleApi=async route=>{
   const request=route.request(),pathname=new URL(request.url()).pathname;
   calls.push({pathname,method:request.method(),body:request.method()==="POST"?request.postDataJSON():null});
   const json=value=>route.fulfill({contentType:"application/json",body:JSON.stringify(value)}).catch(()=>{});
@@ -31,7 +31,8 @@ await page.route(local.address+"/api/**",async route=>{
   if(pathname.endsWith("/queue"))return json({confirmed:true,messages:[],recoveries:[]});
   if(pathname.endsWith("/threads/"+thread))return json({data:{thread:{id:thread,kind:"codex",title:"受限会话",status:{type:"idle"}},turns:[]}});
   return json({});
-});
+};
+await page.route(local.address+"/api/**",handleApi);
 try{
   await page.goto(local.address);
   await page.waitForFunction(()=>document.querySelector("#connection")?.textContent?.includes("已连接"));
@@ -46,8 +47,32 @@ try{
   const writes=calls.filter(c=>c.method==="POST"&&c.pathname.endsWith("/threads"));
   assert.equal(writes.length,1);
   assert.ok(writes[0].body.project==null);
+  const mobileContext=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+  const mobile=await mobileContext.newPage();
+  mobile.on("pageerror",e=>errors.push(e.message));
+  await mobile.addInitScript(()=>{
+    window.limitUiUnhandled=[];
+    window.addEventListener("unhandledrejection",event=>window.limitUiUnhandled.push(String(event.reason)));
+  });
+  await mobile.route(local.address+"/api/**",route=>new URL(route.request().url()).pathname==="/api/agents"
+    ? route.fulfill({contentType:"application/json",body:JSON.stringify({selectedId:null,agents:[]})})
+    : handleApi(route));
+  await mobile.goto(local.address);
+  await mobile.waitForFunction(()=>document.querySelector("#connection")?.textContent?.includes("尚未添加设备"));
+  await mobile.locator("#mobile-menu").click();
+  const refreshed=mobile.waitForResponse(response=>new URL(response.url()).pathname==="/api/agents");
+  await mobile.locator("#footer-agent").click();
+  await refreshed;
+  await mobile.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  assert.equal(await mobile.locator("#agent-menu").isVisible(),true,"Empty device refresh must keep the add menu open");
+  await mobile.locator("#add-agent").click();
+  await mobile.locator("#agent-dialog").waitFor({state:"visible"});
+  await mobile.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  assert.equal(await mobile.locator("#agent-dialog").evaluate(el=>el.open),true,"Add device dialog must remain open on mobile");
+  assert.deepEqual(await mobile.evaluate(()=>window.limitUiUnhandled),[]);
+  await mobileContext.close();
   assert.equal(errors.length,0,errors.join("\n"));
-  console.log("Limit UI: remote-only, projectless, Codex-only and one create passed");
+  console.log("Limit UI: remote-only, projectless, Codex-only, first-device dialog and one create passed");
 }finally{
   await browser.close();
   local.server.closeAllConnections();await new Promise(resolve=>local.server.close(resolve));

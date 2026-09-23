@@ -1097,10 +1097,15 @@ async function openAgentMenu() {
     renderAgents();
     if (!$("agent-menu").hidden && focusedId)
       [...$("agents").children].find(item => item.dataset.agentId === focusedId)?.focus();
-    if (!currentAgent()) await switchAgent(data.selectedId || agents[0]?.id || "");
-    else {
-      $("agent-title").textContent = currentAgent().name;
-      $("agent-endpoint").textContent = endpoint(currentAgent());
+    const active = currentAgent();
+    if (!active) {
+      // No selected device on first launch: refreshing an empty list must not
+      // dismiss the menu before the user can open Add Device.
+      if (agents.length || agentId)
+        await switchAgent(data.selectedId || agents[0]?.id || "", true, null, mode, { preserveAgentMenu: true });
+    } else {
+      $("agent-title").textContent = active.name;
+      $("agent-endpoint").textContent = endpoint(active);
     }
   } catch (e) { error(e); }
 }
@@ -1335,7 +1340,7 @@ function saveDraft() {
   if (saved) { saved.files = files; delete saved.file; }
   else if (files.length) takenDrafts.set(taskKey(), { files });
 }
-async function switchAgent(id, record = true, resumeId = null, nextMode = mode) {
+async function switchAgent(id, record = true, resumeId = null, nextMode = mode, { preserveAgentMenu = false } = {}) {
   sidebarReports.reset();
   $("mode-menu").hidePopover();
   viewerRecovery?.stop();
@@ -1378,7 +1383,7 @@ async function switchAgent(id, record = true, resumeId = null, nextMode = mode) 
   document.querySelector(".conversation").classList.add("is-new");
   $("title").textContent = "新对话";
   modelSettings(null);
-  closeAgentMenu();
+  if (!preserveAgentMenu) closeAgentMenu();
   $("empty").hidden = false;
   $("file-tray").hidden = true;
   setPromptValue(draft.get(taskKey()) ?? "");

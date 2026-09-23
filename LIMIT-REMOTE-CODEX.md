@@ -1,5 +1,7 @@
 # Limit Remote Codex
 
+首次添加设备的移动端菜单闪退已在源码中修复，并加入空设备列表的触控界面回归。已发布的 0.10.47 安装包尚不包含此修复；按用户约定，仅在明确要求打包时发布新版。
+
 Limit Remote Codex 是独立安装的受限控制端。Windows 默认使用 `%LOCALAPPDATA%/LimitRemoteCodex`，Android 使用 `com.anso.limitremotecodex`；它们与完整版的设备、密钥、草稿和更新缓存分开。Limit Windows 服务不建立本机官方 ChatGPT/Codex 连接；Android 原本也只连接远端。两端仅接受 `lrc1_` 开头的受限配对码。
 
 Limit Windows 的隔离自检只检查内置运行时、DPAPI 和页面资源，不发现或连接本机官方应用；云端打包门禁会运行最终 EXE 的该项自检。
