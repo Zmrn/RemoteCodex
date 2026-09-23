@@ -14,7 +14,20 @@ const local=await startServer({port:0,edition:"limit",bridge:new LimitedBridge(d
   access:{status:()=>({}),close:()=>{}}});
 const browser=await chromium.launch({headless:true,executablePath:process.env.REMOTE_BRIDGE_BROWSER || "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
 const page=await browser.newPage({viewport:{width:1280,height:850}});
-const calls=[],errors=[];let created=false;
+const installEvents=async page=>page.addInitScript(()=>{
+  const original=window.fetch.bind(window),streams=new Set();
+  window.fixtureEvent=event=>{for(const stream of streams)stream.enqueue(new TextEncoder().encode("data: "+JSON.stringify(event)+"\n\n"));};
+  window.fixtureStreamCount=()=>streams.size;
+  window.fetch=(url,options)=>{
+    if(!String(url).endsWith("/events"))return original(url,options);
+    return Promise.resolve(new Response(new ReadableStream({start(controller){
+      streams.add(controller);
+      options.signal.addEventListener("abort",()=>{streams.delete(controller);controller.error(new DOMException("Aborted","AbortError"));});
+    }}),{headers:{"content-type":"text/event-stream"}}));
+  };
+});
+await installEvents(page);
+const calls=[],errors=[];let created=false,reply=false,reads=0;
 page.on("pageerror",e=>errors.push(e.message));
 const handleApi=async route=>{
   const request=route.request(),pathname=new URL(request.url()).pathname;
@@ -29,7 +42,10 @@ const handleApi=async route=>{
   if(pathname.endsWith("/usage"))return json({status:"unknown",weekly:[]});
   if(pathname.endsWith("/updates"))return json({supported:false,currentVersion:"0.10.46"});
   if(pathname.endsWith("/queue"))return json({confirmed:true,messages:[],recoveries:[]});
-  if(pathname.endsWith("/threads/"+thread))return json({data:{thread:{id:thread,kind:"codex",title:"受限会话",status:{type:"idle"}},turns:[]}});
+  if(pathname.endsWith("/threads/"+thread)){
+    reads++;
+    return json({data:{thread:{id:thread,kind:"codex",title:"受限会话",status:{type:"idle"}},turns:reply?[{id:"turn",status:"completed",items:[{id:"reply",type:"agentMessage",text:"受限版实时回复已显示"}]}]:[]}});
+  }
   return json({});
 };
 await page.route(local.address+"/api/**",handleApi);
@@ -44,9 +60,17 @@ try{
   await page.locator("#prompt").fill("新建我自己的无项目会话");
   await page.locator("#send").click();
   await page.waitForFunction(()=>!!document.querySelector('.thread-card[data-thread-id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]'));
+  await page.waitForFunction(()=>document.querySelector("#title")?.textContent?.includes("受限会话")&&window.fixtureStreamCount()>0);
+  assert.equal(await page.locator('[data-item-id="reply"]').count(),0);
   const writes=calls.filter(c=>c.method==="POST"&&c.pathname.endsWith("/threads"));
   assert.equal(writes.length,1);
   assert.ok(writes[0].body.project==null);
+  const before=reads;
+  reply=true;
+  await page.evaluate(id=>window.fixtureEvent({kind:"thread-state",threadId:id,status:{type:"idle",confirmed:true}}),thread);
+  await page.locator('[data-item-id="reply"]').waitFor();
+  assert.ok(reads>before,"Owned stream event must refresh the open conversation");
+  assert.match(await page.locator('[data-item-id="reply"]').textContent(),/受限版实时回复已显示/);
   const mobileContext=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
   const mobile=await mobileContext.newPage();
   mobile.on("pageerror",e=>errors.push(e.message));
@@ -70,9 +94,21 @@ try{
   await mobile.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   assert.equal(await mobile.locator("#agent-dialog").evaluate(el=>el.open),true,"Add device dialog must remain open on mobile");
   assert.deepEqual(await mobile.evaluate(()=>window.limitUiUnhandled),[]);
+  const mobileReply=await mobileContext.newPage();
+  await installEvents(mobileReply);
+  mobileReply.on("pageerror",e=>errors.push(e.message));
+  await mobileReply.route(local.address+"/api/**",handleApi);
+  reply=false;
+  await mobileReply.goto(local.address+"/?thread="+thread);
+  await mobileReply.waitForFunction(()=>document.querySelector("#title")?.textContent?.includes("受限会话")&&window.fixtureStreamCount()>0);
+  assert.equal(await mobileReply.locator('[data-item-id="reply"]').count(),0);
+  reply=true;
+  await mobileReply.evaluate(id=>window.fixtureEvent({kind:"thread-state",threadId:id,status:{type:"idle",confirmed:true}}),thread);
+  await mobileReply.locator('[data-item-id="reply"]').waitFor();
+  assert.match(await mobileReply.locator('[data-item-id="reply"]').textContent(),/受限版实时回复已显示/);
   await mobileContext.close();
   assert.equal(errors.length,0,errors.join("\n"));
-  console.log("Limit UI: remote-only, projectless, Codex-only, first-device dialog and one create passed");
+  console.log("Limit UI: remote-only, projectless, Codex-only, first-device dialog, create and live replies on desktop/mobile passed");
 }finally{
   await browser.close();
   local.server.closeAllConnections();await new Promise(resolve=>local.server.close(resolve));

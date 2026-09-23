@@ -62,6 +62,15 @@ export class LimitedAccess {
     if (!uuid(id) || this.store.value.identities[id]?.enabled !== true)
       throw Error("受限配对已撤销或不可用");
   }
+  streamGrant(id) {
+    this.requireActive(id);
+    return this.store.value.identities[id].keyHash;
+  }
+  streamGrantActive(id, keyHash) {
+    return this.store.health.writable &&
+      this.store.value.identities[id]?.enabled === true &&
+      this.store.value.identities[id].keyHash === keyHash;
+  }
   owns(identity, threadId) {
     this.requireActive(identity);
     return uuid(threadId) && this.store.value.threads[threadId] === identity;
@@ -109,5 +118,26 @@ export class LimitedAccess {
     this.requireActive(identity);
     return { ...result, complete: false,
       threads: (result.threads ?? []).filter(row => this.owns(identity, row.id)) };
+  }
+  filterEvent(identity, event) {
+    this.requireActive(identity);
+    if (event.kind === "connected" || event.kind === "connection-interrupted")
+      return { kind: event.kind,
+        ...(event.kind === "connection-interrupted" && String(event.reason ?? "").includes("Oversize IPC frame")
+          ? { reason: "Oversize IPC frame" } : {}) };
+    if (!this.owns(identity, event.threadId)) return null;
+    if (event.kind === "thread-state") {
+      const source = event.status ?? {};
+      const type = ["idle", "running", "waiting-approval", "waiting-user-input", "unknown", "connection-interrupted"].includes(source.type)
+        ? source.type : "unknown";
+      return { kind: "thread-state", threadId: event.threadId, status: {
+        type, confirmed: source.confirmed === true,
+        ...(Array.isArray(source.activeFlags) ? { activeFlags: source.activeFlags.filter(flag =>
+          ["waitingOnApproval", "waitingOnUserInput"].includes(flag)) } : {}),
+      } };
+    }
+    if (["created", "unknown", "queue-changed", "report-read"].includes(event.kind))
+      return { kind: event.kind, threadId: event.threadId };
+    return null;
   }
 }

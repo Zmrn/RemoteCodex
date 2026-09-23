@@ -61,7 +61,7 @@ export async function startServer({
   let desktopNotifications;
   const notifications = () => desktopNotifications ??= new DesktopNotifications(agents, bridge.dataDir ?? DATA_DIR);
   const secret = randomBytes(32).toString("hex"),
-    sse = new Set(), limitedStreams = new WeakSet();
+    sse = new Set(), limitedStreams = new Map();
   let closing = false;
   const staticTypes = new Map([
     ["/app.js", "text/javascript; charset=utf-8"],
@@ -157,9 +157,29 @@ export async function startServer({
     return record.outputDirectory;
   };
   const event = (e) => {
-    for (const res of sse)
-      if (!limitedStreams.has(res))
-      res.write(`id: ${e.epoch}:${e.id}\ndata: ${JSON.stringify(e)}\n\n`);
+    for (const res of sse) {
+      const grant = limitedStreams.get(res);
+      if (!grant) {
+        res.write(`id: ${e.epoch}:${e.id}\ndata: ${JSON.stringify(e)}\n\n`);
+        continue;
+      }
+      if (!limitedAccess.streamGrantActive(grant.identity, grant.keyHash)) {
+        res.end();
+        sse.delete(res);
+        limitedStreams.delete(res);
+        continue;
+      }
+      const visible = limitedAccess.filterEvent(grant.identity, e);
+      if (visible) res.write(`data: ${JSON.stringify(visible)}\n\n`);
+    }
+  };
+  const closeLimitedStreams = identity => {
+    for (const [res, grant] of limitedStreams)
+      if (grant.identity === identity) {
+        res.end();
+        sse.delete(res);
+        limitedStreams.delete(res);
+      }
   };
   bridge.on("event", event);
   const server = http.createServer(async (req, res) => {
@@ -271,10 +291,12 @@ export async function startServer({
           "Cache-Control": "no-store",
           Connection: "keep-alive",
         });
-        if (limitedIdentity) limitedStreams.add(res);
+        if (limitedIdentity) limitedStreams.set(res, {
+          identity: limitedIdentity, keyHash: limitedAccess.streamGrant(limitedIdentity),
+        });
         res.write(`data: ${JSON.stringify({ kind: "resync-required", ...(limitedIdentity ? limitedAccess.filterStatus(limitedIdentity, bridge.status()) : bridge.status()) })}\n\n`);
         sse.add(res);
-        req.on("close", () => sse.delete(res));
+        res.on("close", () => { sse.delete(res); limitedStreams.delete(res); });
         return;
       }
       if (req.method === "GET" && url.pathname === "/api/projects")
@@ -408,10 +430,16 @@ export async function startServer({
         return json(res, 200, edition === "limit" ? remoteOnlyAgents(await agents.remove(body.id)) : await agents.remove(body.id));
       if (url.pathname === "/api/limited-access")
         return json(res, 200, limitedAccess.create(body.name));
-      if (url.pathname === "/api/limited-access/revoke")
-        return json(res, 200, limitedAccess.revoke(body.id));
-      if (url.pathname === "/api/limited-access/rotate")
-        return json(res, 200, limitedAccess.rotate(body.id));
+      if (url.pathname === "/api/limited-access/revoke") {
+        const result = limitedAccess.revoke(body.id);
+        closeLimitedStreams(body.id);
+        return json(res, 200, result);
+      }
+      if (url.pathname === "/api/limited-access/rotate") {
+        const result = limitedAccess.rotate(body.id);
+        closeLimitedStreams(body.id);
+        return json(res, 200, result);
+      }
       if (url.pathname === "/api/pairing-key")
         return json(res, 200, { key: await access.key() });
       if (url.pathname === "/api/local-access") {
@@ -537,7 +565,14 @@ export async function startServer({
     server.listen(port, "127.0.0.1", resolve);
   });
   const heartbeat = setInterval(() => {
-    for (const res of sse) res.write(": heartbeat\n\n");
+    for (const res of sse) {
+      const grant = limitedStreams.get(res);
+      if (grant && !limitedAccess.streamGrantActive(grant.identity, grant.keyHash)) {
+        res.end();
+        sse.delete(res);
+        limitedStreams.delete(res);
+      } else res.write(": heartbeat\n\n");
+    }
   }, 15000);
   heartbeat.unref();
   server.on("close", () => {
