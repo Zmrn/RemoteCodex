@@ -1,5 +1,22 @@
 # GitHub 直接更新
 
+## 2026-09-23：0.10.49 Limit 实时回复修复四包正式发布
+
+[正式版本](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.49)。Limit 版此前为隔离不同配对身份，目标端把受限实时事件全部屏蔽：发送和历史读取成功，但正在打开的会话收不到回复到达通知，需退出重进才显示。本版仅转发当前配对身份所属会话的最小状态通知，自动刷新正文；其他配对会话及官方 owner/连接详情不外泄，换码或撤销立即关闭旧事件流。目标 Windows 完整版接入端与 Limit 控制端需同版更新，现有设备连接无需重配。
+
+最终源码 `bdb32a4582d53b9d2c05c2951e0a4c41f7d660ed` 的 Checks `35831364253` 成功，同 SHA preflight 后仅派发一次 Build `35831843360`（requestId `c99d6d23-ecb2-4d72-9c39-080304d836d3`），云构建首次成功。同次四包及 14 项资源在草稿中逐项读回后公开；匿名 latest 的四份签名清单、固定版本四包和发布说明均完整下载且与构建哈希一致。
+
+| 安装文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44203008 | `81db8d63b8730da033a469691e64efd62d58bace8e062bffde90639ff0476626` |
+| RemoteCodex.apk | 295152 | `9e51c227784c63bb37a085928f26fcaf9b0bddf2d4bccdc199b5488873b83a2d` |
+| LimitRemoteCodex.exe | 44203008 | `3872ddef42f05fe58fa2b3fd6a94b85a0fbfff92c593c7267867ae64bacfe0c6` |
+| LimitRemoteCodex.apk | 295152 | `aed6dee5aed5e29b00cc03a6c3b9ef1fa8911a33558d6bcbf8fef031afd2a494` |
+
+最终版本 361 项 Node22.19.0、Limit 桌面/手机实时回复界面、兼容清单、两版各 27 份 Android Java 源码 API35 编译通过。四份原 RSA 更新清单和四包哈希一致；两个 APK 保持原证书 SHA-256 `3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`、v2/v3 签名、独立包名及 versionCode `10049`。两个 EXE 解包源码与本提交的 `src/server.mjs`、`src/limited-access.mjs`、共享界面及更新渠道逐字节一致；包内完整版的三项受限配对/事件流隔离测试和 Limit 控制端本机禁止访问测试通过。隔离旧云包 0.10.48→0.10.49 两版设备 ID、加密密钥和配置字节保持，更新后连续两次读取通过。完整版 EXE 在当前官方 Windows x64 `26.917.6896.0` 上只读连接及项目/会话列表成功，Limit EXE 自检证实不访问本机官方。
+
+包内验证脚本初次错误地把目标端受限配对测试也运行在 Limit 控制端，按版别职责修正验证脚本后两版分别通过；云产物未改、未重构建。未执行 APK/模拟器、升级现有客户端、重启官方应用、创建真实受限会话或向用户任务发送测试消息；官方当前版只读连接不等于全部行为实测。普通 Chat 新建/图片及未完成 Work 未纳入，主工作区八份 Chat 开发修改未进入构建。Windows EXE 仍无 Authenticode 签名。证据留在 `work/release-049/work/`；本发布记录提交不重新打包，四包仍对应上述构建源码。
+
 ## 2026-09-23：0.10.48 四包正式发布
 
 [正式版本](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.48)。本版修复 Limit Android 首次添加设备时，空设备列表刷新触发无意义切换、关闭刚打开的设备菜单；共享界面在完整版的同场景也得到修复。源码提交 `0488130759aa0bcb972dc63c1fef61e0abbd4040` 的 Checks `35825290587` 成功，preflight 确认同 SHA 且工作树干净，再由 Build `35825682916`（requestId `25bf90f5-6d5b-4a5d-84e0-acb51d2d94af`）一次生成完整版与 Limit 版各一份 Windows EXE、Android APK。最终 Build 只派发一次且首次成功，14 项资源逐项上传读回后公开。

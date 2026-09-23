@@ -1,5 +1,7 @@
 # Limit Remote Codex
 
+0.10.49 已修复发送后当前会话不显示回复的问题：目标端只向同一受限配对发送所属会话的最小实时事件，收到新回复后自动刷新。完整版目标接入端与 Limit 控制端都需更新；四包已同次发布，详见 GITHUB-UPDATES.md。
+
 首次添加设备的移动端菜单闪退已在 0.10.48 修复，并加入空设备列表的触控界面回归。完整版和 Limit 版四个安装文件已同次发布；按用户约定，只有明确要求打包时才发布新版。
 
 Limit Remote Codex 是独立安装的受限控制端。Windows 默认使用 `%LOCALAPPDATA%/LimitRemoteCodex`，Android 使用 `com.anso.limitremotecodex`；它们与完整版的设备、密钥、草稿和更新缓存分开。Limit Windows 服务不建立本机官方 ChatGPT/Codex 连接；Android 原本也只连接远端。两端仅接受 `lrc1_` 开头的受限配对码。
