@@ -1,6 +1,6 @@
 # GitHub 主仓库与按需云端构建
 
-从 Limit 版源码合入后的下一次明确构建起，同一次 Build 应生成四个独立安装文件：完整版 `RemoteCodex.exe` / `RemoteCodex.apk`，受限版 `LimitRemoteCodex.exe` / `LimitRemoteCodex.apk`。四包各有构建报告和签名清单；两版更新通道分离，发布步骤必须读回核验四包。已发布的 0.10.46 仍是原双包版本，不能将新源码视为已发布安装包。见 [LIMIT-REMOTE-CODEX.md](LIMIT-REMOTE-CODEX.md)。
+最新发布：[0.10.47](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.47)，同次构建完整版与 Limit 版各一份 EXE/APK，四包各有构建报告和签名清单、独立更新通道，公开后匿名下载核验通过。配置与边界见 [LIMIT-REMOTE-CODEX.md](LIMIT-REMOTE-CODEX.md)，构建证据见 GITHUB-UPDATES.md。旧的 0.10.46 仍是双包版本。
 
 最新发布：[0.10.46](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.46)，同路径图片缓存修复与同次双端验证见GITHUB-UPDATES.md。
 
@@ -52,16 +52,16 @@ node scripts/github-actions.mjs download <BUILD_RUN_ID>
 
 脚本优先使用安全环境中的 GH_TOKEN/GITHUB_TOKEN，否则使用已有 Git Credential Manager 登录；凭据仅在内存中发送到 api.github.com，不写入文件、日志、命令参数或对话。另一台电脑没有 GitHub 登录时，需先由用户完成登录，不能从此电脑导出登录令牌。
 
-`download` 只下载成功的 main 双端构建，校验任务来源、文件白名单、提交与运行编号、更新清单 RSA 签名和程序 SHA-256。保存在被忽略的 `work/github-downloads/<runId>/`，不覆盖现有文件；AI 随后提供 EXE/APK 文件链接。下载链接来自 GitHub API，转到资源存储域名时不携带 GitHub 凭据。
+`download` 只下载成功的 main 四包构建，校验任务来源、文件白名单、提交与运行编号、两版更新清单 RSA 签名和程序 SHA-256。保存在被忽略的 `work/github-downloads/<runId>/`，不覆盖现有文件；AI 随后提供四包链接。下载链接来自 GitHub API，转到资源存储域名时不携带 GitHub 凭据。
 
 ## 两条工作流
 
 - **Checks**：main push、PR 和手动/API 触发。运行 Node 回归、接口清单、窗口与通知隔离检查，不接收任何正式签名材料。
-- **Build EXE and APK**：只接受 main 的手动/API 触发，使用 `signing` 环境。固定标准 `windows-2022`，Node 22.19.0、Python 3.13、Temurin JDK 21、Android platform 35 / build-tools 35.0.1；沿用项目的双端构建入口，额外运行 Android 主机 JVM 检查。
+- **Build EXE and APK**：只接受 main 的手动/API 触发，使用 `signing` 环境。固定标准 `windows-2022`，Node 22.19.0、Python 3.13、Temurin JDK 21、Android platform 35 / build-tools 35.0.1；同次生成完整版与 Limit 版四包，额外运行 Android 主机 JVM 检查。
 
 所有第三方 Actions 固定到完整提交 SHA，令牌只读，checkout 不保留凭据。签名任务不能来自 PR 或其他分支，不使用 pull_request_target。签名 Secrets 只暴露给恢复步骤，随后按 runner 的 Windows 用户重新 DPAPI 封装；构建结束（包括失败）删除本轮生成的签名与配置文件。
 
-产物按明确白名单上传：EXE、APK、两个构建报告、两个签名更新清单、支持说明、构建来源记录。artifact 保留 **3 天**，内部程序仍为固定 `RemoteCodex.exe` / `RemoteCodex.apk` 文件名；不上传整个工作区、work、data 或原签名文件，不缓存密钥。
+产物按明确白名单上传：四个安装包、四份构建报告、四份签名更新清单、发布说明和构建来源记录，共14项。artifact 保留 **3 天**，安装包使用 `RemoteCodex.exe` / `RemoteCodex.apk` / `LimitRemoteCodex.exe` / `LimitRemoteCodex.apk` 固定文件名；不上传整个工作区、work、data 或原签名文件，不缓存密钥。
 
 正式应用更新使用 GitHub Releases 的长期资源。下载同次云构建产物并完成适用验收后，执行 `node scripts/github-actions.mjs publish <runId>`；先建立草稿、上传并读回核验全部资源，再公开。普通源码提交或构建本身不会发布 Release；首次迁移和重试规则见 [GITHUB-UPDATES.md](GITHUB-UPDATES.md)。
 

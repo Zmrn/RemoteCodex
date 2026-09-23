@@ -1,8 +1,8 @@
 # Remote Codex · ChatGPT 桌面会话桥接器
 
-新增独立安装的 **Limit Remote Codex** 源码：Windows/Android 受限控制端只连接远端，目标电脑按受限配对码强制隔离会话，只允许查看和操作该配对身份创建的无项目会话。下一次明确要求构建时，GitHub Actions 同次生成完整版与 Limit 版各一份 EXE/APK；当前已发布的 0.10.46 尚不包含此功能。配置与安全边界见 [LIMIT-REMOTE-CODEX.md](LIMIT-REMOTE-CODEX.md)。
+已发布独立安装的 **Limit Remote Codex 0.10.47**：Windows/Android 受限控制端只连接远端，目标电脑按受限配对码强制隔离会话，只允许查看和操作该配对身份创建的无项目会话。[本次发布](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.47) 同次提供完整版与 Limit 版各一份 EXE/APK。配置与安全边界见 [LIMIT-REMOTE-CODEX.md](LIMIT-REMOTE-CODEX.md)。
 
-2026-09-10 当前源码按实际接口依赖逐功能判断兼容性，不再因新官方版本号全局禁用；已读仍只服从官方数据和现有身份/回报核验，不新增本地已读状态。26.903.9818.0 本轮仅只读接口核对，历史实测记录和 Chat/Work 范围不变。细节见 COMPATIBILITY-VIEW.md；尚未构建发布。
+当前源码按实际接口依赖逐功能判断兼容性，不再因新官方版本号全局禁用；已读仍只服从官方数据和现有身份/回报核验，不新增本地已读状态。最新 0.10.47 在官方 Windows x64 26.917.6896.0 仅做只读连接和列表验证，历史实测记录和 Chat/Work 范围不变。细节见 COMPATIBILITY-VIEW.md 与 GITHUB-UPDATES.md。
 
 源码：[GitHub](https://github.com/Zmrn/RemoteCodex)。只有用户明确要求构建/打包时，才通过 AI 对话触发 GitHub Actions 双端打包、查询进度和下载 EXE/APK；不再本地构建，日常源码提交仅自动回归。设置与命令见 [GITHUB-ACTIONS.md](GITHUB-ACTIONS.md)。
 

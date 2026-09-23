@@ -1,5 +1,7 @@
 # Remote Codex 开发与发布约定
 
+- 2026-09-23 最新发布：0.10.47 从 `2012b7878d30bb44b3d766bab866872449128a07` 经同 SHA Checks `35817026993` 与 preflight 成功后，由 Build `35817415133` 同次生成完整版和 Limit 版各一份 EXE/APK，14 项资源读回后正式发布 [Releases/v0.10.47](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.47)。最终 Build 仅派发一次且首次成功；较早的 Build `35816533238` 成功但发现 Limit EXE 自检越界，只验证未发布，修正后增加包内自检门禁。360 Node22.19.0、Limit/额度历史 UI、25 Android 更新网络 JVM、两版各 27 Java API35 编译及设备连接主机检查通过。四包原 RSA/APK v2-v3 证书、源码/页面/清单/渠道、双 EXE 隔离运行时/DPAPI、完整版 .46→.47 与 Limit 独立设备密钥重启保存、匿名四包完整下载通过。完整版包在官方 Windows x64 26.917.6896.0 只读连接/列表成功，不冒称全部行为兼容；Limit 包自检不访问本机官方。未执行 APK/模拟器、升级现有客户端、写真实任务；未完成 Chat/Work 不纳入，主工作区原八份 Chat 修改保留。详情与四包哈希见 GITHUB-UPDATES.md。下方发布准备为历史阶段；发布记录提交不再打包。
+
 - 2026-09-23 发布准备：用户已明确“打包”，拟从最新版源码准备 0.10.47，首次同次云构建完整版和 Limit 版各一份 EXE/APK，包含受限配对与会话隔离、独立安装/更新，以及额度历史一天视图日期分割线。先最终版本回归、同SHA Checks成功和preflight，再仅派发一次 Build；四包验签、包内版别/渠道/证书、隔离数据保护、目标端受限归属及匿名下载通过后发布。未完成 Chat 8 份修改留在主工作区，历史 stash 禁止重放；不本地构建、不执行 APK/模拟器、不升级现有客户端、不写真实任务。正式结果以 GITHUB-UPDATES.md 后续记录为准。
 
 - 2026-09-23 Limit Remote Codex 源码新增：独立 Windows/Android 安装身份，受限端只能持 `lrc1_` 配对码访问远端；目标端按配对身份强制过滤会话及其操作，不能读取项目或带项目新建。相同配对码共享自身创建会话，可换码保留或撤销。未来用户明确要求打包时，必须同次云构建/验签/发布四个文件：`RemoteCodex.exe`、`RemoteCodex.apk`、`LimitRemoteCodex.exe`、`LimitRemoteCodex.apk`，使用各自签名更新清单；未明确打包不得触发 Build。详情见 LIMIT-REMOTE-CODEX.md。原8份Chat未完成修改必须保留，历史stash禁止重放。
@@ -111,8 +113,8 @@
 4. **提交并等待Checks。** 只提交本次已完成文件，推送GitHub main，记录完整SHA。`node scripts/github-actions.mjs status`找到该SHA的Checks运行，`watch CHECKS_RUN_ID`等待成功。失败/取消/仍在运行/缺失均不能构建；改代码、版本或构建说明后是新SHA，重新验证并等待新SHA的Checks，不能引用上个提交的绿灯。
 5. **只派发一次并固定运行。** 在干净且与GitHub main一致的工作树，先执行只读`node scripts/github-actions.mjs preflight`，通过后才`node scripts/github-actions.mjs build`。build再次检查同SHA的Checks，GitHub工作流在签名配置前也检查自己的GITHUB_SHA；网页手动启动不能绕过。保存requestId、完整SHA和build runId，后续只用这个runId执行watch/download/publish，不用“最近一次运行”猜测。
 6. **失败按状态处理。** Checks失败只修Checks，不派发Build；确定构建失败时先读失败步骤日志，修正后通过新提交Checks再构建，不回退本地。网络超时或派发结果未知不等于失败：用status中的Build requestId及SHA找已派发任务，未确认前不重发。已有成功云产物的下载/上传失败只恢复该次产物，不重建。
-7. **验证同次产物。** `download BUILD_RUN_ID`下载并验签；核对双端版本/源码SHA/运行ID、原RSA与APK证书、哈希/包名/versionCode、兼容清单、GitHub更新源、包内容无用户配置或私钥。不得混用其他run或本地重建产物。包内容验证、隔离运行时检查、真实官方连接及APK行为各自记录；官方管道不可用不等于安装包坏，也不能标成真实桥接通过。沿用用户不执行APK、自行更新验证的安排，不擅自安装或升级现有客户端。
-8. **草稿发布并读回。** 验证后`publish BUILD_RUN_ID`，标准发布器上传八项资源并逐项读回核验才公开。上传/公开结果未知时先检查同版本草稿、构建标记及资源；确认状态后使用同run恢复，不盲目重传、不删资源、不覆盖已公开版本。公开后匿名读取latest签名清单，再按固定版本完整下载双端包与说明核对。
+7. **验证同次产物。** `download BUILD_RUN_ID`下载并验签；核对完整版和 Limit 版四包的版本/源码SHA/运行ID、原RSA与APK证书、哈希/包名/versionCode、兼容清单、各自GitHub更新源、包内容无用户配置或私钥。不得混用其他run或本地重建产物。包内容验证、隔离运行时检查、真实官方连接及APK行为各自记录；官方管道不可用不等于安装包坏，也不能标成真实桥接通过。沿用用户不执行APK、自行更新验证的安排，不擅自安装或升级现有客户端。
+8. **草稿发布并读回。** 验证后`publish BUILD_RUN_ID`，标准发布器上传四包、四份报告、四份签名清单、发布说明及构建来源记录，共14项资源，逐项读回核验才公开。上传/公开结果未知时先检查同版本草稿、构建标记及资源；确认状态后使用同run恢复，不盲目重传、不删资源、不覆盖已公开版本。公开后匿名读取四份latest签名清单，再按固定版本完整下载四包与说明核对。
 9. **收尾与交付。** 推送发布记录，保全未完成工作并逐条核对增删行；如使用stash，只应用本次记录的对象一次且保留。提供APK/EXE链接，明确官方版本、平台、Codex/Chat/Work范围及未验证项。纯发布记录提交不再次打包，已发布产物仍对应构建SHA。
 
 0.10.31的教训：版本从0.10.30升为0.10.31后，测试仍将0.10.31当可升级目标；未先跑最终版本测试且并发派发Checks/Build，导致同一问题产生两次失败通知。9bdd09d已修为动态候选版本；本流程与入口检查用于提前阻断同类问题。网络失败仍可能发生，按固定运行恢复，不承诺外部服务永不失败。
@@ -244,10 +246,10 @@
 - 双端构建报告、签名更新清单及 RELEASE-NOTES.md 必须来自同一份兼容性清单。发布器必须拒绝缺失/过期元数据和混用旧产物；GitHub Release 内的说明哈希受更新签名保护。
 
 1. `package.json` 是唯一正式版本来源。APK versionCode 为 `major*1000000 + minor*1000 + patch`；minor、patch 必须小于 1000。
-2. **明确构建时由同一次 GitHub Actions 生成 Android APK 和 Windows EXE。** 正式发布继续由本会话负责，使用该次云端产物完成双端验证与发布，不允许只发布一端或用本地重建替代。下载后的源码、版本、提交、兼容清单、双端签名与哈希必须相符；已有同版本正式资源不能被同版重建覆盖。
-3. 固定文件名为 `RemoteCodex.exe`、`RemoteCodex.apk`，版本显示在程序左下角；不要在文件名中加版本。
+2. **明确构建时由同一次 GitHub Actions 生成完整版和 Limit 版各一份 Android APK 与 Windows EXE。** 正式发布继续由本会话负责，使用该次云端产物完成四包验证与发布，不允许只发布部分文件或用本地重建替代。下载后的源码、版本、提交、兼容清单、四包签名与哈希必须相符；已有同版本正式资源不能被同版重建覆盖。
+3. 固定文件名为 `RemoteCodex.exe`、`RemoteCodex.apk`、`LimitRemoteCodex.exe`、`LimitRemoteCodex.apk`，版本显示在程序左下角；不要在文件名中加版本。
 4. 公共更新入口统一在 `src/update-source.json`，使用本仓库 GitHub Releases；本地 release.local.json 仅保存工具路径等被忽略的开发配置，旧 baseUrl/SSH 项不再参与构建或发布。不得向应用注入设备/登录凭据或私钥。
-5. 同次云构建下载验签后执行 `node scripts/github-actions.mjs publish RUN_ID`，在固定提交对应的 v版本草稿Release中上传明确的八项资源，逐项从GitHub读回验签/哈希通过才公开。已发布同版本不可覆盖，标签/运行/资源不符拒绝。未知结果按同版本运行检查后恢复，不盲目重试公开操作。客户端清单走latest入口，安装包按已验签版本固定到tag；不再向旧服务器上传或配置跳转。测试和首次迁移见 GITHUB-UPDATES.md。
+5. 同次云构建下载验签后执行 `node scripts/github-actions.mjs publish RUN_ID`，在固定提交对应的 v版本草稿Release中上传明确的14项资源，逐项从GitHub读回验签/哈希通过才公开。已发布同版本不可覆盖，标签/运行/资源不符拒绝。未知结果按同版本运行检查后恢复，不盲目重试公开操作。两版客户端各取自己的latest清单，安装包按已验签版本固定到tag；不再向旧服务器上传或配置跳转。测试和首次迁移见 GITHUB-UPDATES.md。
 6. 保留 `data/release-signing-key.json`、`data/android-signing.p12`、`data/android-signing-password.json`。不得重新生成已有身份。它们被忽略，密码绑定当前 Windows 用户；迁移构建机需安全迁移签名身份，不能提交 Git。
 7. Android 自动检查和下载更新，系统仍要求确认安装；不得宣称普通 APK 能静默安装。验证清单 RSA 签名、SHA-256、包名、版本和 APK 安装证书。
 8. 发布前运行 Node 回归与 Android 构建验证；Android 行为改动在隔离模拟器验证。记录具体通过项和未测试项，不把模拟器结果称作真机验证。
