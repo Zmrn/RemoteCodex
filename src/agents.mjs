@@ -73,7 +73,8 @@ export async function resolveAgent(host) {
   return result[0].address;
 }
 export class Agents {
-  constructor(dir) {
+  constructor(dir, { limited = false } = {}) {
+    this.limited = limited;
     this.file = path.join(dir, "agents.json");
     fs.mkdirSync(dir, { recursive: true });
     this.persisted = false;
@@ -108,6 +109,7 @@ export class Agents {
     };
   }
   get(id) {
+    if (this.limited && id === "local") throw Error("Limit 版不能访问本机官方应用");
     this.refresh();
     const a = this.db.items.find((a) => a.id === id);
     if (!a) throw Error("设备不存在");
@@ -116,7 +118,9 @@ export class Agents {
   async key(id) {
     const a = this.get(id);
     if (!a.sealedKey) throw Error("请编辑设备并填写连接密钥");
-    return protect(a.sealedKey, "unprotect");
+    const key = await protect(a.sealedKey, "unprotect");
+    if (this.limited && !/^lrc1_[a-f0-9]{64}$/.test(key)) throw Error("Limit 版只能使用受限配对码");
+    return key;
   }
   mutate(fn) {
     const next = this.queue.then(async () => {
@@ -134,9 +138,11 @@ export class Agents {
     return this.mutate(() => preserveAgents(this.file));
   }
   async save(body) {
+    if (this.limited && body.id === "local") throw Error("Limit 版不能修改本机接入");
     let protectedKey;
     if (body.id !== "local" && body.key) {
       validateAccessKey(body.key);
+      if (this.limited && !/^lrc1_[a-f0-9]{64}$/.test(body.key)) throw Error("Limit 版只能使用受限配对码");
       protectedKey = await protect(body.key);
     }
     return this.mutate(() => {

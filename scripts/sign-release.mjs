@@ -36,13 +36,17 @@ if (process.argv[2] === "--init") {
 } else {
   const [exePath, version, outputPath] = process.argv.slice(2);
   const android = path.extname(exePath ?? "").toLowerCase() === ".apk";
+  const file = path.basename(exePath ?? "");
+  const limited = file.startsWith("LimitRemoteCodex.");
+  if (!["RemoteCodex.exe", "RemoteCodex.apk", "LimitRemoteCodex.exe", "LimitRemoteCodex.apk"].includes(file))
+    throw Error("Unexpected release artifact");
   if (!exePath || !outputPath || !/^\d+\.\d+\.\d+$/.test(version ?? ""))
     throw Error("Usage: node scripts/sign-release.mjs EXE VERSION OUTPUT_JSON");
   checkGenerated();
   const support = supportManifest();
   const buildFile = exePath.replace(/\.(exe|apk)$/i, android ? ".apk.build.json" : ".build.json");
   const build = JSON.parse(fs.readFileSync(buildFile, "utf8"));
-  if (build.version !== version || !isDeepStrictEqual(build.desktopCompatibility, support))
+  if (build.version !== version || build.edition !== (limited ? "limit" : "full") || !isDeepStrictEqual(build.desktopCompatibility, support))
     throw Error("Rebuild artifact with the current official desktop compatibility catalog before signing");
   const privateKey = await protect(
     JSON.parse(fs.readFileSync(keyFile)).sealedPrivateKey,
@@ -61,8 +65,8 @@ if (process.argv[2] === "--init") {
       schema: 1,
       version,
       platform: android ? "android" : "windows-x64",
-      file: android ? "RemoteCodex.apk" : "RemoteCodex.exe",
-      ...(android ? {packageName: "com.anso.remotecodex", versionCode: version.split('.').reduce((n, v) => n * 1000 + Number(v), 0)} : {}),
+      file,
+      ...(android ? {packageName: limited ? "com.anso.limitremotecodex" : "com.anso.remotecodex", versionCode: version.split('.').reduce((n, v) => n * 1000 + Number(v), 0)} : {}),
       bytes: bytes.length,
       sha256: createHash("sha256").update(bytes).digest("hex"),
       publishedAt: new Date().toISOString(),

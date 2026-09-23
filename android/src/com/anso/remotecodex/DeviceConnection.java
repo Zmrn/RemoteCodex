@@ -16,6 +16,7 @@ public final class DeviceConnection {
   public static HttpURLConnection openResolved(Endpoint endpoint,String ip,String route,String method,byte[] body,String contentType,int connectTimeout,int readTimeout)throws Exception{
     if(!Devices.tail(InetAddress.getByName(ip)))throw new IOException("设备地址不属于 Tailscale 网络");
     JSONObject d=endpoint.device;String key=endpoint.key;
+    if(BuildInfo.EDITION.equals("limit")&&!key.matches("lrc1_[a-f0-9]{64}"))throw new IOException("Limit 版只能使用受限配对码");
     URL url=new URL("http",ip,d.getInt("port"),"/bridge/v1"+route);
     HttpURLConnection c=(HttpURLConnection)url.openConnection(Proxy.NO_PROXY);
     c.setInstanceFollowRedirects(false);c.setConnectTimeout(connectTimeout);c.setReadTimeout(readTimeout);c.setRequestMethod(method);

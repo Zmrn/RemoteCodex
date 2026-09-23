@@ -7,6 +7,7 @@
       content="width=device-width,initial-scale=1,viewport-fit=cover"
     />
     <meta name="bridge-csrf" content="__BRIDGE_CSRF__" />
+    <meta name="bridge-edition" content="__BRIDGE_EDITION__" />
     <title>Remote Bridge · Agent 控制台</title>
     <link rel="icon" href="/app-icon.ico?v=0.6.3" sizes="any" />
     <link rel="icon" href="/app-icon.svg?v=0.6.3" type="image/svg+xml" />
@@ -516,6 +517,13 @@
             密钥可自行设置，需 16–128 个字符（字母、数字或 . _ ~
             -）。保存后生效；更换密钥后其他设备需同步修改。
           </p>
+          <div id="limited-access-fields">
+            <h3>Limit 版配对</h3>
+            <p class="field-help">每个配对码对应一组独立会话；使用同一码的 Limit 版设备共享这组会话。撤销后立即停止访问，既有会话不会删除。</p>
+            <div class="field-row"><input id="limited-access-name" maxlength="60" placeholder="例如：家用受限设备" aria-label="受限配对名称"/><button id="limited-access-create" class="subtle" type="button">生成配对码</button></div>
+            <div id="limited-access-created" hidden><input id="limited-access-code" type="text" readonly aria-label="新生成的受限配对码"/><button id="limited-access-copy" class="subtle" type="button">复制配对码</button><p class="field-help">请现在保存，关闭此窗口后不再显示原码。</p></div>
+            <div id="limited-access-list"></div>
+          </div>
         </section>
         <section id="update-fields" hidden>
           <h3>此设备的软件更新</h3>

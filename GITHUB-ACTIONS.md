@@ -1,5 +1,7 @@
 # GitHub 主仓库与按需云端构建
 
+从 Limit 版源码合入后的下一次明确构建起，同一次 Build 应生成四个独立安装文件：完整版 `RemoteCodex.exe` / `RemoteCodex.apk`，受限版 `LimitRemoteCodex.exe` / `LimitRemoteCodex.apk`。四包各有构建报告和签名清单；两版更新通道分离，发布步骤必须读回核验四包。已发布的 0.10.46 仍是原双包版本，不能将新源码视为已发布安装包。见 [LIMIT-REMOTE-CODEX.md](LIMIT-REMOTE-CODEX.md)。
+
 最新发布：[0.10.46](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.46)，同路径图片缓存修复与同次双端验证见GITHUB-UPDATES.md。
 
 最新发布：[0.10.45](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.45)，完整权限预设修复与同次双端验证见GITHUB-UPDATES.md。

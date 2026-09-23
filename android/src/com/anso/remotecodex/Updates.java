@@ -27,7 +27,8 @@ public final class Updates {
     }catch(Exception ignored){packageState="unverified";}
     if(latest!=null)try{phase=newer(latest.getString("version"),BuildInfo.VERSION)?(latest.getString("version").equals(downloadedVersion)?"waiting":"available"):"current";}catch(Exception ignored){}
   }
-  public File ready(){return new File(app.getFilesDir(),"updates/RemoteCodex.apk");}
+  public File ready(){return new File(app.getFilesDir(),"updates/"+artifactName());}
+  public static String artifactName(){return BuildInfo.EDITION.equals("limit")?"LimitRemoteCodex.apk":"RemoteCodex.apk";}
   public boolean automatic(){return prefs.getBoolean("automatic",true);}
   public void automatic(boolean on){prefs.edit().putBoolean("automatic",on).apply();if(on)checkAsync(false);}
   public synchronized JSONObject status()throws Exception{
@@ -41,12 +42,12 @@ public final class Updates {
   public void backgroundCheck()throws Exception{synchronized(this){if(!automatic()||working)return;working=true;}executor.submit(()->{try{check(true);}catch(Exception e){fail(e);}finally{working=false;}}).get();}
   private void fail(Exception e){phase="error";downloadVersion=null;error=e.getMessage()==null?"更新失败，下次自动重试":e.getMessage();}
   private String base()throws Exception{try(InputStream in=app.getAssets().open("release.json")){return new JSONObject(new String(LocalServer.all(in,16000),"UTF-8")).getString("baseUrl");}}
-  private HttpURLConnection open(String version)throws Exception{UpdateNetwork network=new UpdateNetwork(base());return network.open(version==null?network.manifest():network.artifact(version));}
+  private HttpURLConnection open(String version)throws Exception{UpdateNetwork network=new UpdateNetwork(base(),BuildInfo.EDITION);return network.open(version==null?network.manifest():network.artifact(version));}
   public JSONObject verifyEnvelope(JSONObject envelope)throws Exception{
     String encoded=envelope.getString("payload"),sig=envelope.getString("signature");if(encoded.length()>16000||sig.length()>2048)throw new Exception("更新清单过大");byte[] payload=Base64.decode(encoded,0);
     String pem;try(InputStream in=app.getAssets().open("update-public-key.pem")){pem=new String(LocalServer.all(in,8000),"UTF-8").replaceAll("-----[A-Z ]+-----|\\s","");}
     PublicKey key=KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(Base64.decode(pem,0)));java.security.Signature verifier=java.security.Signature.getInstance("SHA256withRSA");verifier.initVerify(key);verifier.update(payload);if(!verifier.verify(Base64.decode(sig,0)))throw new Exception("更新签名校验失败");
-    JSONObject m=new JSONObject(new String(payload,"UTF-8"));if(m.getInt("schema")!=1||!m.getString("platform").equals("android")||!m.getString("file").equals("RemoteCodex.apk")||!m.getString("packageName").equals(app.getPackageName())||!m.getString("version").matches("\\d+\\.\\d+\\.\\d+")||m.getLong("versionCode")!=code(m.getString("version"))||!m.getString("sha256").matches("[a-f0-9]{64}")||m.getLong("bytes")<1024||m.getLong("bytes")>150*1024*1024)throw new Exception("更新清单内容无效");return m;
+    JSONObject m=new JSONObject(new String(payload,"UTF-8"));if(m.getInt("schema")!=1||!m.getString("platform").equals("android")||!m.getString("file").equals(artifactName())||!m.getString("packageName").equals(app.getPackageName())||!m.getString("version").matches("\\d+\\.\\d+\\.\\d+")||m.getLong("versionCode")!=code(m.getString("version"))||!m.getString("sha256").matches("[a-f0-9]{64}")||m.getLong("bytes")<1024||m.getLong("bytes")>150*1024*1024)throw new Exception("更新清单内容无效");return m;
   }
   private void check(boolean autoDownload)throws Exception{phase="checking";error="";HttpURLConnection c=open(null);JSONObject envelope;try(InputStream in=c.getInputStream()){envelope=new JSONObject(new String(LocalServer.all(in,24000),"UTF-8"));}finally{c.disconnect();}JSONObject m=verifyEnvelope(envelope);lastCheck=System.currentTimeMillis();latest=m;prefs.edit().putString("latest",m.toString()).putString("envelope",envelope.toString()).putLong("checkedAt",lastCheck).apply();if(!newer(m.getString("version"),BuildInfo.VERSION)){phase="current";return;}phase=m.getString("version").equals(downloadedVersion)?"waiting":"available";if(autoDownload)download();}
   private void download()throws Exception{

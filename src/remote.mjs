@@ -184,6 +184,7 @@ export async function startRemoteListener({
   port = 43128,
   key,
   getKey = () => key,
+  limitedAccess = null,
   localPort,
   secret,
 }) {
@@ -198,14 +199,14 @@ export async function startRemoteListener({
   )
     throw Error("监听地址必须是本机已有的 Tailscale IP");
   validateAccessKey(getKey());
+  if (/^lrc1_[a-f0-9]{64}$/.test(getKey())) throw Error("完整版访问密钥不能使用受限配对码格式");
   const server = http.createServer(async (req, res) => {
     const expected = Buffer.from("Bearer " + getKey());
     const supplied = Buffer.from(req.headers.authorization ?? "");
-    if (
-      req.headers.origin ||
-      supplied.length !== expected.length ||
-      !timingSafeEqual(supplied, expected)
-    ) {
+    const full = supplied.length === expected.length && timingSafeEqual(supplied, expected);
+    const limited = !full && /^Bearer lrc1_[a-f0-9]{64}$/.test(req.headers.authorization ?? "")
+      ? limitedAccess?.authenticate(req.headers.authorization.slice(7)) : null;
+    if (req.headers.origin || (!full && !limited)) {
       res.writeHead(401, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
@@ -227,7 +228,7 @@ export async function startRemoteListener({
       hostname: "127.0.0.1",
       port: localPort,
       route,
-      headers: { "X-Bridge-CSRF": secret },
+      headers: { "X-Bridge-CSRF": secret, ...(limited ? { "X-Bridge-Limit-Identity": limited } : {}) },
     });
   });
   await new Promise((resolve, reject) => {

@@ -11,10 +11,16 @@ using System.Threading;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
+#if LIMIT_EDITION
+[assembly: AssemblyTitle("Limit Remote Codex")]
+[assembly: AssemblyDescription("Self-contained limited Windows desktop controller")]
+#else
 [assembly: AssemblyTitle("Remote Codex")]
 [assembly: AssemblyDescription("Self-contained Windows desktop bridge launcher")]
+#endif
 
 internal static class PortableLauncher {
+    private static bool Limit { get { return PortableBuild.Edition == "limit"; } }
     private static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
     private static string home;
     private static string data;
@@ -26,7 +32,7 @@ internal static class PortableLauncher {
         try {
             var options = Parse(args);
             home = Path.GetFullPath(options.ContainsKey("--home") ? options["--home"] :
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RemoteCodex"));
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Limit ? "LimitRemoteCodex" : "RemoteCodex"));
             data = Path.Combine(home, "data");
             EnsureDirectory(home); EnsureDirectory(data);
             if (options.ContainsKey("--stop")) { Stop(ReadRecord()); return 0; }
@@ -46,7 +52,7 @@ internal static class PortableLauncher {
             return RunSingleDesktop(options);
         } catch (Exception error) {
             try { if (data != null) File.WriteAllText(Path.Combine(data, "launcher-error.txt"), error.ToString(), Encoding.UTF8); } catch { }
-            if (!quiet) MessageBox.Show(error.Message, "Remote Codex", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (!quiet) MessageBox.Show(error.Message, Limit ? "Limit Remote Codex" : "Remote Codex", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
     }
@@ -111,6 +117,7 @@ internal static class PortableLauncher {
                     if(OwnedProcesses.LoadLibrary(Path.Combine(sdk,"WebView2Loader.dll"))==IntPtr.Zero) throw new Exception("无法加载 WebView2 组件。");
                     var ui=Assembly.LoadFrom(Path.Combine(sdk,"DesktopUi.dll"));
                     window=(Form)Activator.CreateInstance(ui.GetType("DesktopWindow"),new object[]{Text(record,"address"),data,PortableBuild.Version});
+                    if (Limit) window.Text = "Limit Remote Codex";
                     File.WriteAllText(ownerFile,Json.Serialize(new Dictionary<string,object>{
                         {"pid",Process.GetCurrentProcess().Id},{"executable",Assembly.GetExecutingAssembly().Location},
                         {"version",PortableBuild.Version},{"instanceId",instance},{"window",window.Handle.ToInt64()}
@@ -164,7 +171,7 @@ internal static class PortableLauncher {
         // One visible app per Windows user on this machine, independent of
         // executable copy, version and --home. Keep the mutex for its full life.
         string user=System.Security.Principal.WindowsIdentity.GetCurrent().User.Value;
-        using(var mutex=new Mutex(false,"Global\\RemoteCodex-Desktop-"+user)) {
+        using(var mutex=new Mutex(false,"Global\\RemoteCodex-Desktop-"+(Limit ? "Limit-" : "")+user)) {
             bool locked=false;
             try {
                 for(int attempt=0;attempt<120;attempt++) {
@@ -186,7 +193,8 @@ internal static class PortableLauncher {
             try {
                 if(process.Id==me||process.SessionId!=session)continue;
                 var file=process.MainModule.FileVersionInfo;
-                if(file.FileDescription!="Remote Codex"||file.Comments!="Self-contained Windows desktop bridge launcher")continue;
+                if(file.FileDescription!=(Limit ? "Limit Remote Codex" : "Remote Codex")||
+                   file.Comments!=(Limit ? "Self-contained limited Windows desktop controller" : "Self-contained Windows desktop bridge launcher"))continue;
                 if(OwnedProcesses.ShowDesktop(process.Id))return true;
             }catch{}
         }
@@ -194,7 +202,7 @@ internal static class PortableLauncher {
     }
     private static string ReusablePort(Dictionary<string,object> old) {
         Uri uri;
-        if(Text(old,"application")!="remote-codex" || !Uri.TryCreate(Text(old,"address"),UriKind.Absolute,out uri) ||
+        if(Text(old,"application")!=(Limit ? "limit-remote-codex" : "remote-codex") || !Uri.TryCreate(Text(old,"address"),UriKind.Absolute,out uri) ||
             uri.Host!="127.0.0.1" || uri.Scheme!="http" || uri.Port<1)return "0";
         var probe=new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback,uri.Port);
         try {probe.Start();return uri.Port.ToString();}catch{return "0";}finally{probe.Stop();}

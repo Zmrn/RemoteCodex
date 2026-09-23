@@ -64,7 +64,7 @@ public final class LocalServer {
     if(!method.equals("GET")){reply(out,405,"text/plain",new byte[0]);return;}
     String name=route.equals("/")?"index.html":route.substring(1);if(!name.matches("[a-zA-Z0-9._-]+")||name.equals("release.json")||name.equals("update-public-key.pem"))throw new Exception("Unknown asset");
     byte[] bytes;try(InputStream asset=app.getAssets().open("web/"+name)){bytes=all(asset,4*1024*1024);}
-    if(name.equals("index.html"))bytes=new String(bytes,"UTF-8").replace("__BRIDGE_CSRF__",csrf).replace("__BRIDGE_VERSION__",BuildInfo.VERSION).replace("<head>","<head><meta name=\"bridge-platform\" content=\"android\">").getBytes("UTF-8");
+    if(name.equals("index.html"))bytes=new String(bytes,"UTF-8").replace("__BRIDGE_CSRF__",csrf).replace("__BRIDGE_VERSION__",BuildInfo.VERSION).replace("__BRIDGE_EDITION__",BuildInfo.EDITION).replace("<head>","<head><meta name=\"bridge-platform\" content=\"android\">").getBytes("UTF-8");
     reply(out,200,type(name),bytes);
   }catch(Exception error){if(!started)try{reply(client.getOutputStream(),502,"application/json",new JSONObject().put("error",error instanceof SocketTimeoutException?"连接超时，正在自动重连":safe(error)).toString().getBytes("UTF-8"));}catch(Exception ignored){}}finally{try{client.close();}catch(Exception ignored){}}}
   private static String safe(Exception e){String message=e.getMessage();return message==null?"连接或读取失败":message.replaceAll("(?i)Bearer [^ ]+","Bearer [redacted]");}

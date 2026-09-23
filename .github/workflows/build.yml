@@ -24,7 +24,7 @@ jobs:
     if: github.repository == 'Zmrn/RemoteCodex' && github.ref == 'refs/heads/main'
     runs-on: windows-2022
     environment: signing
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       PYTHONUTF8: '1'
     steps:
@@ -81,10 +81,16 @@ jobs:
           path: |
             dist/RemoteCodex.exe
             dist/RemoteCodex.apk
+            dist/LimitRemoteCodex.exe
+            dist/LimitRemoteCodex.apk
             dist/RemoteCodex.build.json
             dist/RemoteCodex.apk.build.json
+            dist/LimitRemoteCodex.build.json
+            dist/LimitRemoteCodex.apk.build.json
             dist/latest.json
             dist/android-latest.json
+            dist/limit-latest.json
+            dist/limit-android-latest.json
             dist/RELEASE-NOTES.md
             dist/GITHUB-BUILD.json
           if-no-files-found: error

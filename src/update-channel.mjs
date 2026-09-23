@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 export const updateSource = Object.freeze(JSON.parse(fs.readFileSync(new URL('./update-source.json', import.meta.url))));
-const files = new Set(['latest.json', 'android-latest.json', 'RemoteCodex.exe', 'RemoteCodex.apk', 'RELEASE-NOTES.md']);
+const files = new Set(['latest.json', 'android-latest.json', 'limit-latest.json', 'limit-android-latest.json', 'RemoteCodex.exe', 'RemoteCodex.apk', 'LimitRemoteCodex.exe', 'LimitRemoteCodex.apk', 'RELEASE-NOTES.md']);
 export function releaseAssetUrl(version, file) {
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version) || !files.has(file))
     throw Error('Invalid release asset');

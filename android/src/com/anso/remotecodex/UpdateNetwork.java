@@ -6,17 +6,21 @@ import java.util.Arrays;
 /** Public GitHub release downloads only. No device keys or GitHub login required. */
 public final class UpdateNetwork {
   public interface Factory { HttpURLConnection open(URL url) throws IOException; }
-  private final String base, releasePath;
+  private final String base, releasePath, edition;
   public UpdateNetwork(String base) throws Exception {
+    this(base,"full");
+  }
+  public UpdateNetwork(String base,String edition) throws Exception {
     URL url = new URL(base);
     if (!url.getHost().equals("github.com") || !url.getPath().matches("/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/latest/download/") || url.getQuery()!=null)
       throw new IOException("GitHub 更新入口无效");
-    this.base=base; this.releasePath=url.getPath().replace("latest/download/", ""); validate(url);
+    if(!edition.equals("full")&&!edition.equals("limit"))throw new IOException("未知更新版本");
+    this.base=base; this.edition=edition; this.releasePath=url.getPath().replace("latest/download/", ""); validate(url);
   }
-  public String manifest() { return base+"android-latest.json"; }
+  public String manifest() { return base+(edition.equals("limit")?"limit-android-latest.json":"android-latest.json"); }
   public String artifact(String version) throws Exception {
     if (!version.matches("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)")) throw new IOException("更新版本无效");
-    return "https://github.com"+releasePath+"download/v"+version+"/RemoteCodex.apk";
+    return "https://github.com"+releasePath+"download/v"+version+"/"+(edition.equals("limit")?"LimitRemoteCodex.apk":"RemoteCodex.apk");
   }
   private void validate(URL url) throws IOException {
     if (!url.getProtocol().equals("https") || url.getUserInfo()!=null || (url.getPort()!=-1 && url.getPort()!=443) || url.getRef()!=null ||

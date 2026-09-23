@@ -11,7 +11,8 @@ if args.publish:
 compatibility()
 subprocess.run(['node', '--test', *[str(p) for p in sorted((ROOT / 'test').glob('*.test.mjs'))]], check=True, cwd=ROOT)
 subprocess.run([sys.executable, str(ROOT / 'scripts/verify-window-placement.py')], check=True, cwd=ROOT)
-for script in ('build_android.py', 'build_portable.py'):
-    subprocess.run([sys.executable, '-X', 'utf8', str(ROOT / 'scripts' / script)], check=True, cwd=ROOT)
+for edition in ('full', 'limit'):
+    for script in ('build_android.py', 'build_portable.py'):
+        subprocess.run([sys.executable, '-X', 'utf8', str(ROOT / 'scripts' / script), '--edition', edition], check=True, cwd=ROOT)
 version = json.loads((ROOT/'package.json').read_text())['version']
 (ROOT/'dist/RELEASE-NOTES.md').write_bytes(release_notes(version))

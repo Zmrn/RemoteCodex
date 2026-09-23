@@ -31,6 +31,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--version', help='Override only for isolated upgrade tests')
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--edition', choices=('full', 'limit'), default='full')
     args = parser.parse_args()
     settings = config()
     sdk, jdk, tools, android = android_tools()
@@ -42,6 +43,9 @@ def main():
     assets, resource, classes, dex = (work / p for p in ('assets', 'res/drawable', 'classes', 'dex'))
     for folder in (assets / 'web', resource, classes, dex): folder.mkdir(parents=True, exist_ok=True)
     shutil.copytree(ROOT / 'android/res', work / 'res', dirs_exist_ok=True)
+    if args.edition == 'limit':
+        strings = work / 'res/values/strings.xml'
+        strings.write_text(strings.read_text(encoding='utf-8').replace('Remote Codex', 'Limit Remote Codex'), encoding='utf-8')
     for file in (ROOT / 'public').iterdir():
         if file.is_file(): (assets / 'web' / file.name).write_bytes(file.read_bytes())
     (assets / 'release.json').write_text(json.dumps({'baseUrl': settings['baseUrl']}))
@@ -51,15 +55,26 @@ def main():
     (assets / 'update-public-key.pem').write_bytes((ROOT / 'src/update-public-key.pem').read_bytes())
     (resource / 'app_icon.png').write_bytes((ROOT / 'public/app-icon-192.png').read_bytes())
     manifest = work / 'AndroidManifest.xml'
-    manifest.write_text((ROOT / 'android/AndroidManifest.xml').read_text().replace('__VERSION_CODE__', str(code)).replace('__VERSION__', version))
+    namespace = 'com.anso.limitremotecodex' if args.edition == 'limit' else 'com.anso.remotecodex'
+    manifest_text = (ROOT / 'android/AndroidManifest.xml').read_text().replace('__VERSION_CODE__', str(code)).replace('__VERSION__', version)
+    if args.edition == 'limit':
+        manifest_text = manifest_text.replace('com.anso.remotecodex', namespace).replace('android:label="Remote Codex"', 'android:label="Limit Remote Codex"')
+    manifest.write_text(manifest_text)
     build_info = work / 'BuildInfo.java'
-    build_info.write_text('package com.anso.remotecodex; public final class BuildInfo { public static final String VERSION = '+json.dumps(version)+'; }')
+    build_info.write_text('package '+namespace+'; public final class BuildInfo { public static final String VERSION = '+json.dumps(version)+'; public static final String EDITION = '+json.dumps(args.edition)+'; }')
     compiled = work / 'resources.zip'
     run([tools / 'aapt2.exe', 'compile', '--dir', work / 'res', '-o', compiled])
     unsigned = work / 'unsigned.apk'
     generated = work / 'generated'; generated.mkdir()
     run([tools / 'aapt2.exe', 'link', '-I', android, '--manifest', manifest, '-A', assets, '--java', generated, '-o', unsigned, compiled])
-    sources = list((ROOT / 'android/src').rglob('*.java')) + list(generated.rglob('*.java')) + [build_info]
+    if args.edition == 'limit':
+        source_root = work / 'java'
+        shutil.copytree(ROOT / 'android/src', source_root)
+        for source in source_root.rglob('*.java'):
+            source.write_text(source.read_text(encoding='utf-8').replace('com.anso.remotecodex', namespace), encoding='utf-8')
+    else:
+        source_root = ROOT / 'android/src'
+    sources = list(source_root.rglob('*.java')) + list(generated.rglob('*.java')) + [build_info]
     run([jdk / 'bin/javac.exe', '-J-Duser.language=en', '-encoding', 'UTF-8', '--release', '8', '-classpath', android, '-d', classes, *sources])
     jar = work / 'classes.jar'
     with zipfile.ZipFile(jar, 'w') as z:
@@ -70,13 +85,13 @@ def main():
     aligned = work / 'aligned.apk'
     run([tools / 'zipalign.exe', '-f', '-p', '4', unsigned, aligned])
     key, env = password(jdk)
-    output = (args.output or ROOT / 'dist/RemoteCodex.apk').resolve()
+    output = (args.output or ROOT / 'dist' / ('LimitRemoteCodex.apk' if args.edition == 'limit' else 'RemoteCodex.apk')).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     signer = [jdk / 'bin/java.exe', '-jar', tools / 'lib/apksigner.jar']
     run([*signer, 'sign', '--ks', key, '--ks-key-alias', 'remote-codex', '--ks-pass', 'env:REMOTE_CODEX_SIGNING_PASSWORD', '--out', output, aligned], env=env)
     run([*signer, 'verify', '--verbose', '--print-certs', output])
-    report = {'file': output.name, 'version': version, 'versionCode': code, 'bytes': output.stat().st_size,
-        'sha256': hashlib.sha256(output.read_bytes()).hexdigest(), 'packageName': 'com.anso.remotecodex', 'desktopCompatibility': desktop_support}
+    report = {'file': output.name, 'edition': args.edition, 'version': version, 'versionCode': code, 'bytes': output.stat().st_size,
+        'sha256': hashlib.sha256(output.read_bytes()).hexdigest(), 'packageName': namespace, 'desktopCompatibility': desktop_support}
     output.with_suffix('.apk.build.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
 

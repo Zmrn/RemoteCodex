@@ -13,7 +13,7 @@ export function newerVersion(a, b) {
   for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i];
   return false;
 }
-export function verifyManifest(envelope, publicKey = updatePublicKey()) {
+export function verifyManifest(envelope, publicKey = updatePublicKey(), expectedFile = "RemoteCodex.exe") {
   if (
     !envelope ||
     typeof envelope.payload !== "string" ||
@@ -36,7 +36,7 @@ export function verifyManifest(envelope, publicKey = updatePublicKey()) {
   if (
     m.schema !== 1 ||
     m.platform !== "windows-x64" ||
-    m.file !== "RemoteCodex.exe" ||
+    m.file !== expectedFile ||
     !/^\d+\.\d+\.\d+$/.test(m.version) ||
     !/^[a-f0-9]{64}$/.test(m.sha256) ||
     !Number.isSafeInteger(m.bytes) ||

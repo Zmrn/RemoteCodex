@@ -20,13 +20,14 @@ export const tailscaleAddresses = () =>
 export class LocalAccess {
   constructor(
     dir,
-    { addresses = tailscaleAddresses, listen = startRemoteListener } = {},
+    { addresses = tailscaleAddresses, listen = startRemoteListener, limitedAccess = null } = {},
   ) {
     this.file = path.join(dir, "remote-access.json");
     this.store = new DurableJson(this.file,{label:"本机接入配置",empty:{},validate:value=>value&&typeof value==='object'&&!Array.isArray(value)&&(value.enabled===undefined||typeof value.enabled==='boolean')&&(value.sealedKey===undefined||typeof value.sealedKey==='string')&&(!value.enabled||(typeof value.host==='string'&&Number.isInteger(value.port)&&value.port>0&&value.port<=65535&&typeof value.sealedKey==='string'))});
     this.config = this.store.value;
     this.addresses = addresses;
     this.listen = listen;
+    this.limitedAccess = limitedAccess;
     this.server = null;
     this.queue = Promise.resolve();
     this.error = "";
@@ -81,6 +82,7 @@ export class LocalAccess {
         if (this.closed) return;
         const candidate = await this.listen({
           ...this.connection,
+          limitedAccess: this.limitedAccess,
           host,
           port: this.config.port || 43128,
           getKey: () => this.currentKey,
@@ -128,6 +130,7 @@ export class LocalAccess {
       const key = input.key
         ? validateAccessKey(input.key)
         : await this.readKey();
+      if (/^lrc1_[a-f0-9]{64}$/.test(key)) throw Error("完整版访问密钥不能使用受限配对码格式");
       const config = {
         enabled: input.enabled,
         host,
@@ -142,6 +145,7 @@ export class LocalAccess {
       if (input.enabled && !same)
         candidate = await this.listen({
           ...this.connection,
+          limitedAccess: this.limitedAccess,
           host,
           port,
           key,

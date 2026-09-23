@@ -40,12 +40,13 @@ function fixture() {
   const support={catalogSha256:'b'.repeat(64)}, notes=Buffer.from('Synthetic release notes');
   const digest=b=>createHash('sha256').update(b).digest('hex');
   const files=new Map([['RELEASE-NOTES.md',notes],['GITHUB-BUILD.json',Buffer.from(JSON.stringify({version,commit:run.head_sha,runId:run.id,updateBaseUrl:updateSource.baseUrl}))]]);
-  for(const [file,manifest,report,platform] of [['RemoteCodex.exe','latest.json','RemoteCodex.build.json','windows-x64'],['RemoteCodex.apk','android-latest.json','RemoteCodex.apk.build.json','android']]) {
+  for(const [file,manifest,report,platform] of [['RemoteCodex.exe','latest.json','RemoteCodex.build.json','windows-x64'],['RemoteCodex.apk','android-latest.json','RemoteCodex.apk.build.json','android'],
+    ['LimitRemoteCodex.exe','limit-latest.json','LimitRemoteCodex.build.json','windows-x64'],['LimitRemoteCodex.apk','limit-android-latest.json','LimitRemoteCodex.apk.build.json','android']]) {
     const data=Buffer.alloc(2048,7);if(file.endsWith('exe'))data.write('MZ');
     const meta={schema:1,version,platform,file,bytes:data.length,sha256:digest(data),desktopCompatibility:support,releaseNotesSha256:digest(notes),
-      ...(platform==='android'?{packageName:'com.anso.remotecodex',versionCode:10029}:{})};
+      ...(platform==='android'?{packageName:file.startsWith('Limit')?'com.anso.limitremotecodex':'com.anso.remotecodex',versionCode:10029}:{})};
     const payload=Buffer.from(JSON.stringify(meta));
-    files.set(file,data);files.set(report,Buffer.from(JSON.stringify(meta)));files.set(manifest,Buffer.from(JSON.stringify({payload:payload.toString('base64'),signature:sign('sha256',payload,keys.privateKey).toString('base64')})));
+    files.set(file,data);files.set(report,Buffer.from(JSON.stringify({...meta,edition:file.startsWith('Limit')?'limit':'full'})));files.set(manifest,Buffer.from(JSON.stringify({payload:payload.toString('base64'),signature:sign('sha256',payload,keys.privateKey).toString('base64')})));
   }
   fs.mkdirSync(new URL('../work/',import.meta.url),{recursive:true});
   const folder=fs.mkdtempSync(fileURLToPath(new URL('../work/github-release-test-',import.meta.url)));
@@ -65,7 +66,7 @@ function fakeClient() {
     async readAsset(id){return this.corrupt?Buffer.from('corrupt'):bytes.get(id);}};
   return client;
 }
-test('release publication requires matching signed dual artifacts, provenance and GitHub channel',()=>{
+test('release publication requires matching signed four packages, provenance and GitHub channel',()=>{
   const f=fixture(); assert.equal(f.bundle.version,'0.10.29');
   for(const change of [{conclusion:'failure'},{head_branch:'topic'},{head_sha:'c'.repeat(40)}])assert.throws(()=>verifyReleaseBundle(f.folder,{...f.run,...change},f.publicKey));
   const info=JSON.parse(f.files.get('GITHUB-BUILD.json'));fs.writeFileSync(path.join(f.folder,'GITHUB-BUILD.json'),JSON.stringify({...info,updateBaseUrl:'http://old-server/'}));
@@ -85,7 +86,7 @@ test('unknown upload/publication results resume the same draft without duplicate
   await assert.rejects(publishRelease(client,f.bundle),/lost/);assert.equal(client.release.draft,true);
   client.failPublish=true;await assert.rejects(publishRelease(client,f.bundle),/lost/);
   assert.equal((await publishRelease(client,f.bundle)).alreadyPublished,true);
-  assert.equal(client.assets.length,8);assert.equal(client.events.filter(([method])=>method==='POST').length,1);
+  assert.equal(client.assets.length,releaseFiles.length);assert.equal(client.events.filter(([method])=>method==='POST').length,1);
 });
 test('corrupt assets, another version owner, conflicting tags and rollback prevent publication',async()=>{
   const f=fixture(),client=fakeClient();client.corrupt=true;

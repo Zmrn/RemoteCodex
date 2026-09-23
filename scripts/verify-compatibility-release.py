@@ -18,6 +18,8 @@ notes=release_notes(version)
 for artifact, report_file, manifest_file in [
     ('RemoteCodex.exe','RemoteCodex.build.json','latest.json'),
     ('RemoteCodex.apk','RemoteCodex.apk.build.json','android-latest.json'),
+    ('LimitRemoteCodex.exe','LimitRemoteCodex.build.json','limit-latest.json'),
+    ('LimitRemoteCodex.apk','LimitRemoteCodex.apk.build.json','limit-android-latest.json'),
 ]:
     report=json.loads((ROOT/'dist'/report_file).read_text())
     validate_artifact_compatibility(report,support)
@@ -25,10 +27,14 @@ for artifact, report_file, manifest_file in [
     assert manifest['desktopCompatibility']==support and manifest['version']==version
     assert manifest['releaseNotesSha256']==hashlib.sha256(notes).hexdigest()
     assert manifest['sha256']==hashlib.sha256((ROOT/'dist'/artifact).read_bytes()).hexdigest()
-with zipfile.ZipFile(ROOT/'dist/RemoteCodex.apk') as apk:
-    assert json.loads(apk.read('assets/desktop-compatibility.json'))==support
-    assert apk.read('assets/RELEASE-NOTES.md')==notes
-with zipfile.ZipFile(ROOT/'work/portable-build/payload.zip') as payload:
-    assert hashlib.sha256(payload.read('src/official-desktop.json')).hexdigest()==support['catalogSha256']
-    assert payload.read('RELEASE-NOTES.md')==notes
+for edition in ('full','limit'):
+    prefix = 'RemoteCodex' if edition == 'full' else 'LimitRemoteCodex'
+    with zipfile.ZipFile(ROOT/'dist'/(prefix+'.apk')) as apk:
+        assert json.loads(apk.read('assets/desktop-compatibility.json'))==support
+        assert apk.read('assets/RELEASE-NOTES.md')==notes
+    payload_file = ROOT/'work'/('portable-build' if edition == 'full' else 'portable-build-limit')/'payload.zip'
+    with zipfile.ZipFile(payload_file) as payload:
+        assert hashlib.sha256(payload.read('src/official-desktop.json')).hexdigest()==support['catalogSha256']
+        assert payload.read('RELEASE-NOTES.md')==notes
+        assert json.loads(payload.read('src/edition.json'))['edition']==edition
 print(json.dumps({'result':'PASS','bridgeVersion':version,'supportedOfficialVersions':support['verifiedVersions'],'checks':['missing/stale metadata rejected','dual manifests and artifacts match','APK compatibility asset','EXE catalog asset','signed release-note hashes']},ensure_ascii=False))

@@ -51,7 +51,7 @@ public final class Devices {
     JSONObject old=null;JSONArray all=state.getJSONArray("items");for(int i=0;i<all.length();i++)if(all.getJSONObject(i).getString("id").equals(id))old=all.getJSONObject(i);if(!id.isEmpty()&&old==null)throw new Exception("设备不存在");
     JSONObject row=new JSONObject().put("id",old==null?UUID.randomUUID().toString():id).put("name",name).put("kind","remote").put("host",host).put("port",port);
     String key=body.optString("key","");
-    if(!key.isEmpty()){if(!key.matches("[\\x21-\\x7e]{16,256}"))throw new Exception("访问密钥需要 16–256 个可见 ASCII 字符");row.put("sealedKey",seal(key));}
+    if(!key.isEmpty()){if(!key.matches("[\\x21-\\x7e]{16,256}"))throw new Exception("访问密钥需要 16–256 个可见 ASCII 字符");if(BuildInfo.EDITION.equals("limit")&&!key.matches("lrc1_[a-f0-9]{64}"))throw new Exception("Limit 版只能使用受限配对码");row.put("sealedKey",seal(key));}
     else if(old!=null&&host.equals(old.getString("host"))&&port==old.getInt("port")&&old.has("sealedKey"))row.put("sealedKey",old.getString("sealedKey"));
     JSONArray out=new JSONArray();for(int i=0;i<all.length();i++){JSONObject a=all.getJSONObject(i);if(!a.getString("id").equals(id)){if(host.equals(a.getString("host"))&&port==a.getInt("port"))throw new Exception("此地址和端口已保存");out.put(a);}}
     out.put(row);state.put("items",out);if(all.length()==0)state.put("selected",row.getString("id"));return state;

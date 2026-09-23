@@ -3147,3 +3147,10 @@ dialog textarea,
 .mobile-layout .usage-history-stats span { font-size: 11px; }
 .mobile-layout .usage-history-stats strong { font-size: 21px; }
 .mobile-layout .usage-history-chart text { font-size: 22px; }
+html[data-edition="limit"] .section-label:has(+ #project-groups),
+html[data-edition="limit"] #project-groups,
+html[data-edition="limit"] #project-filter,
+html[data-edition="limit"] #creation-context,
+html[data-edition="limit"] #mode-picker {
+  display: none !important;
+}

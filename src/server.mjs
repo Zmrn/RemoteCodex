@@ -22,18 +22,33 @@ import { NotificationSource } from './notification-source.mjs';
 import { DesktopNotifications } from './desktop-notifications.mjs';
 import { UsageHistory } from './usage-history.mjs';
 import { UsageRecorder } from './usage-recorder.mjs';
+import { LimitedAccess } from './limited-access.mjs';
+import { LimitedBridge } from './limited-bridge.mjs';
+const limitedThreadRoute = /^\/api\/threads\/[a-f0-9-]{36}(?:\/(?:messages|follow|open|activate|files|file|interrupt|settings|queue|questions|approvals|title|media|read-receipt))?$/;
+function limitedRoute(method, pathname) {
+  if (method === "GET") return /^\/api\/(?:status|events|threads|task-summary|models|usage|usage\/history|instance)$/.test(pathname) || limitedThreadRoute.test(pathname);
+  if (method === "POST") return /^\/api\/(?:connect|threads)$/.test(pathname) || limitedThreadRoute.test(pathname);
+  return false;
+}
+function remoteOnlyAgents(result) {
+  const agents = result.agents.filter(a => a.id !== "local");
+  return { ...result, agents, selectedId: agents.some(a => a.id === result.selectedId) ? result.selectedId : agents[0]?.id ?? "" };
+}
 export async function startServer({
   port = 43127,
-  bridge = new Bridge(),
+  bridge,
   agents,
   agentHost,
   agentPort = 43128,
   access,
+  edition = INSTANCE.edition,
   compatibilityReport = collectCompatibilityReport,
 } = {}) {
-  agents ??= new Agents(bridge.dataDir ?? DATA_DIR);
+  bridge ??= edition === "limit" ? new LimitedBridge(DATA_DIR) : new Bridge();
+  agents ??= new Agents(bridge.dataDir ?? DATA_DIR, { limited: edition === "limit" });
   await agents.preserve?.();
-  access ??= new LocalAccess(bridge.dataDir ?? DATA_DIR);
+  const limitedAccess = edition === "limit" ? null : new LimitedAccess(bridge.dataDir ?? DATA_DIR);
+  access ??= new LocalAccess(bridge.dataDir ?? DATA_DIR, { limitedAccess });
   const compatibilityProbes = new CompatibilityProbes(bridge.dataDir ?? DATA_DIR);
   const updater = new Updater(bridge.dataDir ?? DATA_DIR, (e) =>
     bridge.emitEvent?.(e.kind, e),
@@ -46,7 +61,7 @@ export async function startServer({
   let desktopNotifications;
   const notifications = () => desktopNotifications ??= new DesktopNotifications(agents, bridge.dataDir ?? DATA_DIR);
   const secret = randomBytes(32).toString("hex"),
-    sse = new Set();
+    sse = new Set(), limitedStreams = new WeakSet();
   let closing = false;
   const staticTypes = new Map([
     ["/app.js", "text/javascript; charset=utf-8"],
@@ -143,6 +158,7 @@ export async function startServer({
   };
   const event = (e) => {
     for (const res of sse)
+      if (!limitedStreams.has(res))
       res.write(`id: ${e.epoch}:${e.id}\ndata: ${JSON.stringify(e)}\n\n`);
   };
   bridge.on("event", event);
@@ -170,6 +186,7 @@ export async function startServer({
         fs
           .readFileSync(path.join(ROOT, "public/index.html"), "utf8")
           .replace("__BRIDGE_CSRF__", secret)
+          .replace("__BRIDGE_EDITION__", edition)
           .replace("__BRIDGE_VERSION__", INSTANCE.version),
       );
     }
@@ -188,6 +205,16 @@ export async function startServer({
     )
       return json(res, 403, { error: "Bridge session header required" });
     try {
+      const limitedIdentity = req.headers["x-bridge-limit-identity"];
+      if (limitedIdentity) {
+        if (!limitedAccess || !limitedRoute(req.method, url.pathname))
+          return json(res, 403, { error: "受限配对不允许此操作" });
+        limitedAccess.requireActive(limitedIdentity);
+        const thread = /^\/api\/threads\/([a-f0-9-]{36})(?:\/|$)/.exec(url.pathname);
+        if (thread) limitedAccess.requireThread(limitedIdentity, thread[1]);
+      }
+      if (edition === "limit" && !/^\/api\/(agents(?:\/|$)|remote-info$|updates(?:\/|$)|diagnostics$|instance$|stop$)/.test(url.pathname))
+        return json(res, 403, { error: "Limit 版仅可连接远端设备" });
       const agentRoute = /^\/api\/agents\/([\w-]+)\/bridge(\/.*)$/.exec(
         url.pathname,
       );
@@ -199,10 +226,13 @@ export async function startServer({
           throw Error("此操作不可通过设备入口调用");
         if (id !== "local")
           return await proxyAgent(req, res, agents, id, route);
+        if (edition === "limit") return json(res, 403, { error: "Limit 版不能连接本机官方应用" });
         url = new URL(route, "http://" + expected);
       }
       if (req.method === "GET" && url.pathname === "/api/agents")
-        return json(res, 200, agents.list());
+        return json(res, 200, edition === "limit" ? remoteOnlyAgents(agents.list()) : agents.list());
+      if (req.method === "GET" && url.pathname === "/api/limited-access")
+        return json(res, 200, limitedAccess.list());
       if (req.method === "GET" && url.pathname === "/api/remote-info")
         return json(res, 200, {
           host: os.hostname(),
@@ -214,7 +244,7 @@ export async function startServer({
       if (req.method === "GET" && url.pathname === "/api/updates")
         return json(res, 200, updater.status());
       if (req.method === "GET" && url.pathname === "/api/status")
-        return json(res, 200, diagnosticStatus());
+        return json(res, 200, limitedIdentity ? limitedAccess.filterStatus(limitedIdentity, diagnosticStatus()) : diagnosticStatus());
       if (req.method === "GET" && url.pathname === "/api/diagnostics") {
         const id=url.searchParams.get('agent');
         if(!/^(local|[a-f0-9-]{36})$/.test(id??''))return json(res,400,{error:'请选择已保存的设备'});
@@ -241,9 +271,8 @@ export async function startServer({
           "Cache-Control": "no-store",
           Connection: "keep-alive",
         });
-        res.write(
-          `data: ${JSON.stringify({ kind: "resync-required", ...bridge.status() })}\n\n`,
-        );
+        if (limitedIdentity) limitedStreams.add(res);
+        res.write(`data: ${JSON.stringify({ kind: "resync-required", ...(limitedIdentity ? limitedAccess.filterStatus(limitedIdentity, bridge.status()) : bridge.status()) })}\n\n`);
         sse.add(res);
         req.on("close", () => sse.delete(res));
         return;
@@ -251,9 +280,9 @@ export async function startServer({
       if (req.method === "GET" && url.pathname === "/api/projects")
         return json(res, 200, await bridge.projects());
       if (req.method === "GET" && url.pathname === "/api/threads")
-        return json(res, 200, await bridge.threads());
+        return json(res, 200, limitedIdentity ? limitedAccess.filterList(limitedIdentity, await bridge.threads()) : await bridge.threads());
       if (req.method === "GET" && url.pathname === "/api/task-summary")
-        return json(res, 200, await bridge.taskReports.summary());
+        return json(res, 200, limitedIdentity ? limitedAccess.filterSummary(limitedIdentity, await bridge.taskReports.summary()) : await bridge.taskReports.summary());
       if (req.method === "GET" && url.pathname === "/api/models")
         return json(res, 200, await bridge.models(url.searchParams.get("mode") ?? "codex"));
       if (req.method === "GET" && url.pathname === "/api/usage")
@@ -354,6 +383,8 @@ export async function startServer({
         chunks.push(chunk);
       }
       const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+      if (limitedIdentity && body.requestId !== undefined)
+        body.requestId = limitedAccess.requestId(limitedIdentity, body.requestId);
       if (url.pathname === '/api/desktop-notifications/poll') return json(res, 200, notifications().poll(body));
       if (url.pathname === '/api/desktop-notifications/settings') return json(res, 200, notifications().settings(body.enabled));
       if (url.pathname === '/api/desktop-notifications/draft') return json(res, 200, { saved: !!notifications().draft(body.id, body.text) });
@@ -365,12 +396,22 @@ export async function startServer({
       if (notificationReply) return json(res, 200, await notificationSource.reply(notificationReply[1], body));
       if (url.pathname === "/api/compatibility/probe")
         return json(res, 202, compatibilityProbes.start(body));
-      if (url.pathname === "/api/agents")
-        return json(res, 200, await agents.save(body));
-      if (url.pathname === "/api/agents/select")
-        return json(res, 200, await agents.select(body.id));
+      if (url.pathname === "/api/agents") {
+        if (edition === "limit" && body.id === "local") throw Error("Limit 版不能修改本机接入");
+        return json(res, 200, edition === "limit" ? remoteOnlyAgents(await agents.save(body)) : await agents.save(body));
+      }
+      if (url.pathname === "/api/agents/select") {
+        if (edition === "limit" && body.id === "local") throw Error("Limit 版不能选择本机");
+        return json(res, 200, edition === "limit" ? remoteOnlyAgents(await agents.select(body.id)) : await agents.select(body.id));
+      }
       if (url.pathname === "/api/agents/remove")
-        return json(res, 200, await agents.remove(body.id));
+        return json(res, 200, edition === "limit" ? remoteOnlyAgents(await agents.remove(body.id)) : await agents.remove(body.id));
+      if (url.pathname === "/api/limited-access")
+        return json(res, 200, limitedAccess.create(body.name));
+      if (url.pathname === "/api/limited-access/revoke")
+        return json(res, 200, limitedAccess.revoke(body.id));
+      if (url.pathname === "/api/limited-access/rotate")
+        return json(res, 200, limitedAccess.rotate(body.id));
       if (url.pathname === "/api/pairing-key")
         return json(res, 200, { key: await access.key() });
       if (url.pathname === "/api/local-access") {
@@ -418,11 +459,17 @@ export async function startServer({
       if (url.pathname === "/api/threads" && body.mode && body.mode !== "codex")
         throw Error("普通 Chat 新建尚未接入；请在官方桌面新建后刷新列表");
       if (url.pathname === "/api/threads")
-        return json(
-          res,
-          200,
-          await bridge.create(body.requestId, body.prompt, body.settings, body.project, imagesFromBody(body)),
-        );
+      {
+        if (limitedIdentity && body.project != null) throw Error("Limit 版只能创建无项目会话");
+        const result = await bridge.create(body.requestId, body.prompt, body.settings, body.project, imagesFromBody(body),
+          limitedIdentity ? id => limitedAccess.remember(limitedIdentity, id) : undefined);
+        if (limitedIdentity) {
+          const id = result.result?.threadId;
+          if (id) limitedAccess.remember(limitedIdentity, id);
+          else if (result.threadId) limitedAccess.remember(limitedIdentity, result.threadId);
+        }
+        return json(res, 200, result);
+      }
       if (match) {
         const id = match[1];
         if (match[2] === "title") return json(res, 200, await bridge.renameThread(id, body));
@@ -504,7 +551,7 @@ export async function startServer({
   });
   const address = "http://127.0.0.1:" + server.address().port;
   try {
-    await access.start({
+    if (edition !== "limit") await access.start({
       localPort: server.address().port,
       secret,
       host: agentHost,
@@ -515,8 +562,8 @@ export async function startServer({
     server.close();
     throw e;
   }
-  if (!closing) usageRecorder.start();
-  if (!closing)
+  if (!closing && edition !== "limit") usageRecorder.start();
+  if (!closing && edition !== "limit")
     await bridge
       .connect()
       .catch((e) =>
@@ -530,6 +577,7 @@ export async function startServer({
     address,
     agents,
     access,
+    limitedAccess,
     updater,
     get remoteServer() {
       return access.server;

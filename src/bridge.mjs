@@ -679,8 +679,8 @@ export class Bridge extends EventEmitter {
       };
     });
   }
-  create(key, prompt, options, projectInput, imageDataUrls) {
-    return this.createTask(key, prompt, options, projectInput, imageDataUrls, false);
+  create(key, prompt, options, projectInput, imageDataUrls, onCreated) {
+    return this.createTask(key, prompt, options, projectInput, imageDataUrls, false, onCreated);
   }
   createProbe(key, prompt, options, projectInput, imageDataUrls) {
     return this.createTask(key, prompt, options, projectInput, imageDataUrls, true);
@@ -692,13 +692,14 @@ export class Bridge extends EventEmitter {
     projectInput,
     imageDataUrls,
     probe = false,
+    onCreated,
   ) {
     this.requireConnection();
     this.requireSupportedBuild("create");
     if (projectInput) this.requireSupportedBuild("projectCreate");
     if (options.permissionMode && options.permissionMode !== "keep") this.requireSupportedBuild("createPermissions");
     const images = validateImageUrls(imageDataUrls);
-    if (images.length) return this.createWithImages(key, prompt, options, projectInput, images, probe);
+    if (images.length) return this.createWithImages(key, prompt, options, projectInput, images, probe, onCreated);
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20000)
       throw Error("Invalid message");
     if (options.serviceTier !== undefined)
@@ -742,6 +743,7 @@ export class Bridge extends EventEmitter {
       );
       if (!r.threadId)
         throw Error("create-outcome-unknown: " + JSON.stringify(r));
+      if (onCreated) onCreated(r.threadId);
       if (probe) this.db.tests[r.threadId] = {
         title: name,
         createdAt: new Date().toISOString(),
@@ -760,7 +762,7 @@ export class Bridge extends EventEmitter {
       return r;
     }, { deferredDispatch: true });
   }
-  async createWithImages(key, prompt, options, projectInput, images, probe = false) {
+  async createWithImages(key, prompt, options, projectInput, images, probe = false, onCreated) {
     this.requireSupportedBuild("createImages");
     if (typeof key !== "string" || !/^[\w-]{8,100}$/.test(key)) throw Error("requestId required");
     if (typeof prompt !== "string" || prompt.length > 20000) throw Error("Invalid message");
@@ -785,7 +787,7 @@ export class Bridge extends EventEmitter {
       // without its images: prepare one official task, then send the full input.
       const created = await this.createTask("image-create-" + suffix,
         "Remote Codex 正在为用户准备带图会话，实际文字和图片将在下一条消息一起发送。只回复 READY，不要使用工具，不要读取或修改文件。",
-        options, projectInput, undefined, probe);
+        options, projectInput, undefined, probe, onCreated);
       if (created.status !== "accepted" || !created.result?.threadId)
         return { status: "outcome-unknown", phase: "creating", error: "创建回执未知；不会重新创建，请核对官方桌面" };
       const id = created.result.threadId;

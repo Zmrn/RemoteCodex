@@ -81,7 +81,7 @@ async function main() {
       throw Error('Only a successful main dual-platform build can be downloaded');
     const { artifacts } = await api(`actions/runs/${runId}/artifacts`);
     const matches = artifacts.filter(a => !a.expired && a.name === `RemoteCodex-${run.run_number}-${run.head_sha}`);
-    if (matches.length !== 1 || matches[0].size_in_bytes > 150*1024*1024) throw Error('Expected one bounded dual-platform artifact');
+    if (matches.length !== 1 || matches[0].size_in_bytes > 300*1024*1024) throw Error('Expected one bounded four-package artifact');
     const redirect = await api(`actions/artifacts/${matches[0].id}/zip`, 'GET', undefined, 'manual');
     const url = redirect.headers.get('location');
     if (!url?.startsWith('https://')) throw Error('GitHub did not return an HTTPS artifact download');
@@ -94,7 +94,8 @@ async function main() {
     execFileSync('python', [path.join(root, 'scripts/extract-github-artifact.py'), archive], { cwd: root, windowsHide: true, stdio: 'inherit' });
     const provenance = JSON.parse(fs.readFileSync(path.join(folder, 'GITHUB-BUILD.json')));
     if (provenance.commit !== run.head_sha || String(provenance.runId) !== runId) throw Error('Downloaded build provenance mismatch');
-    for (const [file, manifest] of [['RemoteCodex.exe','latest.json'],['RemoteCodex.apk','android-latest.json']]) {
+    for (const [file, manifest] of [['RemoteCodex.exe','latest.json'],['RemoteCodex.apk','android-latest.json'],
+      ['LimitRemoteCodex.exe','limit-latest.json'],['LimitRemoteCodex.apk','limit-android-latest.json']]) {
       const meta = verifyBuildManifest(JSON.parse(fs.readFileSync(path.join(folder, manifest))), file, fs.readFileSync(path.join(root, 'src/update-public-key.pem')));
       const crypto = await import('node:crypto'), bytes = fs.readFileSync(path.join(folder, file));
       if (meta.bytes !== bytes.length || meta.version !== provenance.version || meta.sha256 !== crypto.createHash('sha256').update(bytes).digest('hex'))
@@ -102,7 +103,7 @@ async function main() {
       if (meta.releaseNotesSha256 !== crypto.createHash('sha256').update(fs.readFileSync(path.join(folder, 'RELEASE-NOTES.md'))).digest('hex'))
         throw Error('Downloaded release notes hash mismatch');
     }
-    console.log(JSON.stringify({ ...describe(run), version: provenance.version, files: ['RemoteCodex.exe','RemoteCodex.apk'].map(f=>path.join(folder,f)), verified: true }, null, 2));
+    console.log(JSON.stringify({ ...describe(run), version: provenance.version, files: ['RemoteCodex.exe','RemoteCodex.apk','LimitRemoteCodex.exe','LimitRemoteCodex.apk'].map(f=>path.join(folder,f)), verified: true }, null, 2));
   } else if (action === 'publish') {
     const runId = id(value), run = await api('actions/runs/' + runId);
     const folder = path.join(root, 'work/github-downloads', runId);

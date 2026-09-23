@@ -21,6 +21,10 @@ public class UpdateNetworkTests {
     UpdateNetwork network=new UpdateNetwork(base);
     check(network.manifest().equals(base+"android-latest.json"));
     check(network.artifact("0.10.29").equals("https://github.com/Zmrn/RemoteCodex/releases/download/v0.10.29/RemoteCodex.apk"));
+    UpdateNetwork limited=new UpdateNetwork(base,"limit");
+    check(limited.manifest().equals(base+"limit-android-latest.json"));
+    check(limited.artifact("0.10.29").equals("https://github.com/Zmrn/RemoteCodex/releases/download/v0.10.29/LimitRemoteCodex.apk"));
+    rejects(()->new UpdateNetwork(base,"unknown"));
     rejects(()->network.artifact("../latest"));rejects(()->new UpdateNetwork("http://old-server/"));
     List<Connection> calls=new ArrayList<>();
     HttpURLConnection result=network.open(network.manifest(),url->{Connection c=new Connection(url,calls.isEmpty()?302:200,"https://release-assets.githubusercontent.com/asset?signature=opaque");calls.add(c);return c;});

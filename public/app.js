@@ -33,6 +33,20 @@ import {
 const $ = (id) => document.getElementById(id),
   csrf = document.querySelector("meta[name=bridge-csrf]").content;
 const android = document.querySelector('meta[name="bridge-platform"]')?.content === "android";
+const limit = document.querySelector('meta[name="bridge-edition"]')?.content === "limit";
+if (limit) {
+  document.documentElement.dataset.edition = "limit";
+  document.title = "Limit Remote Codex";
+  document.querySelector('.setup-local').hidden = true;
+  document.querySelector('#mode-picker').hidden = true;
+  document.querySelector('#remote-setup').hidden = true;
+  document.querySelector('#project-filter').hidden = true;
+  document.querySelector('#creation-context').hidden = true;
+  document.querySelector('#project-menu').hidden = true;
+  document.querySelector('#limited-access-fields').hidden = true;
+  document.querySelector('#agent-key').placeholder = '填写目标电脑生成的 Limit 配对码';
+  document.querySelector('#setup-dialog > .field-help:last-of-type').textContent = 'Limit 版只连接目标电脑。请在目标电脑的完整版 Remote Codex 中开启远程接入并生成 Limit 配对码，再在这里添加设备。';
+}
 if (android) {
   document.querySelector('.setup-local').hidden = true;
   document.querySelector('#help-automatic-updates').parentElement.lastChild.textContent = '自动检查并下载更新';
@@ -736,6 +750,7 @@ function permissions() {
   const canEdit = !!currentAgent() && (!chat || !fresh);
   const inFlight = busy.has(fresh ? agentId + ":create" : taskKey());
   projectPicker.update({ agentId, mode, fresh, projects, status, busy: inFlight, booting });
+  if (limit) $("creation-context").hidden = true;
   const settingsAvailable =
     !chat && status.connected &&
     !readOnlyTask && featureAvailable(fresh ? 'create' : 'settings') &&
@@ -1228,7 +1243,7 @@ async function refresh(g = generation, options = {}) {
   const id = agentId,
     sequence = ++sidebarSequence, listSequence = ++listRequestSequence, projectSequence = ++projectRequestSequence;
   // Apply the official task list as soon as it arrives; project discovery is independent.
-  const projectRead = agentApi(id, "/projects", undefined, options).then(p => ({ p }), error => ({ error }));
+  const projectRead = limit ? Promise.resolve(null) : agentApi(id, "/projects", undefined, options).then(p => ({ p }), error => ({ error }));
   const [t, s] = await Promise.all([
     agentApi(id, "/threads", undefined, options).then(t => ({ t }), error => ({ error })),
     agentApi(id, "/status", undefined, options),
@@ -1251,6 +1266,7 @@ async function refresh(g = generation, options = {}) {
       );
     renderThreads(); permissions(); refreshSidebarReports();
   }
+  if (limit) return;
   const { p, error: projectError } = await projectRead;
   if (g !== generation || projectSequence !== projectRequestSequence) return;
   if (projectError) { toast('项目列表读取失败，会话列表已更新'); return; }
@@ -1328,7 +1344,7 @@ async function switchAgent(id, record = true, resumeId = null, nextMode = mode) 
   saveDraft();
   guardDraftTargets();
   modeSelections.set(agentId + ":" + mode, selected);
-  mode = normalizeMode(nextMode);
+  mode = limit ? "codex" : normalizeMode(nextMode);
   localStorage.setItem("remote-codex-mode", mode);
   modeUI();
   const g = ++generation;
@@ -2135,6 +2151,7 @@ async function stream(id, g) {
   }
 }
 function editAgent(id) {
+  if (limit && id === "local") return;
   editing = id;
   const a = id ? agents.find((a) => a.id === id) : null;
   $("agent-form").reset();
@@ -2144,13 +2161,69 @@ function editAgent(id) {
   $("agent-port").value = a?.kind === "remote" ? a.port : 43128;
   $("agent-key").placeholder = a?.hasKey
     ? "已保存。留空保持原密钥；地址改变时请重新填写。"
-    : "从远端桥接程序复制；可先留空保存";
+    : limit ? "填写目标电脑生成的 Limit 配对码" : "从远端桥接程序复制；可先留空保存";
   $("remote-fields").hidden = a?.kind === "local";
   $("remove-agent").hidden = !a || a.kind === "local";
   $("agent-form-error").textContent = "";
   $("agent-dialog").showModal();
   deviceSettings.open(a);
+  if (id === "local" && !limit) refreshLimitedAccess().catch(error);
 }
+async function refreshLimitedAccess() {
+  const result = await api("/api/limited-access");
+  const list = $("limited-access-list");
+  list.replaceChildren();
+  for (const identity of result.identities) {
+    const row = document.createElement("div");
+    row.className = "field-row";
+    const label = document.createElement("span");
+    label.textContent = `${identity.name} · ${identity.threadCount} 个会话 · ${identity.enabled ? "已启用" : "已撤销"}`;
+    row.append(label);
+    if (identity.enabled) {
+      const rotate = document.createElement("button");
+      rotate.type = "button";
+      rotate.className = "subtle";
+      rotate.textContent = "更换码";
+      rotate.onclick = async () => {
+        if (!confirm(`更换“${identity.name}”的配对码？旧码会立即失效，原有会话保留。`)) return;
+        try { showLimitedCode(await api("/api/limited-access/rotate", { id: identity.id })); await refreshLimitedAccess(); }
+        catch (e) { $("agent-form-error").textContent = e.message; }
+      };
+      row.append(rotate);
+      const revoke = document.createElement("button");
+      revoke.type = "button";
+      revoke.className = "subtle";
+      revoke.textContent = "撤销";
+      revoke.onclick = async () => {
+        if (!confirm(`撤销“${identity.name}”的受限配对码？其已有会话不会删除。`)) return;
+        try { await api("/api/limited-access/revoke", { id: identity.id }); await refreshLimitedAccess(); }
+        catch (e) { $("agent-form-error").textContent = e.message; }
+      };
+      row.append(revoke);
+    }
+    list.append(row);
+  }
+  if (!result.identities.length) list.textContent = "尚未生成受限配对码";
+}
+function showLimitedCode(result) {
+  $("limited-access-code").value = result.code;
+  $("limited-access-created").hidden = false;
+}
+$("limited-access-create").onclick = async () => {
+  const name = $("limited-access-name").value.trim();
+  try {
+    const result = await api("/api/limited-access", { name });
+    showLimitedCode(result);
+    $("limited-access-name").value = "";
+    await refreshLimitedAccess();
+  } catch (e) { $("agent-form-error").textContent = e.message; }
+};
+$("limited-access-copy").onclick = () => navigator.clipboard.writeText($("limited-access-code").value)
+  .then(() => toast("配对码已复制"), () => toast("请选中配对码手动复制"));
+$("agent-dialog").addEventListener("close", () => {
+  $("limited-access-code").value = "";
+  $("limited-access-created").hidden = true;
+});
 function journal(a, t, operation, payload, legacyOperation) {
   const key = "remote-bridge-request:" + a + ":" + t + ":" + operation,
     content = JSON.stringify(payload);
@@ -2357,7 +2430,7 @@ async function submitMessage({ steer = false } = {}) {
        (!fresh && (sendSettings.permissionMode || sendSettings.serviceTier !== undefined) && !featureAvailable('settings')))) {
     error(Error('所选设置暂不可用；请在权限菜单选择“沿用官方权限”，或取消不可用的预选设置后发送。草稿已保留')); return;
   }
-  const creationProject = fresh && m === "codex" ? projectPicker.selection() : null;
+  const creationProject = !limit && fresh && m === "codex" ? projectPicker.selection() : null;
   busy.add(k);
   permissions();
   clearError();
@@ -3368,7 +3441,7 @@ api("/api/agents")
     draftDiscards.restore(saved?.discardedRecoveries);
     projectPicker.restore(saved?.creationProjects);
     questionUI.restore(saved?.questions);
-    mode = normalizeMode(saved?.mode ?? mode);
+    mode = limit ? "codex" : normalizeMode(saved?.mode ?? mode);
     for (const [key, id] of saved?.modeSelections ?? []) modeSelections.set(key, id);
     modeUI();
     await switchAgent(

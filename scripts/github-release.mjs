@@ -7,7 +7,10 @@ import { newerVersion } from '../src/update-format.mjs';
 import { updateSource } from '../src/update-channel.mjs';
 
 export const releaseFiles = ['RemoteCodex.exe', 'RemoteCodex.apk', 'RemoteCodex.build.json',
-  'RemoteCodex.apk.build.json', 'latest.json', 'android-latest.json', 'RELEASE-NOTES.md', 'GITHUB-BUILD.json'];
+  'RemoteCodex.apk.build.json', 'latest.json', 'android-latest.json',
+  'LimitRemoteCodex.exe', 'LimitRemoteCodex.apk', 'LimitRemoteCodex.build.json',
+  'LimitRemoteCodex.apk.build.json', 'limit-latest.json', 'limit-android-latest.json',
+  'RELEASE-NOTES.md', 'GITHUB-BUILD.json'];
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 export function verifyReleaseBundle(folder, run, publicKey) {
   if (run.conclusion !== 'success' || run.head_branch !== 'main' || run.path !== '.github/workflows/build.yml' ||
@@ -21,12 +24,15 @@ export function verifyReleaseBundle(folder, run, publicKey) {
   for (const [file, envelope, report] of [
     ['RemoteCodex.exe','latest.json','RemoteCodex.build.json'],
     ['RemoteCodex.apk','android-latest.json','RemoteCodex.apk.build.json'],
+    ['LimitRemoteCodex.exe','limit-latest.json','LimitRemoteCodex.build.json'],
+    ['LimitRemoteCodex.apk','limit-android-latest.json','LimitRemoteCodex.apk.build.json'],
   ]) {
     const meta = verifyBuildManifest(JSON.parse(files.get(envelope)), file, publicKey);
     const built = JSON.parse(files.get(report)), bytes = files.get(file);
     if (meta.version !== provenance.version || meta.bytes !== bytes.length || meta.sha256 !== digest(bytes) ||
         meta.releaseNotesSha256 !== digest(files.get('RELEASE-NOTES.md')) ||
         built.version !== meta.version || built.bytes !== meta.bytes || built.sha256 !== meta.sha256 ||
+        built.edition !== (file.startsWith('Limit') ? 'limit' : 'full') ||
         !meta.desktopCompatibility || !isDeepStrictEqual(built.desktopCompatibility, meta.desktopCompatibility) ||
         support && !isDeepStrictEqual(support, meta.desktopCompatibility)) throw Error('Dual release artifacts or metadata differ');
     support = meta.desktopCompatibility;

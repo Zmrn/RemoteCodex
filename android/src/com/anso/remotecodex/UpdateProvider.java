@@ -7,7 +7,7 @@ import android.provider.OpenableColumns;
 import java.io.*;
 public final class UpdateProvider extends ContentProvider {
   @Override public boolean onCreate(){return true;}
-  private File file(Uri uri)throws FileNotFoundException{if(!"/RemoteCodex.apk".equals(uri.getPath()))throw new FileNotFoundException();File f=new File(getContext().getFilesDir(),"updates/RemoteCodex.apk");if(!f.isFile())throw new FileNotFoundException();return f;}
+  private File file(Uri uri)throws FileNotFoundException{if(!("/"+Updates.artifactName()).equals(uri.getPath()))throw new FileNotFoundException();File f=new File(getContext().getFilesDir(),"updates/"+Updates.artifactName());if(!f.isFile())throw new FileNotFoundException();return f;}
   @Override public ParcelFileDescriptor openFile(Uri u,String mode)throws FileNotFoundException{if(!mode.equals("r"))throw new FileNotFoundException();return ParcelFileDescriptor.open(file(u),ParcelFileDescriptor.MODE_READ_ONLY);}
   @Override public String getType(Uri u){return "application/vnd.android.package-archive";}
   @Override public Cursor query(Uri u,String[] projection,String selection,String[] args,String order){try{File f=file(u);MatrixCursor c=new MatrixCursor(new String[]{OpenableColumns.DISPLAY_NAME,OpenableColumns.SIZE});c.addRow(new Object[]{f.getName(),f.length()});return c;}catch(Exception e){return null;}}

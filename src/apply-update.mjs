@@ -4,6 +4,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { captureDeviceUpdate, verifyDeviceUpdate } from "./device-update-snapshot.mjs";
+import { INSTANCE } from "./runtime.mjs";
 import {
   verifyManifest,
   verifyExecutable,
@@ -13,7 +14,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const jobFile = path.resolve(process.argv[2] || ""),
   dir = path.dirname(jobFile);
 const job = JSON.parse(fs.readFileSync(jobFile));
-const manifest = verifyManifest(job.envelope);
+const manifest = verifyManifest(job.envelope, undefined, INSTANCE.edition === "limit" ? "LimitRemoteCodex.exe" : "RemoteCodex.exe");
 const resultFile = path.join(dir, "result.json");
 const result = (value) => {
   fs.writeFileSync(

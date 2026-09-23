@@ -56,6 +56,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cache", type=Path, default=ROOT / "work/runtime-cache")
     parser.add_argument("--version", help="Version override for an isolated update test build")
+    parser.add_argument("--edition", choices=("full", "limit"), default="full")
     args = parser.parse_args()
     if os.name != "nt":
         raise SystemExit("Build on Windows with the .NET Framework C# compiler.")
@@ -69,6 +70,7 @@ def main():
         for file in (ROOT / folder).rglob("*"):
             if file.is_file() and "__pycache__" not in file.parts:
                 files[file.relative_to(ROOT).as_posix()] = file.read_bytes()
+    files["src/edition.json"] = json.dumps({"edition": args.edition}).encode()
     for name in ("package.json", "README.md", "PORTABLE.md", "THIRD_PARTY_NOTICES.md", "FARFIELD-LICENSE.txt", "LICENSE"):
         files[name] = (ROOT / name).read_bytes()
     package["version"] = version
@@ -85,7 +87,7 @@ def main():
                     raise RuntimeError("Unsafe runtime archive entry")
                 files["runtime/python/" + entry.filename] = archive.read(entry)
     files["runtime/SOURCES.json"] = json.dumps(RUNTIMES, indent=2).encode()
-    build = ROOT / "work/portable-build"
+    build = ROOT / ("work/portable-build-limit" if args.edition == "limit" else "work/portable-build")
     build.mkdir(parents=True, exist_ok=True)
     compiler = Path(os.environ["WINDIR"]) / "Microsoft.NET/Framework64/v4.0.30319/csc.exe"
     sdk = build / "webview2"
@@ -117,23 +119,25 @@ def main():
         'using System.Reflection;\n[assembly: AssemblyVersion("' + version + '.0")]\n'
         'internal static class PortableBuild {\n'
         'internal const string Version = ' + json.dumps(version) + ';\n'
+        'internal const string Edition = ' + json.dumps(args.edition) + ';\n'
         'internal const string PayloadHash = ' + json.dumps(payload_hash) + ';\n}\n', encoding="utf-8")
     compiler = Path(os.environ["WINDIR"]) / "Microsoft.NET/Framework64/v4.0.30319/csc.exe"
     if not compiler.exists():
         compiler = Path(os.environ["WINDIR"]) / "Microsoft.NET/Framework/v4.0.30319/csc.exe"
-    dest = ROOT / "dist" / "RemoteCodex.exe"
+    dest = ROOT / "dist" / ("LimitRemoteCodex.exe" if args.edition == "limit" else "RemoteCodex.exe")
     dest.parent.mkdir(exist_ok=True)
     subprocess.run([
         str(compiler), "/nologo", "/codepage:65001", "/target:winexe", "/platform:x64", "/optimize+",
         "/reference:System.Windows.Forms.dll", "/reference:System.Web.Extensions.dll",
         "/reference:System.IO.Compression.dll", "/reference:System.Management.dll",
+        *(["/define:LIMIT_EDITION"] if args.edition == "limit" else []),
         "/win32icon:" + str(ROOT / "public/app-icon.ico"),
         "/resource:" + str(payload) + ",payload.zip",
         "/resource:" + str(manifest) + ",payload.files",
         "/out:" + str(dest), str(ROOT / "windows/PortableLauncher.cs"), str(ROOT / "windows/PortableCache.cs"), str(ROOT / "windows/OwnedProcesses.cs"), str(generated),
     ], check=True)
     result = {
-        "file": dest.name, "version": version, "bytes": dest.stat().st_size,
+        "file": dest.name, "edition": args.edition, "version": version, "bytes": dest.stat().st_size,
         "sha256": sha(dest.read_bytes()), "payloadSha256": payload_hash,
         "payloadFiles": len(files), "runtimeSources": RUNTIMES,
         "desktopCompatibility": desktop_support,

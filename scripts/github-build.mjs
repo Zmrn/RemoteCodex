@@ -85,7 +85,8 @@ async function main(action) {
   } else if (action === 'verify') {
     const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'))).version;
     const publicKey = fs.readFileSync(path.join(ROOT, 'src/update-public-key.pem'));
-    for (const [file, manifest] of [['RemoteCodex.exe', 'latest.json'], ['RemoteCodex.apk', 'android-latest.json']]) {
+    for (const [file, manifest] of [['RemoteCodex.exe', 'latest.json'], ['RemoteCodex.apk', 'android-latest.json'],
+      ['LimitRemoteCodex.exe', 'limit-latest.json'], ['LimitRemoteCodex.apk', 'limit-android-latest.json']]) {
       run('node', ['scripts/sign-release.mjs', 'dist/' + file, version, 'dist/' + manifest]);
       const meta = verifyBuildManifest(JSON.parse(fs.readFileSync(path.join(ROOT, 'dist', manifest))), file, publicKey);
       const data = fs.readFileSync(path.join(ROOT, 'dist', file));
@@ -93,12 +94,15 @@ async function main(action) {
         throw Error('Signed artifact verification failed');
     }
     run('python', ['-X', 'utf8', 'scripts/verify-compatibility-release.py']);
-    const certText = execFileSync(path.join(process.env.JAVA_HOME, 'bin/java.exe'), ['-jar',
-      path.join(process.env.ANDROID_HOME, 'build-tools/35.0.1/lib/apksigner.jar'),
-      'verify', '--print-certs', 'dist/RemoteCodex.apk'], { cwd: ROOT, windowsHide: true, encoding: 'utf8' });
-    const actual = /Signer #1 certificate SHA-256 digest:\s*([a-f0-9]+)/i.exec(certText)?.[1];
-    if (certificateDigest(actual) !== certificateDigest(process.env.REMOTE_CODEX_ANDROID_CERT_SHA256))
-      throw Error('APK certificate changed; refusing to upload');
+    let actual;
+    for (const apk of ['RemoteCodex.apk', 'LimitRemoteCodex.apk']) {
+      const certText = execFileSync(path.join(process.env.JAVA_HOME, 'bin/java.exe'), ['-jar',
+        path.join(process.env.ANDROID_HOME, 'build-tools/35.0.1/lib/apksigner.jar'),
+        'verify', '--print-certs', 'dist/' + apk], { cwd: ROOT, windowsHide: true, encoding: 'utf8' });
+      actual = /Signer #1 certificate SHA-256 digest:\s*([a-f0-9]+)/i.exec(certText)?.[1];
+      if (certificateDigest(actual) !== certificateDigest(process.env.REMOTE_CODEX_ANDROID_CERT_SHA256))
+        throw Error('APK certificate changed; refusing to upload: ' + apk);
+    }
     run('python', ['-X', 'utf8', 'scripts/verify-github-artifacts.py']);
     fs.writeFileSync(path.join(ROOT, 'dist/GITHUB-BUILD.json'), JSON.stringify({
       version, commit: process.env.GITHUB_SHA, runId: process.env.GITHUB_RUN_ID,

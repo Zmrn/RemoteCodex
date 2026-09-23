@@ -14,7 +14,9 @@ import { updateSource as source, releaseAssetUrl, fetchUpdateAsset, readUpdateBy
 
 export class Updater {
   constructor(dir, notify = () => {}, { verifyUpdateManifest = verifyManifest } = {}) {
-    this.verifyUpdateManifest = verifyUpdateManifest;
+    this.manifestUrl = INSTANCE.edition === "limit" ? source.limitManifestUrl : source.manifestUrl;
+    this.verifyUpdateManifest = INSTANCE.edition === "limit" && verifyUpdateManifest === verifyManifest
+      ? envelope => verifyManifest(envelope, undefined, "LimitRemoteCodex.exe") : verifyUpdateManifest;
     this.dir = path.join(dir, "updates");
     this.settingsFile = path.join(dir, "update-settings.json");
     this.store = new DurableJson(this.settingsFile,{label:"更新设置",empty:{automatic:true},validate:value=>value&&typeof value==='object'&&typeof value.automatic==='boolean'&&Object.keys(value).every(k=>k==='automatic')});
@@ -23,7 +25,7 @@ export class Updater {
     this.phase = "idle";
     this.error = "";
     this.supported =
-      INSTANCE.portable && !!process.env.REMOTE_BRIDGE_LAUNCHER_EXE && !!source.manifestUrl;
+      INSTANCE.portable && !!process.env.REMOTE_BRIDGE_LAUNCHER_EXE && !!this.manifestUrl;
     this.clients = new Map();
   }
   start(address) {
@@ -90,7 +92,7 @@ export class Updater {
       storageHealth: this.store.health,
       progress: this.progress ?? 0,
       result,
-      source: source.manifestUrl,
+      source: this.manifestUrl,
       checkIntervalMinutes: source.checkIntervalMs / 60000,
     };
   }
@@ -145,7 +147,7 @@ export class Updater {
     this.phase = "checking";
     this.error = "";
     try {
-      const response = await fetchUpdateAsset(source.manifestUrl, {
+      const response = await fetchUpdateAsset(this.manifestUrl, {
         signal: AbortSignal.timeout(12000),
         cache: "no-store",
       });
