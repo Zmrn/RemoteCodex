@@ -1,6 +1,8 @@
 # GitHub 主仓库与按需云端构建
 
-最新发布：[0.10.47](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.47)，同次构建完整版与 Limit 版各一份 EXE/APK，四包各有构建报告和签名清单、独立更新通道，公开后匿名下载核验通过。配置与边界见 [LIMIT-REMOTE-CODEX.md](LIMIT-REMOTE-CODEX.md)，构建证据见 GITHUB-UPDATES.md。旧的 0.10.46 仍是双包版本。
+最新发布：[0.10.48](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.48)，同次生成完整版与 Limit 版四包，修复首次添加设备时菜单闪退；四包验签和匿名下载通过，详情见 GITHUB-UPDATES.md。
+
+前次发布：[0.10.47](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.47)，同次构建完整版与 Limit 版各一份 EXE/APK，四包各有构建报告和签名清单、独立更新通道，公开后匿名下载核验通过。配置与边界见 [LIMIT-REMOTE-CODEX.md](LIMIT-REMOTE-CODEX.md)，构建证据见 GITHUB-UPDATES.md。更早的 0.10.46 仍是双包版本。
 
 最新发布：[0.10.46](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.46)，同路径图片缓存修复与同次双端验证见GITHUB-UPDATES.md。
 

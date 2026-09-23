@@ -1,6 +1,6 @@
 # Limit Remote Codex
 
-首次添加设备的移动端菜单闪退已在源码中修复，并加入空设备列表的触控界面回归。已发布的 0.10.47 安装包尚不包含此修复；按用户约定，仅在明确要求打包时发布新版。
+首次添加设备的移动端菜单闪退已在 0.10.48 修复，并加入空设备列表的触控界面回归。完整版和 Limit 版四个安装文件已同次发布；按用户约定，只有明确要求打包时才发布新版。
 
 Limit Remote Codex 是独立安装的受限控制端。Windows 默认使用 `%LOCALAPPDATA%/LimitRemoteCodex`，Android 使用 `com.anso.limitremotecodex`；它们与完整版的设备、密钥、草稿和更新缓存分开。Limit Windows 服务不建立本机官方 ChatGPT/Codex 连接；Android 原本也只连接远端。两端仅接受 `lrc1_` 开头的受限配对码。
 
@@ -12,6 +12,6 @@ Limit Windows 的隔离自检只检查内置运行时、DPAPI 和页面资源，
 
 远端监听器验证配对码后，目标服务对列表、状态、汇总、历史、图片、附件、队列、发送、设置、审批、重命名和已读回执统一检查归属。事件流不转发其他会话事件。受限配对不能读取项目列表，也不能带 `project` 参数新建，只能创建官方无项目会话。用户选择的会话权限预设及项目less会话内工具能力不因 Limit 版额外改变。完整版密钥仍保留原功能；Limit 客户端拒绝保存或使用完整版密钥。
 
-从 0.10.47 起，用户明确要求构建时，同一次 GitHub Actions 构建输出四个安装文件：`RemoteCodex.exe`、`RemoteCodex.apk`、`LimitRemoteCodex.exe`、`LimitRemoteCodex.apk`。两套 Windows/Android 更新清单分别签名，Limit 客户端只接受对应文件名与 Android 包名。正式发布前应验签、校验包内 edition、保留两版设备数据、核对目标端配对码创建/轮换/撤销与跨身份访问，再确认下载入口；不因提交源码自动打包。0.10.47 四包已发布，未执行 APK 或升级现有客户端。
+从 0.10.47 起，用户明确要求构建时，同一次 GitHub Actions 构建输出四个安装文件：`RemoteCodex.exe`、`RemoteCodex.apk`、`LimitRemoteCodex.exe`、`LimitRemoteCodex.apk`。两套 Windows/Android 更新清单分别签名，Limit 客户端只接受对应文件名与 Android 包名。正式发布前应验签、校验包内 edition、保留两版设备数据、核对目标端配对码创建/轮换/撤销与跨身份访问，再确认下载入口；不因提交源码自动打包。0.10.48 四包已发布，未执行 APK 或升级现有客户端。
 
-验证入口：`node --test test/limited-access.test.mjs`，完整 `npm test`，`npm run compatibility`。隔离 HTTP 测试覆盖两种配对身份、完整版与受限密钥、项目拒绝、其他会话历史/媒体拒绝、归属记录、换码和撤销。0.10.47 正式包已验签和核对内容；实际 Android 设备仍待用户安装后验证。
+验证入口：`node --test test/limited-access.test.mjs`，完整 `npm test`，`npm run compatibility`。隔离 HTTP 测试覆盖两种配对身份、完整版与受限密钥、项目拒绝、其他会话历史/媒体拒绝、归属记录、换码和撤销。0.10.48 正式包已验签和核对内容；实际 Android 设备仍待用户安装后验证。

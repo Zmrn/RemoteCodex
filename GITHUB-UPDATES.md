@@ -1,5 +1,20 @@
 # GitHub 直接更新
 
+## 2026-09-23：0.10.48 四包正式发布
+
+[正式版本](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.48)。本版修复 Limit Android 首次添加设备时，空设备列表刷新触发无意义切换、关闭刚打开的设备菜单；共享界面在完整版的同场景也得到修复。源码提交 `0488130759aa0bcb972dc63c1fef61e0abbd4040` 的 Checks `35825290587` 成功，preflight 确认同 SHA 且工作树干净，再由 Build `35825682916`（requestId `25bf90f5-6d5b-4a5d-84e0-acb51d2d94af`）一次生成完整版与 Limit 版各一份 Windows EXE、Android APK。最终 Build 只派发一次且首次成功，14 项资源逐项上传读回后公开。
+
+| 安装文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44202496 | `54c2dec527f7b00257af021b085453312d4feb4bde2cc1688d7205bc4ec01bdc` |
+| RemoteCodex.apk | 295152 | `034642367a5216642a0103f17e0ee969e0f8651b9c6b0731a2912e56c6292789` |
+| LimitRemoteCodex.exe | 44202496 | `aed74bf98a12da3d0f93a019f67df41cfd518fad465060df0414c5674f58973f` |
+| LimitRemoteCodex.apk | 295152 | `aafc511716473abb3fff0bda552954892251671cb73b44caf7b20274caa423d5` |
+
+最终版本 360 项 Node22.19.0、Limit 空设备移动触控菜单与添加弹窗回归、兼容清单、两版各 27 份 Android Java 源码 API35 编译通过。云端构建的四份原 RSA 更新清单与四包哈希一致；两个 APK 仍使用原证书 SHA-256 `3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`，v2/v3 签名及独立包名/versionCode `10048` 通过。两版 EXE 内嵌 Node22.19.0/Python3.13.2、DPAPI 与页面自检通过，EXE 解包页面和 APK 内共享页面均与本次源码一致，确实包含菜单修复；Limit EXE 自检确认不发现或连接本机官方应用。隔离旧云包 0.10.47→0.10.48 的两版设备 ID、加密密钥和配置字节保留，升级后连续两次读取通过。
+
+完整版正式 EXE 在本机官方 Windows x64 `26.917.6896.0` 上只读连接、项目/会话列表成功；这不等于新版全部功能行为验证。历史核心行为验证版本仍为 `26.901.6511.0` / `26.903.8094.0`，其他版本按实际接口逐功能判断。Codex 已完成能力保持；普通 Chat 新建/图片及未完成 Work 未纳入。发布后匿名 `latest` 四份签名清单、固定版本四包和发布说明均完整下载并与本次哈希一致。未执行 APK/模拟器、升级现有客户端、重启官方应用、创建真实受限会话或向既有任务发测试消息；主工作区八份未完成 Chat 修改未打包。Windows EXE 仍无 Authenticode 签名。
+
 ## 2026-09-23：0.10.47 完整版与 Limit 版四包正式发布
 
 [正式版本](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.47)。0.10.47 从 `2012b7878d30bb44b3d766bab866872449128a07` 经同 SHA Checks `35817026993` 和 preflight 成功后，由 Build `35817415133`（requestId `7c2bb82f-a5b0-4b6f-9bef-e00afd9110be`）同次生成完整版/Limit 版 Windows EXE 与 Android APK，14 项资源逐项上传读回后公开。该最终构建仅派发一次且首次成功。较早的 Build `35816533238` 虽成功，但发现 Limit EXE 的自检仍会尝试读取本机官方应用，因此只用于验证、未发布；修复后增加包内自检门禁并重新通过 Checks，最终发布仅使用 `35817415133`。
