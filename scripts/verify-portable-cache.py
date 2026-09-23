@@ -17,7 +17,7 @@ with zipfile.ZipFile(fixture/'payload.zip','w',zipfile.ZIP_DEFLATED) as z:
 digest=hashlib.sha256((fixture/'payload.zip').read_bytes()).hexdigest()
 (fixture/'hash.txt').write_text(digest,encoding='ascii')
 (fixture/'files.txt').write_text(''.join(hashlib.sha256(raw).hexdigest()+'\t'+name+'\n' for name,raw in files.items()),encoding='utf-8')
-(fixture/'PortableBuild.cs').write_text('internal static class PortableBuild { internal const string Version="0.10.41"; internal const string PayloadHash="'+digest+'"; }',encoding='utf-8')
+(fixture/'PortableBuild.cs').write_text('internal static class PortableBuild { internal const string Version="0.10.41"; internal const string Edition="full"; internal const string PayloadHash="'+digest+'"; }',encoding='utf-8')
 compiler=Path(os.environ['WINDIR'])/'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 dll=folder/'PortableCacheTests.dll'
 subprocess.run([str(compiler),'/nologo','/target:library','/platform:x64','/codepage:65001',
