@@ -1,4 +1,3 @@
-import { OFFICIAL, TOOLS, desktopCompatibility } from "./official-protocol.mjs";
 // Read-only dependency and desktop connection check for the single-file release.
 import fs from "node:fs";
 import path from "node:path";
@@ -7,9 +6,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
-import { DATA_DIR, PYTHON } from "./runtime.mjs";
+import { DATA_DIR, INSTANCE, PYTHON } from "./runtime.mjs";
 import { protect } from "./agents.mjs";
-import { Desktop, discover } from "./desktop.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const report = {
@@ -40,20 +38,27 @@ try {
       .includes("__BRIDGE_CSRF__"),
   );
   report.checks.webAssets = true;
-  const identity = await discover();
-  report.checks.win32PipeDiscovery = true;
-  report.checks.officialDesktopFound = identity.pipes.some((p) =>
-    new RegExp(OFFICIAL.discovery.ownerImagePattern, "i").test(
-      p.image || "",
-    ),
-  );
-  desktop = new Desktop();
-  await desktop.connect();
-  report.desktopConnection = desktop.identity.connection;
-  report.desktopCompatibility = desktopCompatibility(desktop.identity.appToolsPipe?.image);
-  await desktop.call(TOOLS.listProjects);
-  await desktop.call(TOOLS.listThreads, { limit: 1 });
-  report.checks.officialProjectsAndThreads = true;
+  if (INSTANCE.edition === "limit") {
+    report.scope = "bundled runtimes and local official access disabled";
+    report.checks.localOfficialAccessDisabled = true;
+  } else {
+    const { OFFICIAL, TOOLS, desktopCompatibility } = await import("./official-protocol.mjs");
+    const { Desktop, discover } = await import("./desktop.mjs");
+    const identity = await discover();
+    report.checks.win32PipeDiscovery = true;
+    report.checks.officialDesktopFound = identity.pipes.some((p) =>
+      new RegExp(OFFICIAL.discovery.ownerImagePattern, "i").test(
+        p.image || "",
+      ),
+    );
+    desktop = new Desktop();
+    await desktop.connect();
+    report.desktopConnection = desktop.identity.connection;
+    report.desktopCompatibility = desktopCompatibility(desktop.identity.appToolsPipe?.image);
+    await desktop.call(TOOLS.listProjects);
+    await desktop.call(TOOLS.listThreads, { limit: 1 });
+    report.checks.officialProjectsAndThreads = true;
+  }
   report.result = "passed";
 } catch (error) {
   report.result = "incomplete";

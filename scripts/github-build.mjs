@@ -94,6 +94,7 @@ async function main(action) {
         throw Error('Signed artifact verification failed');
     }
     run('python', ['-X', 'utf8', 'scripts/verify-compatibility-release.py']);
+    run('python', ['-X', 'utf8', 'scripts/verify-limit-portable.py']);
     let actual;
     for (const apk of ['RemoteCodex.apk', 'LimitRemoteCodex.apk']) {
       const certText = execFileSync(path.join(process.env.JAVA_HOME, 'bin/java.exe'), ['-jar',
