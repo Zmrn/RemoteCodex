@@ -3126,6 +3126,9 @@ dialog textarea,
 .usage-history-chart { display: block; width: 100%; height: auto; touch-action: pan-y; overflow: visible; }
 .usage-history-chart text { fill: var(--muted); font-size: 12px; }
 .usage-chart-grid { stroke: var(--line); stroke-dasharray: 3 4; }
+.usage-chart-day { stroke: var(--muted); stroke-dasharray: 3 5; opacity: .45; }
+.usage-chart-day-dense { opacity: .24; }
+.usage-history-chart .usage-chart-day-label { font-size: 11px; }
 .usage-chart-line { stroke: #8ab5f7; stroke-width: 2; fill: none; vector-effect: non-scaling-stroke; }
 .usage-chart-dot { fill: #8ab5f7; }
 .usage-chart-marker { fill: var(--surface); stroke: #b3d0ff; stroke-width: 2; }

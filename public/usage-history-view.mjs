@@ -3,6 +3,7 @@ const node = (tag, text, cls) => { const e = document.createElement(tag); if (te
 const svg = (tag, attrs) => { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; };
 const percentage = n => new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 1 }).format(n) + '%';
 const date = at => new Date(at).toLocaleString('zh-CN', { hour12: false });
+const dayLabel = at => new Date(at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
 const caption = s => s.label + (s.windowDurationMins === 10080 ? ' · 周额度' : ' · 5h 额度');
 const binding = a => a && JSON.stringify([a.id, a.kind, a.host, a.port]);
 
@@ -95,7 +96,7 @@ export class UsageHistoryView {
     for (const [label, value] of [['最后记录剩余', last.remainingPercent], ['区间最低', Math.min(...values)], ['区间最高', Math.max(...values)]]) {
       const box = node('div'); box.append(node('span', label), node('strong', percentage(value))); stats.append(box);
     }
-    const chart = svg('svg', { viewBox: '0 0 720 280', role: 'img', 'aria-label': caption(s) + '剩余额度随时间变化', class: 'usage-history-chart' });
+    const chart = svg('svg', { viewBox: '0 0 720 280', role: 'img', 'aria-label': caption(s) + '剩余额度随时间变化；竖线表示每天零点', class: 'usage-history-chart' });
     const left = 46, right = 704, top = 20, bottom = 234;
     const x = p => last.at === first.at ? (left + right) / 2 : left + (p.at - first.at) / (last.at - first.at) * (right - left);
     const y = p => bottom - p.remainingPercent / 100 * (bottom - top);
@@ -104,13 +105,25 @@ export class UsageHistoryView {
       chart.append(svg('line', { x1: left, x2: right, y1: yy, y2: yy, class: 'usage-chart-grid' }));
       const label = svg('text', { x: left - 8, y: yy + 4, 'text-anchor': 'end' }); label.textContent = value + '%'; chart.append(label);
     }
+    const midnight = new Date(first.at);
+    midnight.setHours(0, 0, 0, 0);
+    midnight.setDate(midnight.getDate() + 1);
+    for (let day = 0; midnight.getTime() < last.at; day++, midnight.setDate(midnight.getDate() + 1)) {
+      const at = midnight.getTime(), xx = x({ at });
+      chart.append(svg('line', { x1: xx, x2: xx, y1: top, y2: bottom,
+        class: this.days === 30 ? 'usage-chart-day usage-chart-day-dense' : 'usage-chart-day' }));
+      if ((this.days !== 30 || (day + 1) % 5 === 0) && xx > left + 34 && xx < right - 34) {
+        const label = svg('text', { x: xx, y: 247, 'text-anchor': 'middle', class: 'usage-chart-day-label' });
+        label.textContent = dayLabel(at); chart.append(label);
+      }
+    }
     for (const segment of chartSegments(points)) {
       if (segment.length > 1) chart.append(svg('path', { d: segment.map((p, i) => (i ? 'L' : 'M') + x(p).toFixed(2) + ',' + y(p).toFixed(2)).join(' '), class: 'usage-chart-line' }));
       if (segment.length === 1 || points.length <= 200) for (const p of segment) chart.append(svg('circle', { cx: x(p), cy: y(p), r: 2.8, class: 'usage-chart-dot' }));
     }
     for (const [p, align] of [[first, 'start'], [last, 'end']]) {
       if (first === last && align === 'end') continue;
-      const label = svg('text', { x: first === last ? x(first) : align === 'start' ? left : right, y: 263, 'text-anchor': first === last ? 'middle' : align });
+      const label = svg('text', { x: first === last ? x(first) : align === 'start' ? left : right, y: 270, 'text-anchor': first === last ? 'middle' : align });
       label.textContent = new Date(p.at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }); chart.append(label);
     }
     const marker = svg('circle', { r: 5, class: 'usage-chart-marker' }); chart.append(marker);

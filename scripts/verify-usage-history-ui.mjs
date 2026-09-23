@@ -11,7 +11,7 @@ fs.writeFileSync(path.join(dir,'update-settings.json'),'{"automatic":false}');
 const app=await startServer({port:0,bridge:{dataDir:dir,on(){},off(){},async connect(){},disconnect(){}}});
 const browser=await chromium.launch({executablePath:process.env.REMOTE_BRIDGE_BROWSER||'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',headless:true});
 const remote='11111111-2222-4333-8444-555555555555', checks=[],errors=[],requests=[];
-const at=Date.now(), point=(n,value,segment='run',reset=1)=>({at:at-n*300000,remainingPercent:value,segment,resetsAt:reset});
+const at=new Date(2026,8,23,9,35).getTime(), point=(n,value,segment='run',reset=1)=>({at:at-n*300000,remainingPercent:value,segment,resetsAt:reset});
 try {
  for(const width of [1300,390]){
   const page=await browser.newPage({viewport:{width,height:1000}});
@@ -23,7 +23,8 @@ try {
   page.on('pageerror',e=>errors.push(e.message));
   const rows=days=>{
     const points=kind==='single'?[point(0,65)]:days===30?Array.from({length:8640},(_,i)=>point(8639-i,85-(i%180)/4,'dense'))
-      :[point(36,82),point(35,80),point(34,76),point(15,60),point(14,57),point(13,53),point(3,100,'reset',2),point(2,98,'reset',2),point(1,96,'reset',2)];
+      :days===1?[point(144,82),point(143,80),point(3,100,'reset',2),point(2,98,'reset',2),point(1,96,'reset',2)]
+      :[point(1728,82),point(1727,80),point(1726,76),point(864,60),point(863,57),point(862,53),point(3,100,'reset',2),point(2,98,'reset',2),point(1,96,'reset',2)];
     return [{key:'week',limitId:'codex',windowDurationMins:10080,label:'Codex',points},
       {key:'five',limitId:'codex',windowDurationMins:300,label:'Codex',points:points.map(p=>({...p,remainingPercent:Math.max(0,p.remainingPercent-20)}))}];
   };
@@ -58,6 +59,15 @@ try {
     assert.equal(requests.at(-1).days,7);assert.equal(requests.at(-1).target,'local');
     assert.equal(await page.locator('#usage-history-series').inputValue(),'week');
     assert.equal(await dialog.locator('.usage-chart-line').count(),3);
+    assert.equal(await dialog.locator('.usage-chart-day').count(),6);
+    assert.equal(await dialog.locator('.usage-chart-day-label').count(),6);
+    const firstDivider=dialog.locator('.usage-chart-day').first(), firstAt=point(1728,82).at, lastAt=point(1,96).at;
+    const firstMidnight=new Date(2026,8,18).getTime();
+    const expectedX=46+(firstMidnight-firstAt)/(lastAt-firstAt)*(704-46);
+    assert.ok(Math.abs(Number(await firstDivider.getAttribute('x1'))-expectedX)<.01);
+    assert.equal(await firstDivider.getAttribute('x1'),await firstDivider.getAttribute('x2'));
+    assert.match(await dialog.locator('.usage-chart-day-label').first().textContent(),/09\/18/);
+    assert.match(await dialog.locator('svg.usage-history-chart').getAttribute('aria-label'),/每天零点/);
     await page.locator('#usage-history-sample').fill('0');await page.locator('#usage-history-sample').dispatchEvent('input');
     assert.match(await page.locator('#usage-history-selected').textContent(),/82%/);
     await page.locator('#usage-history-sample').press('ArrowRight');
@@ -71,10 +81,15 @@ try {
     checks.push(width+'px: on-demand target fetch, weekly default, observed gaps/reset breaks, keyboard sample inspection, responsive chart');
     await dialog.locator('[data-days="1"]').click();await page.waitForFunction(()=>!document.querySelector('#usage-history-refresh').disabled);
     assert.equal(requests.at(-1).days,1);
+    assert.equal(await dialog.locator('.usage-chart-day').count(),1);
+    assert.equal(await dialog.locator('.usage-chart-day-label').count(),1);
     await dialog.locator('[data-days="30"]').click();await page.waitForFunction(()=>document.querySelector('#usage-history-sample')?.max==='8639');
     assert.equal(await dialog.locator('.usage-chart-line').count(),1);
     assert.ok(await dialog.locator('.usage-chart-line').getAttribute('d'));
     assert.equal(await dialog.locator('.usage-chart-dot').count(),0);
+    assert.equal(await dialog.locator('.usage-chart-day').count(),30);
+    assert.equal(await dialog.locator('.usage-chart-day-label').count(),5);
+    await page.screenshot({path:path.join(dir,'history-30-'+width+'.png')});
     checks.push(width+'px: 1/7/30 day requests and dense 30-day history use real samples without thousands of dot nodes');
     // A slower previous-device response must never paint after changing selection.
     hold=true;await page.locator('#usage-history-refresh').click();
