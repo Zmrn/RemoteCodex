@@ -1127,15 +1127,19 @@ export class Bridge extends EventEmitter {
           throw Error("当前任务正在执行或状态未知，消息未发送；请刷新后使用队列或调整方向");
         this.requireSupportedBuild("send");
         const previous = this.live.get(id);
-        const owner = await this.follow(id);
-        // List metadata bypasses oversized history. Require a newly observed,
-        // matching owner snapshot before using that route to start a turn.
-        const requireFreshOwner = status.source === 'official-list-live';
-        if (requireFreshOwner) for (let n = 0; n < 40 && this.live.get(id) === previous; n++)
+        let owner;
+        try { owner = await this.follow(id); }
+        catch (error) {
+          if (/no-client-found/i.test(error.message))
+            throw Error('官方会话接收窗口暂不可用，消息没有发送；请刷新后重试');
+          throw error;
+        }
+        // Readability and a discovery reply do not prove that the owner can
+        // receive a start request. Require a fresh snapshot for every route.
+        for (let n = 0; n < 40 && this.live.get(id) === previous; n++)
           await new Promise(resolve => setTimeout(resolve, 100));
         const checkOwner = () => {
           checkConnection();
-          if (!requireFreshOwner) return;
           const live = this.live.get(id);
           if (!live || live === previous || live.owner !== owner.handledByClientId ||
               live.state?.id !== id || live.state.threadRuntimeStatus?.type !== 'idle')

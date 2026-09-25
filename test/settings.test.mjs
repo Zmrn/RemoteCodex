@@ -123,7 +123,10 @@ test("loaded native write failure never retries through the desktop tool; Chat s
     },
   };
   fixtureEvidence(b.desktop);
-  b.follow = async () => ({ handledByClientId: "official" });
+  b.follow = async () => {
+    b.live.set(id, { owner: "official", state: { id, threadRuntimeStatus: { type: "idle" } } });
+    return { handledByClientId: "official" };
+  };
   await assert.rejects(
     () => b.nativeSend(id, "native-lost-001", "hello"),
     /response lost/,

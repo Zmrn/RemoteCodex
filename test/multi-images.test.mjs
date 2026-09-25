@@ -31,7 +31,10 @@ test("multi-image wire format requires target capability and rejects ambiguous o
 test("native multi-image send uses one official owner turn with ordered images and ordered dedup hash", async () => {
   const dir=fs.mkdtempSync(path.join(ROOT,"test/scratch/multi-send-"));
   const b=new Bridge(dir),id="77777777-7777-4777-8777-777777777777",owner="image-test-owner",calls=[];
-  b.connected=true;b.follow=async()=>({handledByClientId:owner});
+  b.connected=true;b.follow=async()=>{
+    b.live.set(id,{owner,state:{id,threadRuntimeStatus:{type:"idle"}}});
+    return {handledByClientId:owner};
+  };
   b.codexThread=async()=>({thread:{id,kind:"codex",status:{type:"idle"}}});
   b.desktop={identity:{appToolsPipe:{image:"OpenAI.Codex_26.901.6511.0_x64__"}},catalog:[{namespace:"codex_app",name:"send_message_to_thread",inputSchema:{properties:{model:{description:"gpt-5.4-mini (Fixture; supported reasoning efforts: low, medium)."}}}}],ipc:{request:async(method,params,options)=>{calls.push({method,params,options});return {handledByClientId:owner,result:{result:{turn:{id:"same-turn"}}}};}}};
   fixtureEvidence(b.desktop);

@@ -27,7 +27,10 @@ function fixture(t) {
     } },
   };
   fixtureEvidence(b.desktop);
-  b.follow = async () => ({ handledByClientId: "owner" });
+  b.follow = async () => {
+    b.live.set(id, { owner: "owner", state: { id, threadRuntimeStatus: { type: "idle" } } });
+    return { handledByClientId: "owner" };
+  };
   return { b, calls, dir };
 }
 test("one create request delivers text and all images in the same official task; retry does not recreate or resend", async t => {

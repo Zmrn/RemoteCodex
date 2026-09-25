@@ -21,8 +21,14 @@ function fixture(t, kind) {
       if (state.failDispatch) throw Error('pipe lost after dispatch');
       return { threadId: args.threadId };
     },
-    owner: async () => ({ handledByClientId: 'fixture-owner' }),
-    ipc: { broadcast() {}, request: async () => {
+    owner: async () => {
+      if (state.noOwner) throw Error('no-client-found');
+      return { handledByClientId: 'fixture-owner' };
+    },
+    ipc: { broadcast() {
+      if (!state.suppressSnapshot)
+        bridge.live.set(id, { owner: 'fixture-owner', state: { id, threadRuntimeStatus: { type: state.type } } });
+    }, request: async () => {
       calls.push('native-start');
       assert.equal(bridge.db.requests['send-once-001'].status, 'outcome-unknown');
       if (state.failDispatch) throw Error('pipe lost after dispatch');
@@ -55,6 +61,26 @@ for (const kind of ['chatgpt', 'codex']) {
     assert.equal(calls.filter(x => ['native-start', 'send_message_to_thread'].includes(x)).length, 1);
   });
 }
+test('a readable idle task without a fresh owner snapshot rejects before dispatch and can retry', async t => {
+  const { bridge, state, calls, send } = fixture(t, 'codex');
+  state.type = 'idle'; state.suppressSnapshot = true;
+  await assert.rejects(send(), /所有者或空闲状态尚未确认/);
+  assert.equal(bridge.db.requests['send-once-001'].status, 'rejected');
+  assert.equal(calls.filter(x => x === 'native-start').length, 0);
+  state.suppressSnapshot = false;
+  assert.equal((await send()).status, 'accepted');
+  assert.equal(calls.filter(x => x === 'native-start').length, 1);
+});
+test('missing owner before dispatch reports a safe retry without changing the request ID', async t => {
+  const { bridge, state, calls, send } = fixture(t, 'codex');
+  state.type = 'idle'; state.noOwner = true;
+  await assert.rejects(send(), /消息没有发送/);
+  assert.equal(bridge.db.requests['send-once-001'].status, 'rejected');
+  assert.equal(calls.filter(x => x === 'native-start').length, 0);
+  state.noOwner = false;
+  assert.equal((await send()).status, 'accepted');
+  assert.equal(calls.filter(x => x === 'native-start').length, 1);
+});
 test('new-task permission preparation failure remains retryable without duplicating creation', async t => {
   const { bridge } = fixture(t, 'codex'); let ready = false, creates = 0;
   bridge.permissionContext = async () => { if (!ready) throw Error('preparation unavailable'); return 'fixture-context'; };

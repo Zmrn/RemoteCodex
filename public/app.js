@@ -2253,8 +2253,43 @@ function journal(a, t, operation, payload, legacyOperation) {
           if (JSON.parse(localStorage.getItem(key) ?? "{}").id === value.id)
             localStorage.removeItem(key);
         },
+        retryAfterCheck: () => {
+          try {
+            const current = JSON.parse(localStorage.getItem(key) ?? "{}");
+            if (current.id !== value.id || current.hash !== hash) return false;
+            localStorage.setItem(key, JSON.stringify({ hash, id: crypto.randomUUID() }));
+            return true;
+          } catch { return false; }
+        },
       };
     });
+}
+function showSendUncertainty(e, request, { agent, thread, view, mode: sendMode, prompt, files }) {
+  const missingOwner = /(?:^|\W)no-client-found(?:$|\W)/i.test(e.message ?? "");
+  const banner = $("error");
+  const explanation = missingOwner
+    ? "官方当时没有找到此会话的接收窗口（no-client-found）。消息未获发送确认，草稿仍在。请先刷新并核对官方对话。"
+    : "提交结果未知，草稿仍在。请先刷新并核对官方对话，避免重复发送。";
+  banner.replaceChildren(node("span", "", explanation));
+  if (request) {
+    const retry = node("button", "send-retry-after-check", "我已确认官方未收到，允许重新发送");
+    retry.type = "button";
+    retry.onclick = () => {
+      if (agentId !== agent || selected !== thread || viewEpoch !== view || mode !== sendMode ||
+          $("prompt").value !== prompt || composerImages.length !== files.length ||
+          composerImages.some((file, i) => file !== files[i])) {
+        error(Error("当前设备、会话或草稿已变化，请重新核对后再发送"));
+        return;
+      }
+      if (!request.retryAfterCheck()) {
+        error(Error("这份请求记录已变化；请刷新后重新核对"));
+        return;
+      }
+      banner.textContent = "已解除这一次请求的防重。草稿没有自动发送；请再次点击发送按钮。";
+    };
+    banner.append(retry);
+  }
+  banner.hidden = false;
 }
 function renderAttachment() {
   attachmentUrls.forEach(url => URL.revokeObjectURL(url));
@@ -2449,6 +2484,7 @@ async function submitMessage({ steer = false } = {}) {
     $("messages").replaceChildren(preview);
     $("activity").hidden = false;
   }
+  let sendJournal = null;
   try {
     if (m === "chat" && fresh) throw Error(chatEmpty);
     // Persist the complete draft before any message can leave the controller.
@@ -2465,7 +2501,7 @@ async function submitMessage({ steer = false } = {}) {
         ...images,
         ...(steering ? { delivery: "steer", expectedTurnId } : sendSettings ? { settings: sendSettings } : {}),
       };
-    const j = await journal(
+    const j = sendJournal = await journal(
       a,
       fresh ? "new" : t,
       fresh ? "create" : steering ? "steer" : enqueue ? "enqueue" : "send",
@@ -2480,8 +2516,13 @@ async function submitMessage({ steer = false } = {}) {
           ...payload,
           requestId: j.id,
         });
-    if (r.status !== "accepted" || (fresh && !r.result?.threadId))
-      throw Error("提交结果未知，已阻止重复发送；请先核对官方对话。");
+    if (r.status !== "accepted" || (fresh && !r.result?.threadId)) {
+      const failure = Error(r.error || (r.status === "rejected"
+        ? "消息没有发送；草稿已保留，可以重试。"
+        : "提交结果未知，已阻止重复发送；请先核对官方对话。"));
+      failure.unknownSend = r.status !== "rejected";
+      throw failure;
+    }
     j.clear();
     const originKey = taskKey(a, t, m);
     const atOrigin = taskKey() === originKey;
@@ -2507,7 +2548,10 @@ async function submitMessage({ steer = false } = {}) {
     await backupDrafts();
   } catch (e) {
     if (g === generation && v === viewEpoch) {
-      error(e);
+      if (sendJournal && (e.unknownSend || /no-client-found|outcome-unknown|提交结果未知|connection-interrupted/i.test(e.message ?? "")))
+        showSendUncertainty(e, !fresh && m === "codex" && !enqueue && !steering ? sendJournal : null,
+          { agent: a, thread: t, view: v, mode: m, prompt, files });
+      else error(e);
       $("activity").hidden = true;
       if (fresh) {
         $("messages").replaceChildren();

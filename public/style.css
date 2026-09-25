@@ -797,6 +797,17 @@ body[data-mode="chat"] .composer-footnote { line-height: 1.5; }
   border-bottom: 1px solid var(--line);
   line-height: 1.7;
 }
+.send-retry-after-check {
+  display: block;
+  margin-top: 8px;
+  padding: 5px 10px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
 .composer-area {
   flex-shrink: 0;
   width: calc(100% - 44px);
