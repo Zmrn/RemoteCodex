@@ -62,7 +62,8 @@ try {
       assert.equal(await page.locator('#prompt').inputValue(), '仅发送一次的草稿');
       assert.match(await page.locator('#error').textContent(), /no-client-found/);
       await page.locator('#send').click();
-      await page.waitForFunction(() => document.querySelector('#error').textContent.includes('no-client-found'));
+      for (let attempt = 0; attempt < 200 && writes.length < 2; attempt++)
+        await new Promise(resolve => setTimeout(resolve, 25));
       assert.equal(writes.length, 2);
       assert.equal(writes[0].requestId, writes[1].requestId, 'normal retry must keep the protected ID');
       await page.getByRole('button', { name: '我已确认官方未收到，允许重新发送' }).click();
