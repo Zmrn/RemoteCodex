@@ -1,5 +1,22 @@
 # GitHub 直接更新
 
+## 2026-09-27：0.10.51 官方新版接口适配四包正式发布
+
+[正式版本](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.51)。官方 Codex Windows x64 `26.924.2738.0` 的 app-tools 调用新增必填 `callerSource`；旧版虽能读取接口目录，却在实际读取项目和会话时收到 `-32602 Invalid app tool request`。本版补齐 `callerSource=codex`，并在连接和兼容诊断时实际调用一次只读 `list_projects`，让封套异常显示为工具依赖功能不可用，所有者 IPC 仍独立判断。目标电脑的完整版 Windows 接入端及使用中的完整版／Limit 控制端需同版更新。
+
+源码提交 `f3065e194f2b79ce33e4b7cfff0fc52b82c13751` 的 Checks `36260841337` 成功；同 SHA preflight 后仅派发一次 Build `36261119331`（requestId `087ef156-6646-4aa0-9cad-be94e98f6637`），云构建成功。发布上传一次网络超时，确认同版本草稿仅有第一项已上传资源后，沿同一运行恢复；未重新构建。14 项资源读回后公开，匿名 latest 清单、固定版本四包和说明均完整下载并与构建哈希一致。
+
+| 安装文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44204544 | `a503dfd298c7ff677c7f791637bd918cf71d043c6e985c5f373230493fb3bfef` |
+| RemoteCodex.apk | 295152 | `3a38cb3a6a0f381d6384257e1a6c787e070a001f62cb4e4823c4b69a12764401` |
+| LimitRemoteCodex.exe | 44204544 | `d05ae32734c7a866a3c805f9269e58bb6e7b261b54e7f2f447f49e0da9aa1bb9` |
+| LimitRemoteCodex.apk | 295152 | `3772f91a7bfb2a6ca09606339dc23d01bfe7dd13941db9f167b410e98cbc853f` |
+
+最终源码 366 项 Node22.19.0、兼容清单与桌面／手机尺寸的兼容界面通过；云构建完成两版 Android Java API35 编译。四份 RSA 更新清单与包哈希一致；两个 APK 沿用原证书 SHA-256 `3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`、v2/v3 签名、独立包名及 versionCode `10051`。两个 EXE 包内 `src/desktop.mjs`、官方接口清单、共享界面、版别和 GitHub 更新渠道与本提交一致；内嵌 Node22.19.0/Python3.13.2、DPAPI 与页面自检通过。隔离旧云包 0.10.50→0.10.51 的两版设备 ID 和加密配置字节保持，重启两次可读。
+
+完整版包在本机新版官方应用上只读连接并读取项目／会话成功，Limit 包自检确认不访问本机官方；源码另对真实项目、50 项任务列表、额度、Codex／Chat 历史及用户截图长会话首段分页做了只读验证。没有向真实用户任务发送消息、执行 APK／模拟器、升级现有客户端或重启官方应用。新版写入、已读、排队、审批行为未实测，因此不将该官方版本列为完整行为已验证；普通 Chat 新建／图片及未完成 Work 仍不在本版范围。主工作区八份 Chat 修改未进入构建，Windows EXE 仍无 Authenticode 签名。隔离证据在 `work/release-050/work/`；本发布记录提交不重新打包。
+
 ## 2026-09-26：0.10.50 发送恢复修复四包正式发布
 
 [正式版本](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.50)。本版在普通发送前要求新的官方 owner 状态；会话接收窗口缺失时明确报告未发送并保留草稿。提交结果未知时保持防重复提交，用户核对官方确实未收到后，可手动解除当前请求的防重记录，再自行点击发送。目标完整版 Windows 接入端及使用中的完整版／Limit 控制端需同版更新，原设备连接不需重配。

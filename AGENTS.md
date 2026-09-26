@@ -1,6 +1,6 @@
 # Remote Codex 开发与发布约定
 
-- 2026-09-27 发布准备：用户在确认官方 26.924.2738.0 内容读取修复后明确要求“修好的话就打包”，准备 0.10.51 四包 GitHub 发布。最终版本先通过 Node22.19.0、兼容清单、只读真实项目/会话/额度与长会话分页、桌面/手机兼容界面及隔离设备保护；同 SHA Checks 成功和 preflight 后仅派发一次 Build。下载验签、包内源码/版别/证书、0.10.50→0.10.51 两版设备保存与匿名下载通过后公开。主工作区八份 Chat WIP 保留，历史 stash 不重放；不本地构建、不执行 APK/模拟器、不升级现有客户端、不向真实用户任务写入测试消息。正式结果以 GITHUB-UPDATES.md 后续记录为准。
+- 2026-09-27 最新发布：0.10.51 从 `f3065e194f2b79ce33e4b7cfff0fc52b82c13751` 经同 SHA Checks `36260841337` 与 preflight 成功后，由 Build `36261119331`（requestId `087ef156-6646-4aa0-9cad-be94e98f6637`）仅派发一次，同次生成完整版与 Limit 版 EXE/APK，正式发布 [Releases/v0.10.51](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.51)。修复官方 Windows x64 26.924.2738.0 新增必填 `callerSource` 后项目/会话无法读取，以及兼容页只看 `tools/list` 的误报。366 Node22.19.0、桌面/手机兼容界面、接口清单、真实只读官方工具调用通过；四包原 RSA/APK v2-v3 证书、包内修复源码/版别/渠道、EXE 隔离运行时/DPAPI、0.10.50→0.10.51 两版设备保存和匿名完整下载通过。发布上传一次网络超时，核对同草稿后恢复，14 项资源读回后公开；没有重构建。未执行 APK/模拟器、升级现有客户端、重启官方或写真实用户任务；新版真实写入行为未验证、Chat/Work 未完成范围不扩大，主工作区八份 Chat WIP 保留且历史 stash 不重放。四包哈希与边界见 GITHUB-UPDATES.md；纯记录提交不再打包。
 
 - 2026-09-27 最新源码：官方 Windows x64 26.924.2738.0 的 `tools/call` 新增必填 `callerSource`，旧 0.10.50 实际 `list_projects` 返回 `-32602 Invalid app tool request`，用户截图中的内容读取失败与此一致。已加 `callerSource=codex`，正常连接和兼容报告用只读 `list_projects` 校验调用封套，避免工具目录与 IPC 静态匹配却显示全绿；工具异常只影响依赖功能，owner IPC 独立。真实只读项目/列表/额度/Codex/Chat 历史、用户截图长会话首段分页读取通过；未做真实任务写入、不扩大 verifiedVersions。源码修复阶段版本仍 0.10.50、未构建安装，随后用户明确要求准备 0.10.51；主工作区八份 Chat WIP 保留，历史 stash 不重放。证据与范围见 OFFICIAL-26924-UPGRADE.md。下方 0.10.50 发布记录仍指旧包，不含本修复。
 
