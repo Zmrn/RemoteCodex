@@ -2,7 +2,7 @@ import { fixtureProtocols } from "./fixtures/interface-evidence.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Desktop, brokerKind } from "../src/desktop.mjs";
-import { OFFICIAL, TOOLS } from "../src/official-protocol.mjs";
+import { OFFICIAL, TOOLS, desktopPolicy } from "../src/official-protocol.mjs";
 
 const officialImage = String.raw`C:\Program Files\WindowsApps\OpenAI.Codex_26.903.8094.0_x64__fixture\app\ChatGPT.exe`;
 const toolsPath = String.raw`\\.\pipe\codex-browser-use-fixture`;
@@ -27,6 +27,10 @@ function fixture(pipes, options = {}) {
         request: async (method, params, routing) => {
           client.calls.push({ method, params, routing });
           if (method === OFFICIAL.transport.toolsList) return { result: { tools: options.catalog ?? catalog } };
+          if (method === OFFICIAL.transport.toolsCall) {
+            if (options.invalidToolCall) throw Error('{"code":-32602,"message":"Invalid app tool request"}');
+            return { result: { success: true, contentItems: [{ type: 'inputText', text: '{}' }] } };
+          }
           return { handledByClientId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", result: {} };
         },
         broadcast: (...args) => { client.broadcasts = args; },
@@ -50,12 +54,48 @@ test("official-hosted and verified VS Code-hosted IPC keep official app-tools id
     assert.equal(id.connection.brokerPid, broker.pid);
     assert.deepEqual(discoveries[1], [toolsPath, brokerPath]);
     assert.equal(clients[0].kind, "tools");
+    const call = clients[0].calls.find(c => c.method === OFFICIAL.transport.toolsCall);
+    assert.equal(call.params.callerSource, 'codex');
+    assert.equal(call.params.tool, TOOLS.listProjects);
     const owner = await desktop.follow("same-official-task");
     assert.equal(owner.handledByClientId, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
     assert.equal(desktop.ipc.calls[0].params.conversationId, "same-official-task");
     assert.deepEqual(desktop.ipc.broadcasts[3], [owner.handledByClientId]);
     assert.ok(desktop.catalog.some(t => t.name === TOOLS.listThreads));
   }
+});
+
+test('an invalid app-tool call envelope blocks tool-dependent features while owner IPC remains available', async () => {
+  const f = fixture([vscode, app], { invalidToolCall: true, catalog: [
+    { namespace: 'codex_app', name: TOOLS.listProjects, inputSchema: { properties: {} } },
+    { namespace: 'codex_app', name: TOOLS.listThreads, inputSchema: { properties: { limit: {} } } },
+  ] });
+  try {
+    await f.desktop.connect();
+    const policy = desktopPolicy(f.desktop);
+    assert.equal(policy.interfaces.listProjects.status, 'mismatch');
+    assert.equal(policy.interfaces.listThreads.status, 'mismatch');
+    assert.equal(policy.interfaces.owner.status, 'matched');
+    assert.equal(policy.features.list.supported, false);
+    assert.equal(policy.features.taskState.supported, true);
+    await assert.rejects(f.desktop.call(TOOLS.listThreads, { limit: 1 }), /Invalid app tool request/);
+  } finally { f.desktop.close(); }
+});
+
+test('the verified callerSource is also sent with later app-tool reads', async () => {
+  const f = fixture([vscode, app], { catalog: [
+    { namespace: 'codex_app', name: TOOLS.listProjects, inputSchema: { properties: {} } },
+    { namespace: 'codex_app', name: TOOLS.listThreads, inputSchema: { properties: { limit: {} } } },
+  ] });
+  try {
+    await f.desktop.connect();
+    await f.desktop.call(TOOLS.listThreads, { limit: 1 });
+    const calls = f.desktop.tools.calls.filter(c => c.method === OFFICIAL.transport.toolsCall);
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls.map(c => c.params.callerSource), ['codex', 'codex']);
+    assert.equal(calls[1].params.tool, TOOLS.listThreads);
+    assert.deepEqual(calls[1].params.arguments, { limit: 1 });
+  } finally { f.desktop.close(); }
 });
 
 test("untrusted brokers are never connected; verified official app-tools remain available", async () => {

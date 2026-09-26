@@ -18,6 +18,9 @@ const catalog = Object.values(OFFICIAL.tools).map(s => ({ name: s.name, namespac
 const protocols = [{ methods: Object.fromEntries(Object.values(OFFICIAL.ipc).map(s => [s.method, s.version])) }];
 const normal = buildCompatibilityReport({ activeVersion: OFFICIAL.support.verifiedVersions.at(-1), connected: true, catalog,
   activeProtocols: protocols, latestVersion: OFFICIAL.support.verifiedVersions.at(-1) });
+const rejectedCall = buildCompatibilityReport({ activeVersion: OFFICIAL.support.verifiedVersions.at(-1), connected: true, catalog,
+  activeProtocols: protocols, latestVersion: OFFICIAL.support.verifiedVersions.at(-1),
+  toolCallObservation: { status: 'mismatch', detail: '官方拒绝工具调用封套（Invalid app tool request）' } });
 const report = structuredClone(normal);
 report.latest.version = '99.1.2.3'; report.latest.source = 'downloaded-package'; report.latest.writeSupported = false;
 report.rows.find(r => r.id === 'interrupt').latest = { status: 'mismatch', version: 10, detail: '预期 v4，官方为 v10' };
@@ -31,7 +34,7 @@ try {
   assert.equal(await page.locator('#help-compatibility').count(), 1);
   await page.evaluate(async ({ report, normal }) => {
     const { CompatibilityView } = await import('/compatibility-view.mjs');
-    window.normal = normal; window.report = report; window.requests = []; window.toasts = [];
+    window.normal = normal; window.activeReport = report; window.requests = []; window.toasts = [];
     window.current = { id: 'a', name: '这台电脑' };
     window.view = new CompatibilityView({ getAgent: () => current,
       getAgents: () => [current, { id: 'b', name: '公司的电脑' }], toast: text => toasts.push(text),
@@ -39,7 +42,7 @@ try {
         requests.push({ id, route, body, signal: !!options.signal });
         if (window.hold) { window.hold = false; return new Promise(resolve => { window.finish = resolve; }); }
         if (window.fail) throw Error('private-hostname');
-        return structuredClone(window.legacy ? {} : id === 'a' ? report : normal);
+        return structuredClone(window.legacy ? {} : id === 'a' ? activeReport : normal);
       } });
     document.getElementById('help-compatibility').onclick = () => view.open();
     document.getElementById('setup-dialog').showModal();
@@ -70,10 +73,17 @@ try {
   await page.getByRole('button', { name: '复制检查报告', exact: true }).click();
   assert.match(await page.getByRole('textbox', { name: '可手动复制的兼容性报告' }).inputValue(), /used-interfaces-only/);
   checks.push('copy includes full checklist; clipboard refusal provides manual copy');
+  await page.evaluate(async next => { window.activeReport = next; await view.run(); }, rejectedCall);
+  assert.match(await page.locator('.compatibility-summary').innerText(), /9 项异常/);
+  assert.equal(await page.locator('[data-command="list_projects"]').getAttribute('data-status'), 'error');
+  await page.locator('#official-compatibility input[type=checkbox]').uncheck();
+  assert.match(await page.locator('#compatibility-features').innerText(), /实时状态、未读统计和通知 · 接口可用/);
+  await page.locator('#official-compatibility input[type=checkbox]').check();
+  checks.push('rejected tool-call envelope is red on both report and dependent features; owner status remains independent');
   await page.evaluate(() => { window.hold = true; view.run(); });
   await page.locator('#compatibility-device').selectOption('b');
   await page.waitForFunction(() => document.querySelector('.compatibility-summary').textContent.includes('0 项异常'));
-  await page.evaluate(async () => { finish(report); await Promise.resolve(); });
+  await page.evaluate(async next => { finish(next); await Promise.resolve(); }, report);
   assert.match(await page.locator('#compatibility-rows').innerText(), /没有异常或待验证/);
   assert.equal(await page.evaluate(() => current.id), 'a');
   checks.push('device switch rejects late response and preserves global device selection');
@@ -86,7 +96,7 @@ try {
   checks.push('legacy endpoint and connection failure clear stale report');
   await page.evaluate(() => { window.fail = false; window.hold = true; view.run(); });
   await page.getByRole('button', { name: '关闭兼容性检查', exact: true }).click();
-  await page.evaluate(async () => { finish(report); await Promise.resolve(); });
+  await page.evaluate(async next => { finish(next); await Promise.resolve(); }, report);
   assert.equal(await page.evaluate(() => view.report), null);
   assert.ok((await page.evaluate(() => requests)).every(r => r.body === undefined && r.route === '/compatibility/report' && r.signal));
   checks.push('closing cancels rendering and every request is read-only');

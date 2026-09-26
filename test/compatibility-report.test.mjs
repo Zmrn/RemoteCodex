@@ -38,6 +38,15 @@ test('missing command, missing used parameter and changed protocol are precise r
   assert.equal(bad.find(r => r.id === 'interrupt').running.version, 10);
 });
 
+test('read-only tool-call envelope probe makes a falsely green catalog visibly incompatible', () => {
+  const report = buildCompatibilityReport({ ...fixture(), toolCallObservation: {
+    status: 'mismatch', detail: '官方拒绝工具调用封套（Invalid app tool request）' } });
+  assert.ok(report.rows.filter(r => r.kind === 'tool').every(r => r.running.status === 'mismatch'));
+  assert.equal(report.rows.find(r => r.id === 'owner').running.status, 'matched');
+  assert.equal(report.features.list.supported, false);
+  assert.equal(report.features.taskState.supported, true);
+});
+
 test('unavailable, unreadable and ambiguous protocol evidence stays unknown', () => {
   const input = { ...fixture(), latestVersion: latest, latestProtocols: [] };
   let report = buildCompatibilityReport(input);

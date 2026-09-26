@@ -12,6 +12,7 @@ Chat：列表/历史读取；文字续写待专用真实会话验证；新建/�
 - 官方 app-tools 必须属于 WindowsApps 中的 ChatGPT.exe，并提供真实 tools/list。转发管道可由官方进程或签名有效、发布者/公司/产品均匹配中央清单的 Microsoft VS Code 持有；两者不要求同一 PID。握手后再次验证 PID/映像，身份变化时关闭并重新发现。
 - 管道 PID 不等于任务 owner；按真实 conversationId 发现 handledByClientId，再定向转发，核对相同 owner 回执及事件。协议没有 owner UUID 到 Windows PID 的查询字段，能力标志不是官方进程证明。共存验证见 VSCODE-COEXISTENCE.md。
 - 传输：4 字节小端长度 + JSON；app-tools 使用 JSON-RPC 2.0，桌面 IPC 使用 requestId/sourceClientId/version/targetClientId 信封，两者不能混用。
+- app-tools 调用封套使用 callerSource=codex；连接后用只读 list_projects 验证实际调用。目录声明匹配而封套被拒绝时，工具依赖功能标记不可用，所有者 IPC 独立判断。
 - 实时流只接受当前订阅任务的已发现所有者，patch 基线不匹配时标记未知并重读。
 - 磁盘队列：.codex-global-state.json / queued-follow-ups；仅只读，不能证明实时状态。
 - 大历史降级：当前官方 home 的 sessions / archived_sessions；核对本机任务和 session_meta 身份，只读 item_completed 并按消息分页、图片按需读取。历史结束记录不控制实时状态、写入或已读。

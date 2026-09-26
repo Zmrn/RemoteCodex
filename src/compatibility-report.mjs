@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Desktop } from './desktop.mjs';
+import { Desktop, localContext } from './desktop.mjs';
 import { OFFICIAL, CATALOG_SHA256, desktopCompatibility } from './official-protocol.mjs';
 import { sourceProtocols } from './source-protocols.mjs';
 import { interfaceObservations, protocolObservation, featurePolicy } from './official-protocol.mjs';
@@ -34,9 +34,9 @@ export function candidateImage(image, version) {
 
 const unknown = detail => ({ status: 'unknown', detail });
 export function buildCompatibilityReport({ activeVersion = null, connected = false, ipcConnected = connected, catalog = [], activeProtocols = [],
-  latestVersion = null, latestProtocols = [], latestSource = 'unavailable', activeError = null, latestError = null } = {}) {
+  toolCallObservation = null, latestVersion = null, latestProtocols = [], latestSource = 'unavailable', activeError = null, latestError = null } = {}) {
   const same = !!latestVersion && activeVersion === latestVersion;
-  const observations = interfaceObservations({ connected, ipcConnected, catalog, protocols: activeProtocols });
+  const observations = interfaceObservations({ connected, ipcConnected, catalog, protocols: activeProtocols, toolCallObservation });
   const rows = Object.entries(OFFICIAL.tools).map(([id, spec]) => {
     const running = observations[id];
     return { id, kind: 'tool', name: spec.name, purpose: spec.purpose, expected: { request: spec.request }, running,
@@ -57,7 +57,7 @@ export function buildCompatibilityReport({ activeVersion = null, connected = fal
       readStateSupported: latestFeatures.readReceipt.supported },
     supportedVersions: OFFICIAL.support.verifiedVersions, rows, taskWrites: 0,
     checkScope: 'used-interfaces-only',
-    limits: '只检查 Remote Codex 使用的接口名单：指令、所用顶层参数及协议版本。名单外的新增或变动不报异常。检查只读，不发送测试消息；声明一致不代表实际操作已验证。' };
+    limits: '只检查 Remote Codex 使用的接口名单：指令、所用顶层参数、只读工具调用封套及协议版本。名单外的新增或变动不报异常。检查不发送测试消息；工具调用成功不代表写入行为已验证。' };
 }
 
 export async function collectCompatibilityReport({ createDesktop = () => new Desktop(), getLatest = latestOfficialVersion,
@@ -71,6 +71,11 @@ export async function collectCompatibilityReport({ createDesktop = () => new Des
       activeImage = desktop.identity.appToolsPipe.image;
       activeVersion = desktopCompatibility(activeImage).detectedVersion;
       try { activeProtocols = readProtocols(activeImage); } catch { activeError = '当前包协议表读取失败'; }
+      if (typeof desktop.probeToolCall === 'function') {
+        let context = null;
+        try { context = localContext(); } catch {}
+        await desktop.probeToolCall(context);
+      }
     } catch { activeError = '无法连接官方桌面，请先打开并登录官方应用'; }
     const latest = await latestPromise;
     let latestProtocols = [], latestSource = 'unavailable', latestError = latest.error || null;
@@ -82,6 +87,7 @@ export async function collectCompatibilityReport({ createDesktop = () => new Des
       } else latestError = '此电脑尚无最新版安装包，需包下载完成或新版运行后检查';
     }
     return buildCompatibilityReport({ activeVersion, connected, ipcConnected: desktop.ipc !== null, catalog, activeProtocols,
+      toolCallObservation: desktop.toolCallObservation,
       latestVersion: latest.version || null, latestProtocols, latestSource, activeError, latestError });
   } finally { desktop.close(); }
 }

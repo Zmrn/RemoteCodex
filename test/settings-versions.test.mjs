@@ -29,6 +29,7 @@ async function fixture(t, version, reply = { applied: true }) {
       return pipe;
     } });
   await desktop.connect();
+  calls.length = 0; // Ignore the connection's read-only tool-call probe.
   fs.mkdirSync(path.join(ROOT, 'test/scratch'), { recursive: true });
   const b = new Bridge(fs.mkdtempSync(path.join(ROOT, 'test/scratch/settings-versions-')));
   b.desktop = desktop; b.connected = true;
@@ -83,6 +84,7 @@ test('reconnect reselects the protocol and rejects a stale owner connection', as
   const f = await fixture(t, 2), stale = f.desktop.ipc;
   f.protocols[0].methods[OFFICIAL.ipc.settings.method] = 1;
   await f.desktop.connect();
+  f.calls.length = 0; // Reconnect repeats the read-only tool-call probe.
   assert.throws(() => protocolRequest(stale, 'settings', {}), /connection changed/);
   await f.b.updateSettings(id, 'reconnected-settings', { permissionMode: 'read-only' });
   assert.equal(f.calls[0].options.version, 1);

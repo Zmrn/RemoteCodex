@@ -51,6 +51,15 @@ export async function discover(paths = []) {
 }
 const pipeName = p => path.win32.basename(p.path ?? "");
 const officialImage = p => !!p.pid && new RegExp(OFFICIAL.discovery.ownerImagePattern, "i").test(p.image ?? "");
+const toolCallParams = (tool, args, context) => ({
+  arguments: args,
+  callerSource: OFFICIAL.transport.toolsCallerSource,
+  callId: "remote-bridge-" + randomUUID(),
+  namespace: OFFICIAL.discovery.toolsNamespace,
+  threadId: context,
+  tool,
+  turnId: "remote-bridge-request-" + randomUUID(),
+});
 export function brokerKind(pipe) {
   if (!pipe?.pid || pipeName(pipe) !== OFFICIAL.discovery.ownerPipe) return null;
   if (officialImage(pipe)) return "official-desktop";
@@ -72,11 +81,13 @@ export class Desktop {
     this.ipc = null;
     this.identity = null;
     this.catalog = [];
+    this.toolCallObservation = null;
   }
   async connect({ inspectCatalog = false } = {}) {
     this.close();
     this.tools = this.ipc = this.identity = null;
     this.catalog = [];
+    this.toolCallObservation = null;
     // A diagnostics-only connection reads tools/list and never needs a task context.
     if (!inspectCatalog) this.context ??= localContext();
     const identity = await this.discoverPipes();
@@ -134,6 +145,8 @@ export class Desktop {
         brokerVersion: this.ipc ? broker.signature?.version ?? null : null, ownerConnected: !!this.ipc };
       this.identity = identity;
       try { this.protocols = this.readProtocols(identity.appToolsPipe.image); } catch { this.protocols = []; }
+      if (inspectCatalog) this.toolCallObservation = { status: 'unknown', detail: '尚未验证实际工具调用' };
+      else await this.probeToolCall(this.context);
       observeDesktop(this, this.protocols);
       const ipc = this.ipc;
       if (ipc) ipc.assertInterface = key => {
@@ -145,8 +158,28 @@ export class Desktop {
       this.close();
       this.tools = this.ipc = this.identity = null;
       this.catalog = [];
+      this.toolCallObservation = null;
       throw error;
     }
+  }
+  async probeToolCall(context) {
+    if (!context) {
+      this.toolCallObservation = { status: 'unknown', detail: '没有可用的本机任务上下文，无法验证工具调用' };
+    } else {
+      try {
+        const response = await this.tools.request(OFFICIAL.transport.toolsCall,
+          toolCallParams(TOOLS.listProjects, {}, context), { timeoutMs: 10000 });
+        this.toolCallObservation = typeof response?.result?.success === 'boolean'
+          ? { status: 'matched', detail: '只读 list_projects 工具调用已被官方接收' }
+          : { status: 'unknown', detail: '只读工具调用回执格式未知' };
+      } catch (error) {
+        this.toolCallObservation = /Invalid app tool request/.test(error.message)
+          ? { status: 'mismatch', detail: '官方拒绝工具调用封套（Invalid app tool request）' }
+          : { status: 'unknown', detail: '只读工具调用未获确认' };
+      }
+    }
+    if (this.identity) observeDesktop(this, this.protocols);
+    return this.toolCallObservation;
   }
   async call(tool, args = {}, context = this.context, { timeoutMs = 60000 } = {}) {
     const key = Object.keys(OFFICIAL.tools).find(k => OFFICIAL.tools[k].name === tool);
@@ -157,14 +190,7 @@ export class Desktop {
       throw Error("Unavailable desktop tool " + tool);
     const f = await this.tools.request(
       OFFICIAL.transport.toolsCall,
-      {
-        arguments: args,
-        callId: "remote-bridge-" + randomUUID(),
-        namespace: OFFICIAL.discovery.toolsNamespace,
-        threadId: context,
-        tool,
-        turnId: "remote-bridge-request-" + randomUUID(),
-      },
+      toolCallParams(tool, args, context),
       { timeoutMs },
     );
     const r = f.result;

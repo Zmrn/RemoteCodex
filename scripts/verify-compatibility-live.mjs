@@ -1,4 +1,4 @@
-// Read-only upgrade preflight: no task creation, messages, queue writes or interrupts.
+// Read-only upgrade preflight: one list_projects call, no task creation, messages, queue writes or interrupts.
 // Only logs version and schema property names; never tool descriptions or user data.
 import { Desktop } from "../src/desktop.mjs";
 import { OFFICIAL, desktopPolicy } from "../src/official-protocol.mjs";
@@ -12,7 +12,9 @@ try {
     return { key, method: expected.name, available: !!live, declaredFieldsMissing: expected.request.filter(k => !properties.includes(k)) };
   });
   const matched = tools.every(t => t.available && !t.declaredFieldsMissing.length);
-  console.log(JSON.stringify({ source: "Win32 pipe identity + official tools/list", connection: desktop.identity.connection, compatibility, tools, catalogMatches: matched,
+  const callMatches = desktop.toolCallObservation?.status === 'matched';
+  console.log(JSON.stringify({ source: "Win32 pipe identity + official tools/list + read-only list_projects", connection: desktop.identity.connection, compatibility, tools, catalogMatches: matched,
+    toolCall: desktop.toolCallObservation,
     ownerIpcWritesTested: false, taskWrites: 0, note: "Interface observations control only dependent features; matching declarations are not live behavior tests." }, null, 2));
-  if (!matched) process.exitCode = 1;
+  if (!matched || !callMatches) process.exitCode = 1;
 } finally { desktop.close(); }

@@ -40,6 +40,7 @@ async function fixture(t, { missing = [], changed = [], handshakeFails = false, 
     },
   });
   await desktop.connect();
+  calls.length = 0; // The connection's read-only tool-call probe is not a test action.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'feature-policy-')), b = new Bridge(dir);
   b.desktop = desktop; b.connected = true;
   b.follow = async () => { b.live.set(id, { owner, state: { id, turns: [{ turnId: 'turn', status: 'inProgress' }], threadRuntimeStatus: { type: state.type } } }); return { handledByClientId: owner }; };

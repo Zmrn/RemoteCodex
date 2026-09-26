@@ -115,6 +115,7 @@
     "maxOutboundBytes": 33554432,
     "toolsList": "tools/list",
     "toolsCall": "tools/call",
+    "toolsCallerSource": "codex",
     "toolsListParams": {
       "threadStartKind": "all"
     },

@@ -41,7 +41,7 @@ export function protocolObservation(records, spec) {
   return { status: matched ? 'matched' : 'mismatch', version: versions[0],
     detail: matched ? '协议版本已适配；来自包内静态声明' : `预期 ${protocolVersions(spec).map(v => 'v' + v).join(' / ')}，官方为 v${versions[0]}` };
 }
-export function interfaceObservations({ connected = false, ipcConnected = connected, catalog = [], protocols = [] } = {}) {
+export function interfaceObservations({ connected = false, ipcConnected = connected, catalog = [], protocols = [], toolCallObservation = null } = {}) {
   const rows = Object.entries(OFFICIAL.tools).map(([id, spec]) => {
     const tool = catalog.find(t => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === spec.name);
     const fields = Object.keys(tool?.inputSchema?.properties ?? {}), missingFields = spec.request.filter(f => !fields.includes(f));
@@ -49,7 +49,8 @@ export function interfaceObservations({ connected = false, ipcConnected = connec
       : !tool.inputSchema?.properties ? unknown('工具参数声明无法读取')
       : missingFields.length ? { status: 'mismatch', missingFields, detail: '缺少参数：' + missingFields.join('、') }
       : { status: 'matched', fields, detail: '指令及所用顶层参数存在；来自实时 tools/list' };
-    return [id, value];
+    return [id, value.status === 'matched' && toolCallObservation && toolCallObservation.status !== 'matched'
+      ? { ...toolCallObservation } : value];
   });
   for (const [id, spec] of Object.entries(OFFICIAL.ipc)) rows.push([id, id === 'initialize'
     ? ipcConnected ? { status: 'matched', version: spec.version, detail: '当前连接握手成功' } : unknown('所有者 IPC 握手未确认')
@@ -69,7 +70,8 @@ const observations = new WeakMap();
 export function observeDesktop(desktop, protocols) {
   observations.set(desktop, { identity: desktop.identity, image: desktop.identity?.appToolsPipe?.image,
     tools: desktop.tools, ipc: desktop.ipc, catalog: desktop.catalog,
-    rows: freeze(interfaceObservations({ connected: true, ipcConnected: !!desktop.ipc && !desktop.ipc.socket?.destroyed, catalog: desktop.catalog, protocols })) });
+    rows: freeze(interfaceObservations({ connected: true, ipcConnected: !!desktop.ipc && !desktop.ipc.socket?.destroyed,
+      catalog: desktop.catalog, protocols, toolCallObservation: desktop.toolCallObservation })) });
 }
 export function forgetDesktop(desktop) { observations.delete(desktop); }
 export function desktopPolicy(desktop) {
