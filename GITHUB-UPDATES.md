@@ -1,5 +1,22 @@
 # GitHub 直接更新
 
+## 2026-09-27：0.10.52 Goal 模式四包正式发布
+
+[正式版本](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.52)。Codex 新对话可设置 Goal 与可选 Token 预算；已有会话从官方记录读取目标、状态和用量，并可在运行中编辑，向当前轮次发送调整方向。Limit 版仍只可操作同一配对码创建的无项目会话。目标电脑完整版 Windows 接入端和使用中的控制端需同版更新。已有目标由独立官方接口保存后，桌面 owner 的实时同步未完全确认，界面提示核对；不宣称编辑后立即自动续行。
+
+最终源码 `ab186f378df23cf1eadac4ac2eafdfc28df77ef8` 的 Checks `36299369927` 成功，同 SHA preflight 后仅派发一次 Build `36299620802`（requestId `71e1d86d-d231-4fac-8ddd-9e8208e88db2`），同次生成完整版与 Limit 版 EXE/APK。发布上传在前 6 项后网络超时；第 7 项 Limit EXE 已上传，首次读回校验短暂失败，独立无修改重下载证实与构建文件逐字节一致。始终沿同一草稿和运行恢复，14 项资源全部读回后公开；没有重构建或覆盖已公开资源。匿名 latest 四份签名清单、固定版本四包及发布说明完整下载，均与本次产物哈希一致。
+
+| 安装文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44213248 | `0bd163e847e0e5da216e89531f181522f724a2ec79c520feda685e2a34f82449` |
+| RemoteCodex.apk | 299248 | `cc4ff1cf5d7f2f3eaaaf5ea8c4f16963fa9cdf5d7543b1be15b589af1e64483b` |
+| LimitRemoteCodex.exe | 44213248 | `ea205d1b5b0ce91ef6f851c54e7832ad64bd3e08df513e2513076d9e9091b81f` |
+| LimitRemoteCodex.apk | 299248 | `0c696f024d5bdcdc53786aaa87089a30919250be3087cb97efdde89809a12541` |
+
+最终版本 372 项 Node22.19.0、兼容清单、Goal 桌面/手机宽度新建/卡片/编辑界面回归通过；云端两版 Android Java API35 编译和主机网络回归通过。四份原 RSA 更新清单、两版 APK 原证书 SHA-256 `3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`、签名验证、独立包名与 versionCode `10052` 经同次云构建门禁。两个 EXE 包内 Goal 源码、共享界面、版别、官方兼容清单及 GitHub 更新渠道与最终提交一致，内嵌 Node22.19.0/Python3.13.2；完整版隔离自检在官方 Windows x64 `26.924.2738.0` 上只读连接、读取项目和会话，Limit 隔离自检确认不访问本机官方。把旧版测试设备配置复制到独立目录后，新包 `--prepare-only` 缓存准备保持双版设备配置字节不变；没有把该检查当作完整客户端升级。旧 `scripts/verify_portable.py` 仍假设后台 `server.json` 启动，和现行单实例桌面不符，因此脚本在通过只读自检后失败，不作为本版运行失败证据。
+
+Goal 新建和修改后的官方记录曾在专用临时会话核对；桌面 owner 实时同步未确认，本次安装包未向真实用户任务发送测试消息。普通 Chat 新建/模型/图片及独立 Work 功能仍未完成。官方完整行为历史验证仅 Windows x64 `26.901.6511.0`、`26.903.8094.0`，新版 `26.924.2738.0` 的项目/列表/历史只读可用不等于全面写入验证。未执行 APK/模拟器、升级已安装客户端或重启官方应用；Windows EXE 仍无 Authenticode 签名。隔离下载与验证记录在 `work/release-050/work/github-downloads/36299620802` 和 `work/release-050/work/payload-052`；本记录提交不再次打包。
+
 ## 2026-09-27：0.10.51 官方新版接口适配四包正式发布
 
 [正式版本](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.51)。官方 Codex Windows x64 `26.924.2738.0` 的 app-tools 调用新增必填 `callerSource`；旧版虽能读取接口目录，却在实际读取项目和会话时收到 `-32602 Invalid app tool request`。本版补齐 `callerSource=codex`，并在连接和兼容诊断时实际调用一次只读 `list_projects`，让封套异常显示为工具依赖功能不可用，所有者 IPC 仍独立判断。目标电脑的完整版 Windows 接入端及使用中的完整版／Limit 控制端需同版更新。
