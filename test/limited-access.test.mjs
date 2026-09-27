@@ -20,6 +20,8 @@ class FakeBridge extends EventEmitter {
   async threads() { return {source:"fixture",data:{pinnedThreads:[{id:other,title:"private"}],threads:[{id:other,title:"private"},{id:created,title:"owned"}],privateMetadata:{title:"private"}}}; }
   async projects() { return {data:{projects:[{name:"private project"}]}}; }
   async read(id) { return {data:{thread:{id},turns:this.reply?[{reply:this.reply}]:[]}}; }
+  async goal(id) { return {goal:{threadId:id,objective:'owned goal',status:'active'}}; }
+  async updateGoal(id,_key,objective) { return {status:'accepted',goalConfirmation:{confirmed:true,goal:{threadId:id,objective,status:'active'}}}; }
   async create(_key,_prompt,_settings,_project,_images,onCreated) { this.created++; onCreated?.(created); return {status:"accepted",result:{threadId:created}}; }
   guard() {}
   async nativeSend(id,_key,prompt) {
@@ -139,6 +141,10 @@ test("limited pairing gates target data and writes, shares only its own conversa
     assert.equal(made.value.result.threadId,created);
     assert.equal((await request(base,"/api/threads/"+created,"GET",null,a.code)).status,200);
     assert.equal((await request(base,"/api/threads/"+created,"GET",null,b.code)).status,400);
+    assert.equal((await request(base,"/api/threads/"+created+"/goal","GET",null,a.code)).value.goal.objective,'owned goal');
+    assert.equal((await request(base,"/api/threads/"+created+"/goal","GET",null,b.code)).status,400);
+    assert.equal((await request(base,"/api/threads/"+created+"/goal","POST",{requestId:'goal-12345',objective:'new'},a.code)).value.goalConfirmation.confirmed,true);
+    assert.equal((await request(base,"/api/threads/"+created+"/goal","POST",{requestId:'goal-12345',objective:'new'},b.code)).status,400);
     assert.deepEqual((await request(base,"/api/threads","GET",null,a.code)).value.data.threads.map(x=>x.id),[created]);
     assert.deepEqual((await request(base,"/api/task-summary","GET",null,a.code)).value.threads.map(x=>x.id),[created]);
     const status=(await request(base,"/api/status","GET",null,a.code)).value;

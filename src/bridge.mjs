@@ -20,6 +20,7 @@ import { TaskReports } from "./task-reports.mjs";
 import { DurableJson } from "./durable-json.mjs";
 import { markOfficialReportRead } from "./official-report-read.mjs";
 import { resolveOfficialHome } from "./official-read-state.mjs";
+import { OfficialGoalReader, goalInput, goalPrompt, goalSyncPrompt } from './official-goal.mjs';
 import { readThreadList } from './thread-list-read.mjs';
 import { visibleOwnerReport, ownerReport } from './visible-report.mjs';
 import { renameThread } from "./thread-titles.mjs";
@@ -50,7 +51,8 @@ export const ROOT = path.resolve(
 export class Bridge extends EventEmitter {
   constructor(
     dataDir = DATA_DIR,
-    { desktopFactory = (context) => new Desktop(context), retryDelays, homeResolver = resolveOfficialHome } = {},
+    { desktopFactory = (context) => new Desktop(context), retryDelays, homeResolver = resolveOfficialHome,
+      goalReader = new OfficialGoalReader() } = {},
   ) {
     super();
     this.dataDir = dataDir;
@@ -73,6 +75,7 @@ export class Bridge extends EventEmitter {
     this.taskReports = new TaskReports(this);
     this.desktopFactory = desktopFactory;
     this.homeResolver = homeResolver;
+    this.goalReader = goalReader;
     this.retryDelays = retryDelays;
     this.connectionGeneration = 0;
     this.subscriptions = new SubscriptionLeases(id => this.releaseSubscription(id));
@@ -120,6 +123,7 @@ export class Bridge extends EventEmitter {
     this.threadListRead = null;
     this.rolloutHistory.clear();
     this.media.deferred.clear();
+    this.goalReader.close();
     this.desktop?.close();
     this.live.clear();
     this.queue.clear();
@@ -167,6 +171,7 @@ export class Bridge extends EventEmitter {
     this.threadListRead = null;
     this.rolloutHistory.clear();
     this.media.deferred.clear();
+    this.goalReader.close();
     this.subscriptions.clear();
     this.connectionGeneration++;
     this.reconnector?.stop();
@@ -681,6 +686,100 @@ export class Bridge extends EventEmitter {
   }
   create(key, prompt, options, projectInput, imageDataUrls, onCreated) {
     return this.createTask(key, prompt, options, projectInput, imageDataUrls, false, onCreated);
+  }
+  async goal(id) {
+    this.requireConnection();
+    const read = await this.codexThread(id);
+    if (read.thread.kind !== 'codex') throw Error('Goal 仅适用于本机 Codex 会话');
+    const home = this.officialDataHome();
+    if (!home) throw Error('无法确认官方 Codex 数据目录，Goal 状态未读取');
+    const stored = await this.goalReader.get(home, id);
+    const goal = stored;
+    const live = this.live.get(id)?.state?.threadGoal;
+    return { goal, source: 'official-codex-app-server-goal-get',
+      observedAt: new Date().toISOString(),
+      desktopSynced: !goal || !this.live.has(id) ? null :
+        !!live && live.objective === goal.objective && live.status === goal.status };
+  }
+  async createGoal(key, objective, tokenBudget, options, projectInput, onCreated) {
+    const goal = goalInput(objective, tokenBudget);
+    this.requireConnection();
+    const home = this.officialDataHome();
+    if (!home) throw Error('官方 Goal 数据目录不可用，未创建会话');
+    await this.goalReader.connect(home);
+    const created = await this.createTask(key, goalPrompt(goal), options, projectInput, undefined, false, onCreated);
+    const id = created.result?.threadId;
+    if (created.status !== 'accepted' || !id) return created;
+    let confirmation;
+    try {
+      const currentHome = this.officialDataHome();
+      if (!currentHome) throw Error('官方 Goal 读取暂不可用');
+      confirmation = await this.goalReader.awaitObjective(currentHome, id, goal.objective, 30000, goal.tokenBudget);
+      if (!confirmation.confirmed && this.live.get(id)?.state?.completedThreadGoal?.objective === goal.objective)
+        confirmation = { confirmed: true, goal: this.live.get(id).state.completedThreadGoal };
+    } catch (error) { confirmation = { confirmed: false, error: error.message }; }
+    return { ...created, goalConfirmation: confirmation };
+  }
+  async updateGoal(id, key, objective, tokenBudget, expectedTurnId, expectedObjective) {
+    this.requireConnection();
+    const before = await this.goal(id);
+    if (expectedObjective !== undefined && expectedObjective !== (before.goal?.objective ?? null))
+      throw Error('官方目标已在其他窗口变化，未覆盖；请刷新后重新编辑');
+    const goal = goalInput(objective, tokenBudget === undefined ? before.goal?.tokenBudget : tokenBudget);
+    const unchanged = before.goal?.objective === goal.objective &&
+      (before.goal?.tokenBudget ?? null) === (goal.tokenBudget ?? null);
+    if (unchanged && before.desktopSynced !== false)
+      return { status: 'accepted', unchanged: true, goalConfirmation: { confirmed: true, goal: before.goal } };
+    const current = await this.codexThread(id);
+    if (!['active', 'idle', 'notLoaded'].includes(current.thread.status?.type))
+      throw Error('官方会话状态未知，目标没有修改；请刷新后重试');
+    if (!before.goal) {
+      // The first Goal must be created by the desktop-owned app-server so its
+      // own auto-continuation loop learns that the thread is in Goal mode.
+      const prompt = goalPrompt(goal);
+      const result = current.thread.status.type === 'active'
+        ? await this.nativeSteer(id, key, prompt, undefined, expectedTurnId)
+        : await this.nativeSend(id, key, prompt);
+      if (result.status !== 'accepted') return result;
+      let confirmation;
+      try { confirmation = await this.goalReader.awaitObjective(this.officialDataHome(), id, goal.objective, 30000, goal.tokenBudget); }
+      catch (error) { confirmation = { confirmed: false, error: error.message }; }
+      return { ...result, goalConfirmation: confirmation };
+    }
+    const home = this.officialDataHome();
+    if (!home) throw Error('官方 Goal 数据目录不可用，目标没有修改');
+    let officialGoal = before.goal;
+    if (!unchanged) {
+      // An assistant cannot call create_goal while an unfinished Goal exists.
+      // Use the official app-server's documented set method, then tell the
+      // desktop owner about the new objective through its live turn channel.
+      const set = await this.once(key, 'goal-set', { id, goal }, async dispatch => {
+        this.requireConnection();
+        if (this.officialDataHome() !== home) throw Error('官方数据目录已变化，目标没有修改');
+        dispatch();
+        return this.goalReader.set(home, id, goal);
+      }, { deferredDispatch: true });
+      if (set.status !== 'accepted') return { ...set, goalConfirmation: { confirmed: false } };
+      officialGoal = set.result;
+    }
+    let ownerSync = { confirmed: false, sent: false };
+    try {
+      const syncKey = 'goal-sync-' + createHash('sha256').update(key).digest('hex');
+      const prompt = goalSyncPrompt(goal);
+      const sent = current.thread.status.type === 'active'
+        ? await this.nativeSteer(id, syncKey, prompt, undefined, expectedTurnId)
+        : await this.nativeSend(id, syncKey, prompt);
+      ownerSync.sent = sent.status === 'accepted';
+      for (let i = 0; i < 15 && ownerSync.sent; i++) {
+        const live = this.live.get(id)?.state?.threadGoal;
+        if (live?.objective === goal.objective && live.status === 'active') {
+          ownerSync.confirmed = true;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } catch (error) { ownerSync.error = error.message; }
+    return { status: 'accepted', goalConfirmation: { confirmed: true, goal: officialGoal }, ownerSync };
   }
   createProbe(key, prompt, options, projectInput, imageDataUrls) {
     return this.createTask(key, prompt, options, projectInput, imageDataUrls, true);

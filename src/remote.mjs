@@ -25,13 +25,13 @@ export function allowedRoute(method, url) {
   )
     return true;
   const m =
-    /^\/api\/threads\/[\w-]+(?:\/(follow|open|activate|messages|interrupt|files|file|settings|queue|questions|approvals|title|media|read-receipt))?$/.exec(
+    /^\/api\/threads\/[\w-]+(?:\/(follow|open|activate|messages|interrupt|files|file|settings|queue|questions|approvals|title|media|read-receipt|goal))?$/.exec(
       u.pathname,
     );
   return (
     !!m &&
     (method === "GET"
-      ? !m[1] || ["files", "file", "queue", "media"].includes(m[1])
+      ? !m[1] || ["files", "file", "queue", "media", "goal"].includes(m[1])
       : method === "POST" &&
         [
           "follow",
@@ -45,6 +45,7 @@ export function allowedRoute(method, url) {
           "approvals",
           "title",
           "read-receipt",
+          "goal",
         ].includes(m[1]))
   );
 }

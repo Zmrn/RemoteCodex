@@ -248,6 +248,7 @@
             </button>
           </div>
           <div class="heading-actions">
+            <button id="goal-open" class="goal-heading-button" type="button" hidden>目标</button>
             <span id="connection" class="badge neutral" role="status"
               >正在连接</span
             ><button
@@ -268,6 +269,12 @@
             </button>
           </div>
         </header>
+        <section id="goal-card" class="goal-card" aria-label="当前目标" hidden>
+          <div class="goal-card-top"><strong>Goal</strong><span id="goal-status"></span><button id="goal-edit" type="button">编辑目标</button></div>
+          <p id="goal-objective"></p>
+          <div id="goal-usage" class="goal-usage"></div>
+          <p id="goal-sync-note" class="field-help" hidden></p>
+        </section>
         <div id="error" class="error-banner" role="alert" hidden></div>
         <pre id="metadata" hidden></pre>
         <div id="message-scroll" class="message-scroll">
@@ -301,6 +308,10 @@
           <div id="files"></div>
         </aside>
         <div class="composer-area">
+          <div id="goal-create-options" class="goal-create-options" hidden>
+            <button id="goal-mode-toggle" type="button" aria-pressed="false">普通对话</button>
+            <label id="goal-budget-label" hidden>Token 预算 <input id="goal-budget" type="number" min="1" max="10000000" step="1" placeholder="可选" inputmode="numeric"></label>
+          </div>
           <div
             id="message-queue"
             class="message-queue"
@@ -413,6 +424,16 @@
       <div id="project-options" role="menu" aria-label="当前设备的项目"></div>
       <p id="project-menu-note" class="field-help"></p>
     </div>
+    <dialog id="goal-dialog" class="goal-dialog">
+      <form id="goal-form" method="dialog">
+        <div class="dialog-heading"><div><span class="eyebrow">GOAL</span><h2 id="goal-dialog-title">编辑目标</h2></div><button type="button" id="goal-close" class="icon-button" aria-label="关闭">×</button></div>
+        <p class="dialog-intro">目标由官方 Codex 保存并执行。运行中修改会作为调整方向提交。</p>
+        <label>目标内容<textarea id="goal-editor" maxlength="4000" rows="7" required placeholder="描述希望持续完成的结果"></textarea></label>
+        <label>Token 预算（可选）<input id="goal-edit-budget" type="number" min="1" max="10000000" step="1" inputmode="numeric" placeholder="沿用当前设置"></label>
+        <p id="goal-dialog-note" class="field-help" role="status"></p>
+        <div class="settings-actions"><button id="goal-cancel" type="button" class="subtle">取消</button><button id="goal-save" type="submit">提交目标</button></div>
+      </form>
+    </dialog>
     <dialog id="agent-dialog">
       <form id="agent-form">
         <div class="dialog-heading">

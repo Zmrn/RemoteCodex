@@ -476,6 +476,27 @@ body[data-mode="chat"] .composer-footnote { line-height: 1.5; }
 .heading-actions .icon-button:hover {
   background: var(--surface-raised);
 }
+.goal-heading-button {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 6px 11px;
+  color: var(--blue);
+  font-size: 12px;
+}
+.goal-heading-button:hover, .goal-card button:hover, .goal-create-options button:hover { background: var(--hover); }
+.goal-card {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 30px 12px;
+  background: #192538;
+}
+.goal-card-top { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--blue); }
+.goal-card-top strong { letter-spacing: .06em; }
+.goal-card-top button { margin-left: auto; padding: 5px 8px; border-radius: 7px; color: var(--ink); }
+.goal-card p { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; max-height: 4.5em; overflow: auto; }
+.goal-card .goal-usage { color: var(--muted); font-size: 11px; margin-top: 7px; }
+.goal-card .field-help { color: var(--warning); }
+#goal-card[hidden], #goal-open[hidden], #goal-create-options[hidden], #goal-budget-label[hidden] { display: none; }
 .badge {
   display: inline-flex;
   align-items: center;
@@ -816,6 +837,11 @@ body[data-mode="chat"] .composer-footnote { line-height: 1.5; }
   padding: 0 16px 7px;
   background: var(--surface);
 }
+.goal-create-options { display: flex; align-items: center; gap: 12px; padding: 5px 14px 9px; color: var(--muted); font-size: 12px; }
+.goal-create-options button { border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; color: var(--ink); }
+.goal-create-options button[aria-pressed="true"] { border-color: var(--blue); color: var(--blue); background: #243952; }
+.goal-create-options label { display: inline-flex; align-items: center; gap: 7px; }
+.goal-create-options input { width: 100px; min-width: 0; border: 1px solid var(--line); border-radius: 7px; padding: 4px 6px; background: var(--surface-raised); }
 .composer {
   border: 1px solid var(--line);
   border-radius: 27px;

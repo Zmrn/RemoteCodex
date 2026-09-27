@@ -116,6 +116,8 @@ let liveSettingsState = null,
   settingsTarget = null,
   pendingSettings = new Map(),
   booting = true;
+let goalCompose = false, goalState = null, goalReadSequence = 0,
+  goalFetchedAt = 0, goalSubmitting = false, goalEditBaseline = null;
 let usageData = null,
   usageState = "loading",
   usageReason = "",
@@ -175,6 +177,10 @@ function draftSnapshot() {
     discardedRecoveries: draftDiscards.snapshot(),
     settings: [...pendingSettings],
     creationProjects: projectPicker.snapshot(),
+    goalCompose, goalTokenBudget: $('goal-budget').value,
+    goalEditor: $('goal-dialog').open ? { agent: $('goal-dialog').dataset.agent,
+      thread: $('goal-dialog').dataset.thread, text: $('goal-editor').value,
+      tokenBudget: $('goal-edit-budget').value } : null,
     prompt: $("prompt").value,
     files: [...composerImages],
     questions: questionUI.snapshot(),
@@ -189,6 +195,8 @@ function guardDraftTargets() {
   modeSelections.clear();for(const [key,value] of saved.modeSelections)modeSelections.set(key,value);
   draftDiscards.entries.clear();draftDiscards.restore(saved.discardedRecoveries);
   questionUI.restore(saved.questions);projectPicker.restore(saved.creationProjects);
+  goalCompose = !!saved.goalCompose;
+  $('goal-budget').value = saved.goalTokenBudget ?? '';
   draftBindings = new Map(saved.deviceBindings);orphanedDrafts = saved.orphanedDrafts;
   if(protectedDrafts.blockedActive){
     setPromptValue("");setImages([]);renderAttachment();
@@ -530,6 +538,9 @@ function agentApi(id, route, body, options = {}) {
 let taskActivation = null;
 function resetTaskReads() {
   taskActivation = null;
+  goalState = null;
+  goalFetchedAt = 0;
+  goalReadSequence++;
   releaseViewing();
   readSequence++;
   clearTimeout(readTimer);
@@ -737,6 +748,145 @@ function questionAccess() {
 function isReadOnlyTask() {
   return (status.readOnlyThreadIds ?? status.protectedThreadIds ?? [status.protectedThreadId]).includes(selected);
 }
+const goalStatusLabels = { active: '运行中', paused: '已暂停', blocked: '需处理',
+  usageLimited: '额度受限', budgetLimited: '预算用尽', complete: '已完成' };
+function goalBudgetValue(input) {
+  const value = input.value.trim();
+  if (!value) return undefined;
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 1 || number > 10000000)
+    throw Error('Token 预算须为 1–10000000 的整数');
+  return number;
+}
+function renderGoalControls() {
+  const codex = mode === 'codex', fresh = selected === null;
+  $('goal-create-options').hidden = !codex || !fresh;
+  $('goal-mode-toggle').textContent = goalCompose ? 'Goal 模式' : '普通对话';
+  $('goal-mode-toggle').setAttribute('aria-pressed', String(goalCompose));
+  $('goal-budget-label').hidden = !goalCompose;
+  $('goal-budget').disabled = !goalCompose || busy.has(agentId + ':create');
+  $('goal-open').hidden = !codex || fresh;
+  $('goal-open').textContent = goalState?.goal ? 'Goal' : '设置目标';
+  $('goal-open').disabled = !status.connected || isReadOnlyTask() || goalSubmitting;
+  $('goal-card').hidden = !codex || fresh || !goalState?.goal;
+  const goal = goalState?.goal;
+  if (goal && codex && !fresh) {
+    $('goal-status').textContent = goalStatusLabels[goal.status] ?? goal.status;
+    $('goal-objective').textContent = goal.objective;
+    const usage = [`已用 ${Number(goal.tokensUsed ?? 0).toLocaleString()} tokens`];
+    if (goal.tokenBudget != null) usage.push(`预算 ${Number(goal.tokenBudget).toLocaleString()}`);
+    if (goal.timeUsedSeconds != null) usage.push(`用时 ${Math.floor(goal.timeUsedSeconds / 60)} 分钟`);
+    $('goal-usage').textContent = usage.join(' · ');
+    $('goal-sync-note').hidden = goalState.desktopSynced !== false;
+    $('goal-sync-note').textContent = goalState.desktopSynced === false
+      ? '官方目标已保存；桌面实时同步尚未确认，请核对当前运行轮次。' : '';
+  }
+  $('goal-edit').disabled = !status.connected || isReadOnlyTask() || goalSubmitting;
+  $('prompt').placeholder = goalCompose && codex && fresh ? '描述希望持续完成的目标' : '随心输入';
+}
+async function refreshGoal(force = false) {
+  if (!selected || mode !== 'codex' || !status.connected) return false;
+  if (!force && Date.now() - goalFetchedAt < 8000) return true;
+  const a = agentId, id = selected, epoch = viewEpoch, seq = ++goalReadSequence;
+  goalFetchedAt = Date.now();
+  try {
+    const result = await agentApi(a, '/threads/' + id + '/goal');
+    if (a !== agentId || id !== selected || epoch !== viewEpoch || seq !== goalReadSequence) return false;
+    goalState = result;
+    renderGoalControls();
+    return true;
+  } catch (cause) {
+    if (a !== agentId || id !== selected || epoch !== viewEpoch || seq !== goalReadSequence) return false;
+    if (goalState?.goal) {
+      $('goal-sync-note').hidden = false;
+      $('goal-sync-note').textContent = '目标状态暂时无法刷新：' + cause.message;
+    }
+    if (force) error(Error('官方 Goal 状态读取失败：' + cause.message));
+    return false;
+  }
+}
+async function openGoalEditor() {
+  if (!selected || mode !== 'codex') return;
+  const a = agentId, id = selected, epoch = viewEpoch;
+  if (!await refreshGoal(true)) return;
+  if (a !== agentId || id !== selected || epoch !== viewEpoch) return;
+  $('goal-dialog').dataset.agent = agentId;
+  $('goal-dialog').dataset.thread = selected;
+  goalEditBaseline = { agent: agentId, thread: selected, objective: goalState?.goal?.objective ?? null };
+  $('goal-editor').value = goalState?.goal?.objective ?? '';
+  $('goal-edit-budget').value = goalState?.goal?.tokenBudget ?? '';
+  $('goal-dialog-title').textContent = goalState?.goal ? '编辑目标' : '设置目标';
+  $('goal-dialog').querySelector('.dialog-intro').textContent = goalState?.goal
+    ? '修改目标会重置这项目标的用量统计。新目标直接保存在官方 Codex；运行中的当前轮次会收到调整方向。'
+    : '目标由官方 Codex 保存并执行。';
+  $('goal-dialog-note').textContent = '';
+  $('goal-save').disabled = false;
+  $('goal-dialog').showModal();
+  $('goal-editor').focus();
+}
+$('goal-mode-toggle').onclick = () => {
+  goalCompose = !goalCompose;
+  renderGoalControls();
+  permissions();
+  scheduleDraftBackup();
+};
+$('goal-budget').oninput = () => { permissions(); scheduleDraftBackup(); };
+$('goal-open').onclick = openGoalEditor;
+$('goal-edit').onclick = openGoalEditor;
+$('goal-close').onclick = $('goal-cancel').onclick = () => $('goal-dialog').close();
+$('goal-dialog').addEventListener('close', () => { goalEditBaseline = null; scheduleDraftBackup(); });
+$('goal-editor').oninput = $('goal-edit-budget').oninput = scheduleDraftBackup;
+$('goal-form').onsubmit = async event => {
+  event.preventDefault();
+  if (!selected || !status.connected || goalSubmitting) return;
+  if ($('goal-dialog').dataset.agent !== agentId || $('goal-dialog').dataset.thread !== selected) {
+    $('goal-dialog-note').textContent = '目标设备或会话已变化，请关闭后重新打开'; return;
+  }
+  const objective = $('goal-editor').value.trim();
+  if (!objective || objective.length > 4000) { $('goal-dialog-note').textContent = '目标须为 1–4000 个字符'; return; }
+  let tokenBudget;
+  try { tokenBudget = goalBudgetValue($('goal-edit-budget')); }
+  catch (cause) { $('goal-dialog-note').textContent = cause.message; return; }
+  const a = agentId, id = selected, epoch = viewEpoch;
+  const active = taskData?.thread?.status?.type === 'active';
+  const expectedTurnId = active ? taskData?.live?.activeTurnId : undefined;
+  if (active && !expectedTurnId) { $('goal-dialog-note').textContent = '当前运行轮次尚未确认，请刷新会话后重试'; return; }
+  goalSubmitting = true;
+  $('goal-save').disabled = true;
+  $('goal-dialog-note').textContent = '正在提交给官方 Codex，并核对目标记录…';
+  renderGoalControls();
+  try {
+    await backupDrafts();
+    const payload = { objective, tokenBudget, expectedTurnId,
+      expectedObjective: goalEditBaseline?.agent === a && goalEditBaseline?.thread === id
+        ? goalEditBaseline.objective : null };
+    const entry = await journal(a, id, 'goal-update', payload);
+    const result = await agentApi(a, '/threads/' + id + '/goal', { ...payload, requestId: entry.id });
+    if (result.status !== 'accepted') throw Error(result.error || '目标更新结果未知；请刷新核对，不要重复提交');
+    if (result.goalConfirmation?.confirmed) {
+      entry.clear();
+      if (a === agentId && id === selected && epoch === viewEpoch) {
+        goalState = { goal: result.goalConfirmation.goal, desktopSynced: false };
+        $('goal-dialog').close();
+        renderGoalControls();
+        refreshGoal(true).catch(() => {});
+        read();
+        toast(result.ownerSync && !result.ownerSync.confirmed
+          ? '官方目标已保存；当前轮次同步尚未确认' : '官方目标已更新');
+      }
+    } else if (a === agentId && id === selected && epoch === viewEpoch) {
+      $('goal-dialog-note').textContent = '更新指令已发送，但官方目标尚未确认。请先刷新核对，避免重复提交。';
+      refreshGoal(true).catch(() => {});
+    }
+  } catch (cause) {
+    if (a === agentId && id === selected && epoch === viewEpoch)
+      $('goal-dialog-note').textContent = cause.message;
+  } finally {
+    goalSubmitting = false;
+    renderGoalControls();
+    if ($('goal-dialog').open && !$('goal-dialog-note').textContent.includes('尚未确认')) $('goal-save').disabled = false;
+  }
+};
 function permissions() {
   const fresh = selected === null;
   const readOnlyTask = isReadOnlyTask();
@@ -766,7 +916,7 @@ function permissions() {
     agentId + ":create",
   );
   $("prompt").disabled = booting || !recoveryLoaded || !canEdit || submitting;
-  $("image").disabled = chat || $("prompt").disabled;
+  $("image").disabled = chat || $("prompt").disabled || (fresh && goalCompose);
   $("attach-label").title = fresh && status.imageCreation?.supported !== true
     ? "可先添加图片；更新目标电脑的 Remote Codex 后发送"
     : "添加图片（最多 20 张，每张 5 MB，合计 10 MB；PNG / JPEG / WebP）";
@@ -781,6 +931,8 @@ function permissions() {
     taskActivation?.pending ||
     (!chat && taskData?.thread?.status?.type === "notLoaded" && composerImages.length > 0) ||
     (fresh && composerImages.length > 0 && status.imageCreation?.supported !== true) ||
+    (fresh && !chat && goalCompose && (composerImages.length > 0 || $('prompt').value.trim().length > 4000 ||
+      (Boolean($('goal-budget').value) && (!Number.isSafeInteger(Number($('goal-budget').value)) || Number($('goal-budget').value) < 1 || Number($('goal-budget').value) > 10000000)))) ||
     (!$("prompt").value.trim() && !composerImages.length);
   $("send").title = submitting
     ? "提交中…"
@@ -843,6 +995,8 @@ function permissions() {
   $("destination").textContent = currentAgent()?.name ?? "";
   const loading = taskActivation && (taskActivation.pending || taskActivation.error);
   if (loading) $('writable').textContent = '';
+  if (fresh && goalCompose && composerImages.length) $('writable').textContent = 'Goal 新建暂不支持图片；请先移除图片，创建目标后再发送';
+  renderGoalControls();
   $('task-activation').hidden = !loading;
   $('task-activation').querySelector('span').textContent = loading
     ? taskActivation.pending ? '正在加载官方会话… 可继续编辑草稿' : taskActivation.error : '';
@@ -1341,6 +1495,7 @@ function saveDraft() {
   else if (files.length) takenDrafts.set(taskKey(), { files });
 }
 async function switchAgent(id, record = true, resumeId = null, nextMode = mode, { preserveAgentMenu = false } = {}) {
+  if ($('goal-dialog').open) $('goal-dialog').close();
   sidebarReports.reset();
   $("mode-menu").hidePopover();
   viewerRecovery?.stop();
@@ -1476,6 +1631,7 @@ async function selectThread(id, record = true, { preserveDrawer = false } = {}) 
   const a = agentId,
     g = generation;
   closeSettingsMenu(false);
+  if ($('goal-dialog').open) $('goal-dialog').close();
   viewEpoch++;
   document.querySelector(".conversation").classList.remove("is-new");
   // Restoring a task after a mode/device change must not dismiss navigation.
@@ -1530,6 +1686,7 @@ async function selectThread(id, record = true, { preserveDrawer = false } = {}) 
     )
       error(Error("历史可读；实时状态尚不可用：" + e.message));
   });
+  if (mode === 'codex') refreshGoal(true).catch(() => {});
   await read();
 }
 function renderItem(item, turnId, previous) {
@@ -1569,6 +1726,14 @@ function renderItem(item, turnId, previous) {
       return card;
     }
     text = mode === "chat" ? text : (item.bridgeDisplay?.text ?? userContent(text).text);
+    if (mode === 'codex' && (text.startsWith('请进入 Goal 模式：先调用官方 create_goal 工具') ||
+        text.startsWith('请使用官方 Goal 工具把当前目标更新为'))) {
+      try {
+        const payload = JSON.parse(text.slice(text.lastIndexOf('\n') + 1));
+        if (typeof payload.objective === 'string')
+          text = (text.startsWith('请进入') ? '设置目标：' : '更新目标：') + payload.objective;
+      } catch {}
+    }
     images = (item.content ?? item.input ?? []).filter(
       (c) =>
         c.type === "image" &&
@@ -2394,6 +2559,7 @@ async function navigateBy(delta) {
 }
 function newConversation(record = true, { preserveDrawer = false } = {}) {
   if (!currentAgent()) { editAgent(null); return; }
+  if ($('goal-dialog').open) $('goal-dialog').close();
   closeSettingsMenu(false);
   projectPicker.close();
   if (mode === "codex" && record) projectPicker.prefer(
@@ -2449,6 +2615,7 @@ async function submitMessage({ steer = false } = {}) {
     v = viewEpoch,
     fresh = t === null,
     m = mode,
+    freshGoal = fresh && m === 'codex' && goalCompose,
     running = m === "codex" && !fresh && taskData?.thread?.status?.type === "active",
     steering = steer && running,
     enqueue = running && !steering,
@@ -2457,6 +2624,7 @@ async function submitMessage({ steer = false } = {}) {
     files = [...composerImages],
     multiImageSupported = status.multiImageInput === true;
   if (!prompt.trim() && !files.length) return;
+  if (freshGoal && files.length) { error(Error('Goal 新建暂不支持图片，请先移除图片')); return; }
   const expectedTurnId = steering ? taskData?.live?.activeTurnId : null;
   if (steering && (status.steer?.supported !== true || !expectedTurnId)) {
     error(Error(status.steer?.supported !== true
@@ -2494,6 +2662,7 @@ async function submitMessage({ steer = false } = {}) {
       payload = {
         mode: m,
         prompt: prompt.trim() ? prompt : "请查看这些图片。",
+        ...(freshGoal ? { goal: { objective: prompt.trim(), tokenBudget: goalBudgetValue($('goal-budget')) } } : {}),
         ...(creationProject ? { project: creationProject } : {}),
         ...(takenDrafts.get(taskKey(a, t))
           ? { recoveryId: takenDrafts.get(taskKey(a, t)).recoveryId }
@@ -2504,7 +2673,7 @@ async function submitMessage({ steer = false } = {}) {
     const j = sendJournal = await journal(
       a,
       fresh ? "new" : t,
-      fresh ? "create" : steering ? "steer" : enqueue ? "enqueue" : "send",
+      fresh ? (freshGoal ? "create-goal" : "create") : steering ? "steer" : enqueue ? "enqueue" : "send",
       payload,
     );
     const r = enqueue
@@ -2536,10 +2705,12 @@ async function submitMessage({ steer = false } = {}) {
       setImages([]);
       renderAttachment();
       if (fresh) {
+        if (freshGoal) { goalCompose = false; $('goal-budget').value = ''; }
         pendingCreated = { id: r.result.threadId, generation: g };
         // The official create ID can open content immediately, even before its index catches up.
         scheduleSidebar();
         if (g === generation && v === viewEpoch) await selectThread(r.result.threadId);
+        if (freshGoal && r.goalConfirmation?.confirmed !== true) toast('会话已创建；官方目标尚未确认，请在会话顶部查看');
       } else await read();
       if (enqueue) toast("已加入官方队列");
       if (steering) toast("已提交调整方向");
@@ -3505,11 +3676,18 @@ api("/api/agents")
     if (saved) {
       draft = new Map(saved.drafts || []);
       pendingSettings = new Map(saved.settings || []);
+      goalCompose = !!saved.goalCompose;
+      $('goal-budget').value = saved.goalTokenBudget ?? '';
       takenDrafts.clear();
       for (const [key, value] of saved.taken || []) takenDrafts.set(key, value);
       setPromptValue(saved.prompt || "");
       setImages(saved.files ?? (saved.file ? [saved.file] : []));
       renderAttachment();
+      if (saved.goalEditor?.agent === agentId && saved.goalEditor?.thread === selected && mode === 'codex') {
+        await openGoalEditor();
+        $('goal-editor').value = saved.goalEditor.text ?? '';
+        $('goal-edit-budget').value = saved.goalEditor.tokenBudget ?? '';
+      }
       await backupDrafts();
     }
   })
@@ -3524,6 +3702,10 @@ api("/api/agents")
     widgetDestination = null;
     if (destination) window.remoteCodexOpenTask(destination).catch(error);
   });
+setInterval(() => {
+  if (!booting && !document.hidden && status.connected && selected && mode === 'codex')
+    refreshGoal().catch(() => {});
+}, 12000);
 let checkingInstance = false;
 setInterval(async () => {
   if (booting || checkingInstance) return;

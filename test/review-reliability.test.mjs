@@ -74,6 +74,14 @@ test('removed or repointed devices quarantine text and original files while vali
   for(const targets of [[b],[{...a,host:'100.70.0.3'},b]]){const result=protectRecovery(saved,targets);assert.equal(result.blockedActive,true);assert.equal(result.saved.prompt,'');assert.equal(result.saved.thread,null);assert.deepEqual(result.saved.drafts,[[b.id+':null','B only']]);const entries=orphanEntries(result.saved.orphanedDrafts[0]);assert.equal(entries.length,1);assert.equal(entries[0].taken.files[0].size,file.size);assert.equal(entries[0].text,'A only');}
   assert.equal(protectRecovery(saved,[a,b]).blockedActive,false);assert.equal(saved.prompt,'A only');
 });
+test('a Goal editor draft is preserved when its device binding changes',()=>{
+  const a={id:'11111111-1111-4111-8111-111111111111',name:'A',kind:'remote',host:'100.70.0.1',port:43128};
+  const saved={agent:a.id,mode:'codex',thread:'33333333-3333-4333-8333-333333333333',prompt:'',files:[],drafts:[],taken:[],settings:[],
+    deviceBindings:[[a.id,{binding:draftBinding(a),name:'A'}]],goalEditor:{agent:a.id,thread:'33333333-3333-4333-8333-333333333333',text:'未提交的新目标',tokenBudget:'500'}};
+  const result=protectRecovery(saved,[{...a,host:'100.70.0.2'}]);
+  assert.equal(result.saved.goalEditor,null);
+  assert.equal(orphanEntries(result.saved.orphanedDrafts[0]).find(row=>row.text==='未提交的新目标')?.mode,'codex');
+});
 test('diagnostics distinguish network, authentication, official availability and capabilities without exporting tasks',()=>{
   const projected=diagnosticStatus({source:'official-desktop-IPC-live',connected:true,bridgeVersion:'0.10.24',desktopCompatibility:{detectedVersion:'26.903.8094.0',verifiedVersions:['26.903.8094.0']},existingCodexWritable:true,threads:{private:'content'},token:'fixture-secret',chat:{read:true},taskSummary:{schemaVersion:2,statePolicy:'official-only'}});
   const report={schemaVersion:1,resolved:true,tcp:true,httpStatus:200,bridge:projected};const raw=diagnosticExport(report);assert.ok(!raw.includes('private')&&!raw.includes('secret'));assert.equal(diagnosticChecks(report).find(c=>c.key==='official').status,'ok');

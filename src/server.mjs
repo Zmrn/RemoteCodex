@@ -24,7 +24,7 @@ import { UsageHistory } from './usage-history.mjs';
 import { UsageRecorder } from './usage-recorder.mjs';
 import { LimitedAccess } from './limited-access.mjs';
 import { LimitedBridge } from './limited-bridge.mjs';
-const limitedThreadRoute = /^\/api\/threads\/[a-f0-9-]{36}(?:\/(?:messages|follow|open|activate|files|file|interrupt|settings|queue|questions|approvals|title|media|read-receipt))?$/;
+const limitedThreadRoute = /^\/api\/threads\/[a-f0-9-]{36}(?:\/(?:messages|follow|open|activate|files|file|interrupt|settings|queue|questions|approvals|title|media|read-receipt|goal))?$/;
 function limitedRoute(method, pathname) {
   if (method === "GET") return /^\/api\/(?:status|events|threads|task-summary|models|usage|usage\/history|instance)$/.test(pathname) || limitedThreadRoute.test(pathname);
   if (method === "POST") return /^\/api\/(?:connect|threads)$/.test(pathname) || limitedThreadRoute.test(pathname);
@@ -312,11 +312,12 @@ export async function startServer({
       if (req.method === "GET" && url.pathname === "/api/usage/history")
         return json(res, 200, usageRecorder.read(Number(url.searchParams.get("days") ?? 7)));
       const match =
-        /^\/api\/threads\/([\w-]+)(?:\/(messages|follow|open|activate|files|file|interrupt|settings|queue|questions|approvals|title|media|read-receipt))?$/.exec(
+        /^\/api\/threads\/([\w-]+)(?:\/(messages|follow|open|activate|files|file|interrupt|settings|queue|questions|approvals|title|media|read-receipt|goal))?$/.exec(
           url.pathname,
         );
       if (req.method === "GET" && match) {
         const id = match[1];
+        if (match[2] === 'goal') return json(res, 200, await bridge.goal(id));
         if (match[2] === "media") {
           const file = bridge.media.read(id, url.searchParams.get("id"));
           return mediaResponse(req, res, file);
@@ -489,7 +490,11 @@ export async function startServer({
       if (url.pathname === "/api/threads")
       {
         if (limitedIdentity && body.project != null) throw Error("Limit 版只能创建无项目会话");
-        const result = await bridge.create(body.requestId, body.prompt, body.settings, body.project, imagesFromBody(body),
+        if (body.goal && imagesFromBody(body).length) throw Error('Goal 新建暂不支持附带图片，请先创建目标，再发送图片');
+        const result = body.goal ? await bridge.createGoal(body.requestId, body.goal.objective,
+          body.goal.tokenBudget, body.settings, body.project,
+          limitedIdentity ? id => limitedAccess.remember(limitedIdentity, id) : undefined)
+          : await bridge.create(body.requestId, body.prompt, body.settings, body.project, imagesFromBody(body),
           limitedIdentity ? id => limitedAccess.remember(limitedIdentity, id) : undefined);
         if (limitedIdentity) {
           const id = result.result?.threadId;
@@ -500,6 +505,8 @@ export async function startServer({
       }
       if (match) {
         const id = match[1];
+        if (match[2] === 'goal') return json(res, 200, await bridge.updateGoal(id, body.requestId,
+          body.objective, body.tokenBudget, body.expectedTurnId, body.expectedObjective));
         if (match[2] === "title") return json(res, 200, await bridge.renameThread(id, body));
         if (match[2] === "approvals")
           return json(res, 200, await bridge.answerApproval(id, body.requestId, body));
