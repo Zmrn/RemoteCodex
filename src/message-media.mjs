@@ -36,6 +36,17 @@ function localImageRevision(file, revisions) {
   revisions?.set(file, revision);
   return revision;
 }
+function officialFileCitation(attributes) {
+  const fields = new Map();
+  const remainder = attributes.replace(/([A-Za-z][\w-]*)="((?:\\.|[^"\\])*)"/g, (_, key, value) => {
+    fields.set(key, value.replace(/\\(["\\])/g, '$1'));
+    return '';
+  });
+  if (remainder.trim() || !fields.has('path')) return null;
+  const source = fields.get('path');
+  if (!source || /[\r\n\0]/.test(source)) return null;
+  return {source, name: path.win32.basename(source) || '文件'};
+}
 export function imageType(bytes) {
   if (['GIF87a', 'GIF89a'].some(header => bytes.subarray(0, 6).equals(Buffer.from(header))))
     return 'image/gif';
@@ -212,6 +223,17 @@ export class MessageMedia {
               );
           }
           if (item.type === "agentMessage" && typeof text === "string") {
+            // The official desktop sends generated files as directives rather
+            // than Markdown links. Register the exact cited path on the target
+            // device so both local and remote clients can use the existing
+            // authenticated, thread-scoped file download endpoint.
+            text = text.replace(/:codex-file-citation\{([^{}\r\n]{0,2048})\}/g, (whole, attributes) => {
+              const citation = officialFileCitation(attributes);
+              if (!citation) return whole;
+              const ref = this.addFile(threadId, citation.source, citation.name);
+              files.push(ref ?? {name: citation.name});
+              return citation.name;
+            });
             text = text.replace(
               /!\[([^\]]*)\]\(<?((?:[A-Za-z]:[\\/]|\/)[^\n]*?)>?\)/g,
               (whole, label, file) => {

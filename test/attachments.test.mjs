@@ -73,6 +73,38 @@ test("message file wrappers and assistant links become scoped IDs preserving ori
   assert.throws(() => media.openFile("one", refs[0].id));
 });
 
+test("official output file citations become downloadable attachments without exposing local paths", async () => {
+  const dir = scratch(), file = path.join(dir, "MOD_AUTHORING_GUIDE.pdf");
+  const bytes = Buffer.from("%PDF-1.4\nfixture\n");
+  fs.writeFileSync(file, bytes);
+  const bridge = new Bridge(dir), threadId = "66666666-6666-4666-8666-666666666666";
+  bridge.connect = async () => {};
+  const citation = `:codex-file-citation{path="${file.replaceAll('\\', '/')}" purpose="output"}`;
+  const result = bridge.media.decorate(threadId, {turns: [{items: [{
+    type: "agentMessage", text: `已整理成图解指南：${citation}`,
+  }]}]});
+  const display = result.turns[0].items[0].bridgeDisplay;
+  assert.equal(display.text, "已整理成图解指南：MOD_AUTHORING_GUIDE.pdf");
+  assert.ok(!JSON.stringify(display).includes(dir));
+  assert.equal(display.files.length, 1);
+  assert.equal(display.files[0].name, "MOD_AUTHORING_GUIDE.pdf");
+  assert.ok(display.files[0].id);
+  const instance = await startServer({port: 0, bridge});
+  try {
+    const headers = {"X-Bridge-CSRF": instance.secret};
+    const route = `${instance.address}/api/threads/${threadId}`;
+    const listing = await (await fetch(route + "/files", {headers})).json();
+    assert.equal(listing.files[0].id, display.files[0].id);
+    const response = await fetch(route + "/file?id=" + display.files[0].id, {headers});
+    assert.equal(response.status, 200);
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes);
+    assert.throws(() => bridge.media.openFile("other-thread", display.files[0].id), /此会话/);
+  } finally {
+    instance.server.closeAllConnections();
+    await new Promise(resolve => instance.server.close(resolve));
+  }
+});
+
 test("normal historical task downloads only registered attachments through authenticated streaming endpoint", async () => {
   const dir = scratch(),
     file = path.join(dir, "output.txt");
