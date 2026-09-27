@@ -1,5 +1,7 @@
 # Remote Codex 开发与发布约定
 
+- 2026-09-27 发布准备：用户明确要求“打包”Goal 模式，拟升至 0.10.52。从已提交的 `a90ce0730ded6b1f8f32f33209370860da85533a` 出发，只在干净隔离工作树准备版本与说明。最终版本先用 Node22.19.0 跑回归和兼容清单，等待同 SHA Checks 成功、preflight 后仅派发一次 GitHub Build；同次生成完整版与 Limit 版四包，验签、包内功能/版别、配置保护及匿名下载后发布。目标电脑 Windows 接入端和控制端需同版。官方 Goal 编辑后桌面 owner 实时同步未完全确认，不冒称完整行为验证；不执行 APK／模拟器、不升级现有客户端或写真实用户任务。正式结果以 GITHUB-UPDATES.md 后续记录为准。
+
 - 2026-09-27 最新源码：Codex Goal 模式支持新建、读取官方目标记录与运行中编辑。已有目标通过官方 `thread/goal/set` 保存，再通知桌面 owner；独立 app-server 的保存不保证桌面实时同步，界面必须分别提示确认状态。Limit 仍仅可操作本配对码创建的会话。回归与边界见 [GOAL-MODE.md](GOAL-MODE.md)。版本仍 0.10.51，未构建安装包；用户未明确要求打包时不得触发 Build。
 
 - 2026-09-27 最新发布：0.10.51 从 `f3065e194f2b79ce33e4b7cfff0fc52b82c13751` 经同 SHA Checks `36260841337` 与 preflight 成功后，由 Build `36261119331`（requestId `087ef156-6646-4aa0-9cad-be94e98f6637`）仅派发一次，同次生成完整版与 Limit 版 EXE/APK，正式发布 [Releases/v0.10.51](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.51)。修复官方 Windows x64 26.924.2738.0 新增必填 `callerSource` 后项目/会话无法读取，以及兼容页只看 `tools/list` 的误报。366 Node22.19.0、桌面/手机兼容界面、接口清单、真实只读官方工具调用通过；四包原 RSA/APK v2-v3 证书、包内修复源码/版别/渠道、EXE 隔离运行时/DPAPI、0.10.50→0.10.51 两版设备保存和匿名完整下载通过。发布上传一次网络超时，核对同草稿后恢复，14 项资源读回后公开；没有重构建。未执行 APK/模拟器、升级现有客户端、重启官方或写真实用户任务；新版真实写入行为未验证、Chat/Work 未完成范围不扩大，主工作区八份 Chat WIP 保留且历史 stash 不重放。四包哈希与边界见 GITHUB-UPDATES.md；纯记录提交不再打包。

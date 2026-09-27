@@ -6,4 +6,4 @@ Codex 新对话可切换到 Goal 模式，输入目标和可选 Token 预算。�
 
 独立 app-server 保存目标后，官方桌面 owner 不一定立即收到实时变更。界面区分“官方目标已保存”和“桌面实时同步已确认”，同步未确认时提示核对当前轮次；不能把保存回执当作续行已生效。请求结果未知时保留编辑草稿，先刷新官方记录再重试。Limit 配对码只允许读取和编辑该配对身份创建的会话，仍不能访问本机官方应用或选择项目。
 
-验证：`npm test`、`npm run compatibility`；Goal 相关测试在 `test/goal.test.mjs`，Limit 路由隔离在 `test/limited-access.test.mjs`。界面检查需覆盖桌面和窄屏的新建开关、预算输入、目标卡片及编辑弹窗。只有用户明确要求打包时才从 GitHub Actions 生成四个安装包。
+验证：`npm test`、`npm run compatibility`；Goal 相关测试在 `test/goal.test.mjs`，Limit 路由隔离在 `test/limited-access.test.mjs`，桌面和窄屏界面回归在 `scripts/verify-goal-ui.mjs`。只有用户明确要求打包时才从 GitHub Actions 生成四个安装包。
