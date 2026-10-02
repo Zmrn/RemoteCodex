@@ -1,6 +1,6 @@
 # GitHub 主仓库与按需云端构建
 
-截至 2026-09-27 最新发布：[0.10.52 Goal 模式四包](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.52)。同次云构建、四包验证与匿名下载见 [GITHUB-UPDATES.md](GITHUB-UPDATES.md)；以下旧版本条目按当时记录保留。
+截至 2026-10-02 最新发布：[0.10.53 额度与 Ultrafast 适配四包](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.53)。最终同SHA Checks `37021617091` 与preflight通过，仅派发一次Build `37022387925`并成功；四包原签名、源码、隔离配置保护、14资源读回与匿名下载均通过。当前官方Windows x64 26.930.2377.0实测范围及Ultrafast尚未真实切换的边界见 [GITHUB-UPDATES.md](GITHUB-UPDATES.md)；以下旧版本条目按当时记录保留。
 
 最新发布：[0.10.48](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.48)，同次生成完整版与 Limit 版四包，修复首次添加设备时菜单闪退；四包验签和匿名下载通过，详情见 GITHUB-UPDATES.md。
 

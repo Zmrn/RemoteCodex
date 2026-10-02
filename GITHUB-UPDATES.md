@@ -1,5 +1,24 @@
 # GitHub 直接更新
 
+## 2026-10-02：0.10.53 额度与 Ultrafast 适配四包正式发布
+
+[正式版本](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.53)。本版在官方额度工具目录短暂缺项时，用现有且已核对身份的桌面连接执行固定空参数只读确认，加入 Go、Pro Lite、Pro Max 标签；兼容页展示实际证据。模型速度按官方逐模型声明显示标准 / Fast / Ultrafast，不按套餐或模型名推定可用性。包含此前提交的官方文件引用附件下载。目标电脑完整版 Windows 接入端及使用中的完整版/Limit 控制端需更新至0.10.53；设备连接和草稿不需重建，Limit隔离与无项目选择限制保持。
+
+最终源码 `b05dc5596e74b28afe7c101d704cca89eea53685` 的 [Checks 37021617091](https://github.com/Zmrn/RemoteCodex/actions/runs/37021617091) 全部成功，干净同SHA preflight通过后，仅派发一次 [Build 37022387925](https://github.com/Zmrn/RemoteCodex/actions/runs/37022387925)（requestId `21ca9aaa-6556-4b97-9348-f8839cb0790f`）。正式构建首次成功，14项资源上传及读回通过后公开，无上传重试或重构建。四份匿名latest更新清单及固定版本四包、说明完整下载，原签名/大小/哈希均与该次云产物一致。前一个源码提交的Checks因旧共享功能UI测试在请求完成前断言新建参数而失败；已改为等待实际POST响应并通过，并未在失败Checks之后派发Build。
+
+| 安装文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| RemoteCodex.exe | 44215808 | `94057bc206dfdffdad14bcee0b44efcf264b030e8aeed94875cb1d13044dd21b` |
+| RemoteCodex.apk | 299248 | `20a6de9a77ea9a9e9c65932c2c1e94dc48b4056be05d6d138e9dcf3a59683472` |
+| LimitRemoteCodex.exe | 44215808 | `737052930082c95ed55b49a35749d860cd7944d27f85bd952f6d6f1b38ec6913` |
+| LimitRemoteCodex.apk | 299248 | `b14be50a9cbde0ec65a827a13d46455627a8c08e2948cafc128560c8372cd54f` |
+
+388项正常Node22.19.0、接口清单、桌面/390px手机额度与Ultrafast/设置界面及独立设备保存/强制重启回归通过。四份RSA清单、两版APK v2/v3原证书SHA-256 `3c0a98ec3c9f37318525f5d0e4afb3417812215d625e48a9013b5ee649acb2b1`、独立包名和versionCode `10053`核对通过。两EXE原内嵌Node22.19.0/Python3.13.2、DPAPI和页面自检通过，源码/兼容清单/版别/渠道与构建提交一致，不含用户配置。以0.10.52包在独立home创建合成设备后，新包`--prepare-only`保留全部配置字节，双版两次读回的设备ID和加密密钥一致；此检查不等于完整用户客户端安装升级。
+
+完整版包在官方Windows x64 **26.930.2377.0**上真实只读连接、项目/会话列表和额度读取成功；仅移除适配器目录副本中的额度条目后，实际原生备用查询成功、识别promax。官方目录本身未更改，该检查未复现认证加载阶段缺项。当前笔记本实际tools/list未含速度声明，已核对模型缓存只上报Fast；真实Ultrafast设置往返未验证，只有目标官方目录声明的模型才出现可选Ultrafast。Limit包自检不访问本机官方。
+
+完整行为历史验证版本仍为Windows x64 `26.901.6511.0`、`26.903.8094.0`；当前新版只读接口匹配不等于发送、新建、已读、队列、审批等写入行为全部实测。普通Chat列表/历史读取保持，文字续写待验证，新建/模型/图片未支持；Work无独立验证；Goal编辑后的桌面owner即时同步限制保持。没有运行APK/模拟器、升级已安装客户端、重启官方应用或改真实用户任务；Windows EXE没有新增Authenticode签名。详情见 [OFFICIAL-26930-UPGRADE.md](OFFICIAL-26930-UPGRADE.md)。隔离产物、包验收、设备数据及匿名下载记录在当前工作区`work/release-053/work/`；纯记录提交不再构建。
+
 ## 2026-09-27：0.10.52 Goal 模式四包正式发布
 
 [正式版本](https://github.com/Zmrn/RemoteCodex/releases/tag/v0.10.52)。Codex 新对话可设置 Goal 与可选 Token 预算；已有会话从官方记录读取目标、状态和用量，并可在运行中编辑，向当前轮次发送调整方向。Limit 版仍只可操作同一配对码创建的无项目会话。目标电脑完整版 Windows 接入端和使用中的控制端需同版更新。已有目标由独立官方接口保存后，桌面 owner 的实时同步未完全确认，界面提示核对；不宣称编辑后立即自动续行。
