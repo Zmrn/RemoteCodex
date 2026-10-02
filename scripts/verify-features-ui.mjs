@@ -433,7 +433,10 @@ try {
     "只读权限",
   );
   await page.locator("#prompt").fill("新会话首条消息");
+  const createdResponse = page.waitForResponse(response =>
+    new URL(response.url()).pathname === '/api/agents/local/bridge/threads' && response.request().method() === 'POST');
   await page.locator("#send").click();
+  await createdResponse;
   assert.equal(
     writes.find((w) => w.route.endsWith("/threads")).settings.permissionMode,
     "read-only",
