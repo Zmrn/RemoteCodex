@@ -224,6 +224,7 @@ export async function startServer({
       req.headers["x-bridge-csrf"] !== secret
     )
       return json(res, 403, { error: "Bridge session header required" });
+    if (closing) return json(res, 503, { error: "桥接器正在停止，请稍后重新连接", status: "connection-interrupted", confirmed: false });
     try {
       const limitedIdentity = req.headers["x-bridge-limit-identity"];
       if (limitedIdentity) {
@@ -477,6 +478,8 @@ export async function startServer({
         closing = true;
         access.close();
         updater.close();
+        desktopNotifications?.close();
+        usageRecorder.close();
         bridge.disconnect();
         for (const s of sse) s.end();
         server.close();
@@ -654,6 +657,10 @@ if (
     console.log(
       "Codex tasks accept user messages, including the development task. Automated probes exclude it. Ctrl+C stops this bridge only.",
     );
+    // A stopped standalone service must not remain alive through pending
+    // outbound reads or native child handles. Library/test servers never exit
+    // their caller; only this owned CLI process ends after HTTP has drained.
+    server.once("close", () => process.exit(0));
     const record = path.join(bridge.dataDir, "server.json");
     fs.writeFileSync(
       record + ".tmp",

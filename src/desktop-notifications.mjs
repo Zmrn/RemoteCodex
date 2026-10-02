@@ -13,13 +13,18 @@ export class DesktopNotifications {
       empty: { enabled: true, seen: {}, drafts: {} },
       validate: v => v && typeof v.enabled === 'boolean' && v.seen && typeof v.seen === 'object' && !Array.isArray(v.seen) && v.drafts && typeof v.drafts === 'object' && !Array.isArray(v.drafts) });
     this.db = this.store.value; this.events = new Map(); this.issued = new Map(); this.devices = new Map(); this.flights = new Map(); this.startedAt = now(); this.closed = false;
+    this.requests = new AbortController();
   }
   save() { this.store.write(this.db); }
   start() {
     if (this.timer || this.closed) return;
     this.timer = setInterval(() => this.tick(), 1000); this.timer.unref(); this.tick();
   }
-  close() { this.closed = true; clearInterval(this.timer); }
+  close() { this.closed = true; clearInterval(this.timer); this.requests.abort(); }
+  read(agent, route, body) {
+    this.requests.signal.throwIfAborted();
+    return this.request(this.agents, agent, route, body, { signal: this.requests.signal });
+  }
   tick() {
     if (this.closed || !this.db.enabled || !this.store.health.writable) return;
     let agents; try { agents = this.agents.list().agents.filter(a => a.kind === 'remote' && a.id !== 'local'); } catch { return; }
@@ -43,14 +48,16 @@ export class DesktopNotifications {
   async scan(agent, state) {
     const current = () => !this.closed && this.db.enabled && this.devices.get(agent.id) === state && deviceFingerprint(this.agents.get(agent.id)) === state.fingerprint;
     try {
-      const identity = await this.request(this.agents, agent, '/instance');
+      if (!current()) return;
+      const identity = await this.read(agent, '/instance');
+      if (!current()) return;
       if (identity.application !== 'remote-codex' || !validId(identity.instanceId)) throw Error('Unknown device');
       if (identity.instanceId === this.instanceId) throw Object.assign(Error('Local device'), { code: 'SELF' });
-      const status = await this.request(this.agents, agent, '/status');
+      const status = await this.read(agent, '/status');
       if (!current()) return;
-      if (!status.connected) await this.request(this.agents, agent, '/connect', {});
+      if (!status.connected) await this.read(agent, '/connect', {});
       if (!current()) return;
-      const result = await this.request(this.agents, agent, '/notification-state');
+      const result = await this.read(agent, '/notification-state');
       if (!current()) return;
       if (result.schemaVersion !== 1 || result.supported !== true || !Array.isArray(result.threads)) throw Object.assign(Error('Update required'), { code: 'UNSUPPORTED' });
       this.observe(agent, state.fingerprint, result);
@@ -142,12 +149,12 @@ export class DesktopNotifications {
       try {
         agent = { ...this.agents.get(event.agent) };
         if (agent.kind !== 'remote' || deviceFingerprint(agent) !== event.fingerprint) throw Error('Device changed');
-        const identity = await this.request(this.agents, agent, '/instance');
+        const identity = await this.read(agent, '/instance');
         if (identity.application !== 'remote-codex' || identity.instanceId === this.instanceId || !validId(identity.instanceId)) throw Error('Invalid target');
       } catch { return { status: 'not-sent', error: '连接不可用或设备已变化，回复草稿已保留。' }; }
       record.outcome = 'outcome-unknown'; this.save();
       let result;
-      try { result = await this.request(this.agents, agent, '/threads/' + event.thread + '/notification-reply', { prompt: text, requestId: record.requestId, eventKey: event.eventKey }); }
+      try { result = await this.read(agent, '/threads/' + event.thread + '/notification-reply', { prompt: text, requestId: record.requestId, eventKey: event.eventKey }); }
       catch { return { status: 'outcome-unknown', error: '提交结果未知，回复已保留。请打开任务核对，勿重复发送。' }; }
       if (result.status === 'accepted') { delete this.db.drafts[id]; this.save(); this.events.delete(id); }
       else if (result.status === 'not-sent') { record.outcome = 'draft'; this.save(); }

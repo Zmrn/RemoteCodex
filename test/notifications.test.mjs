@@ -9,12 +9,78 @@ import { DesktopNotifications } from '../src/desktop-notifications.mjs';
 import { deviceFingerprint, notificationRequest } from '../src/notification-client.mjs';
 import { allowedRoute } from '../src/remote.mjs';
 import { EVENTS } from '../src/official-protocol.mjs';
+import http from 'node:http';
 
 const id = '11111111-1111-4111-8111-111111111111', remoteId = '22222222-2222-4222-8222-222222222222';
 const agent = { id: remoteId, kind: 'remote', name: '测试设备', host: '100.64.0.2', port: 43128, sealedKey: 'fixture' };
 const state = (turnId = 'turn-1', type = 'idle', turnStatus = 'completed') => ({ id, threadRuntimeStatus: { type },
   turnHistory: { history: { entitiesByKey: { [turnId]: { turnId, status: turnStatus, turnStartedAtMs: 1, items: [{ id: 'reply', type: 'agentMessage', text: '测试回报' }] } } } } });
 const row = (turn = 'turn-1', type = 'idle', status = 'completed') => ({ ...notificationProjection(state(turn, type, status), id), mode: 'codex', title: '测试任务' });
+
+test('closing notifications cancels a stalled HTTP read and opens no further scan requests', async t => {
+  const server = http.createServer(() => {});
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const target = { ...agent, port: server.address().port };
+  const agents = { list: () => ({ agents: [target] }), get: () => target, key: async () => 'fixture-key' };
+  let calls = 0;
+  const { service } = setup(t, { request: (a, b, c, d, options) => {
+    calls++;
+    return notificationRequest(agents, target, c, d, { ...options, resolve: async () => '127.0.0.1', isLocal: () => false });
+  } });
+  service.agents = agents;
+  const scanState = { fingerprint: deviceFingerprint(target), failures: 0 };
+  service.devices.set(target.id, scanState);
+  const received = new Promise(resolve => server.once('request', resolve));
+  const scanning = service.scan(target, scanState);
+  await received;
+  const pending = new Promise(resolve => server.close(resolve));
+  service.close();
+  await Promise.race([Promise.all([scanning, pending]), new Promise((_, reject) => {
+    const timer = setTimeout(() => reject(Error('stalled notification survived close')), 2000); timer.unref();
+  })]);
+  assert.equal(calls, 1);
+  service.tick();
+  await service.scan(target, scanState);
+  assert.equal(calls, 1);
+});
+
+test('notification shutdown cancels pending credentials and never starts HTTP afterwards', async () => {
+  const controller = new AbortController();
+  let release, gets = 0;
+  const key = new Promise(resolve => { release = resolve; });
+  const pending = notificationRequest({ key: () => key, get: () => { gets++; return agent; } }, agent, '/instance', undefined,
+    { resolve: async () => '127.0.0.1', isLocal: () => false, signal: controller.signal });
+  controller.abort();
+  await assert.rejects(pending, error => error.name === 'AbortError');
+  release('fixture-key');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(gets, 0);
+});
+
+test('closing during a notification reply preserves its unknown outcome and never resends it', async t => {
+  let submitted, requests = 0;
+  const received = new Promise(resolve => { submitted = resolve; });
+  const { service, observe, dir, agents } = setup(t, { request: async (a, b, route, body, { signal }) => {
+    if (route === '/instance') return { application: 'remote-codex', instanceId: randomUUID() };
+    requests++;
+    return new Promise((_, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      submitted();
+    });
+  } });
+  observe([row()]); observe([row('new')]);
+  const event = [...service.events.values()][0];
+  const reply = service.reply(event.id, '待核对的测试回复');
+  await received;
+  service.close();
+  assert.equal((await reply).status, 'outcome-unknown');
+  const restarted = new DesktopNotifications(agents, dir);
+  t.after(() => restarted.close());
+  assert.equal(restarted.db.drafts[event.id].text, '待核对的测试回复');
+  assert.equal((await restarted.reply(event.id, '待核对的测试回复')).status, 'outcome-unknown');
+  assert.equal(requests, 1);
+});
 function setup(t, extra = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'remote-notification-test-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -111,11 +177,13 @@ test('all remote devices scan independently; local and self aliases never read t
 });
 test('deleted or edited device invalidates a delayed scan; unsupported old peers are visible as update-required', async t => {
   let release; const delayed = new Promise(r => release = r);
-  const { service, change } = setup(t, { request: async () => { await delayed; return { application: 'remote-codex', instanceId: randomUUID() }; } });
+  const { service, change, agents } = setup(t, { request: async () => { await delayed; return { application: 'remote-codex', instanceId: randomUUID() }; } });
   const state = { fingerprint: deviceFingerprint(agent), failures: 0 }; service.devices.set(remoteId, state);
   const scan = service.scan(agent, state); change({ port: 44000 }); release(); await scan; assert.equal(service.events.size, 0);
   service.request = async () => { throw Object.assign(Error(), { code: 'UNSUPPORTED' }); };
-  await service.scan(agent, state); assert.equal(state.status, 'update-required');
+  const edited = agents.get(remoteId), next = { fingerprint: deviceFingerprint(edited), failures: 0 };
+  service.devices.set(remoteId, next);
+  await service.scan(edited, next); assert.equal(next.status, 'update-required');
 });
 test('self network addresses are rejected before any HTTP; notification management stays loopback-only', async () => {
   await assert.rejects(notificationRequest({ key: async () => 'fake' }, agent, '/instance', undefined, { resolve: async () => '100.64.0.2', isLocal: () => true }), e => e.code === 'SELF');

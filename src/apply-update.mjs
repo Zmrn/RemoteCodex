@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { captureDeviceUpdate, verifyDeviceUpdate } from "./device-update-snapshot.mjs";
 import { INSTANCE } from "./runtime.mjs";
+import { confirmRestart } from "./update-recovery-check.mjs";
 import {
   verifyManifest,
   verifyExecutable,
@@ -144,8 +145,7 @@ try {
   replaced = true;
   await run(job.launcher, ["--port", url.port]);
   const after = await api("/instance");
-  if (after.version !== manifest.version || after.instanceId === job.instanceId)
-    throw Error("新版本启动校验失败");
+  confirmRestart(after, { version: manifest.version, instanceId: job.instanceId, application: INSTANCE.application });
   verifyDeviceUpdate(path.join(job.home, "data"), deviceSnapshot);
   result({
     status: "updated",
@@ -154,6 +154,7 @@ try {
   });
 } catch (error) {
   let rolledBack = false;
+  let recoveryError;
   try {
     if (replaced) {
       await run(job.launcher, ["--stop"]);
@@ -161,13 +162,18 @@ try {
     }
     if (stopped) {
       await run(job.launcher, ["--port", new URL(job.address).port]);
+      confirmRestart(await api('/instance'), { version: job.version, instanceId: job.instanceId, application: INSTANCE.application });
+      // Check again after the old desktop's lifetime check would have run.
+      await sleep(1000);
+      confirmRestart(await api('/instance'), { version: job.version, instanceId: job.instanceId, application: INSTANCE.application });
       rolledBack = true;
     }
-  } catch {}
+  } catch (recovery) { recoveryError = recovery.message; }
   result({
     status: rolledBack ? "rolled-back" : "failed",
     failedVersion: manifest.version,
     error: error.message,
+    ...(recoveryError ? { recoveryError } : {}),
   });
 } finally {
   if (staged && fs.existsSync(staged)) fs.unlinkSync(staged);

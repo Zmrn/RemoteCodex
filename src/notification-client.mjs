@@ -7,19 +7,29 @@ export const deviceFingerprint = a => createHash('sha256').update(JSON.stringify
 export function localAddress(host) {
   return Object.values(os.networkInterfaces()).flat().some(n => n?.address.toLowerCase() === host.toLowerCase());
 }
-export async function notificationRequest(agents, agent, route, body, { resolve = resolveAgent, isLocal = localAddress } = {}) {
+export async function notificationRequest(agents, agent, route, body, { resolve = resolveAgent, isLocal = localAddress, signal } = {}) {
+  signal?.throwIfAborted();
   if (agent.kind !== 'remote' || agent.id === 'local') throw Error('Local notifications excluded');
   // Bound key/DNS work as well as the HTTP response; no task writes are retried.
   const deadline = Date.now() + 22000;
-  let timer;
+  let timer, abort;
   const prepare = Promise.all([resolve(agent.host), agents.key(agent.id)]);
-  const [host, key] = await Promise.race([prepare, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Device unavailable')), 12000); })]).finally(() => clearTimeout(timer));
+  const cancelled = signal && new Promise((_, reject) => {
+    abort = () => reject(signal.reason ?? Error('Notification service closed'));
+    signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) abort();
+  });
+  const [host, key] = await Promise.race([prepare, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Device unavailable')), 12000); }), ...(cancelled ? [cancelled] : [])]).finally(() => {
+    clearTimeout(timer);
+    if (abort) signal.removeEventListener('abort', abort);
+  });
+  signal?.throwIfAborted();
   if (isLocal(host)) throw Object.assign(Error('Local notifications excluded'), { code: 'SELF' });
   if (deviceFingerprint(agents.get(agent.id)) !== deviceFingerprint(agent)) throw Error('Device changed');
   const payload = body === undefined ? null : JSON.stringify(body);
   return new Promise((resolveResult, reject) => {
     const req = http.request({ hostname: host, port: agent.port, path: '/bridge/v1/api' + route,
-      method: payload === null ? 'GET' : 'POST', agent: false,
+      method: payload === null ? 'GET' : 'POST', agent: false, signal,
       headers: { Authorization: 'Bearer ' + key, ...(payload === null ? {} : { 'Content-Type': 'application/json' }) } }, res => {
       let raw = ''; res.setEncoding('utf8');
       res.on('data', chunk => { raw += chunk; if (Buffer.byteLength(raw) > 1024 * 1024) req.destroy(Error('Response too large')); });
