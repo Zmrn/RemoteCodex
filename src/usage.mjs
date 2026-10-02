@@ -1,3 +1,12 @@
+const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+// Explicit null is official unknown usage; an arbitrary success message does
+// not establish that this interface is compatible.
+export function isUsageResponse(value) {
+  const fields = ['rateLimits', 'rateLimitsByLimitId'];
+  return object(value) && fields.some(key => Object.hasOwn(value, key)) &&
+    fields.every(key => !Object.hasOwn(value, key) || value[key] === null || object(value[key]));
+}
+
 // Only quota display fields leave the adapter. No account IDs or credit details.
 export function accountUsage(raw, observedAt = new Date().toISOString()) {
   const byId = raw?.rateLimitsByLimitId;
@@ -40,7 +49,7 @@ export function accountUsage(raw, observedAt = new Date().toISOString()) {
     (a, b) => Number(b.limitId === "codex") - Number(a.limitId === "codex"),
     primary = buckets.find(([id]) => id === "codex")?.[1] ?? buckets[0]?.[1];
   weekly.sort(order); fiveHour.sort(order);
-  const planType = ["free", "plus", "pro", "team", "business", "enterprise", "edu"].includes(primary?.planType) ? primary.planType : null;
+  const planType = ["free", "go", "plus", "prolite", "pro", "promax", "team", "business", "enterprise", "edu"].includes(primary?.planType) ? primary.planType : null;
   return {
     schemaVersion: 2,
     source: "official-desktop-app-tools-live",

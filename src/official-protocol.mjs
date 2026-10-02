@@ -41,7 +41,7 @@ export function protocolObservation(records, spec) {
   return { status: matched ? 'matched' : 'mismatch', version: versions[0],
     detail: matched ? '协议版本已适配；来自包内静态声明' : `预期 ${protocolVersions(spec).map(v => 'v' + v).join(' / ')}，官方为 v${versions[0]}` };
 }
-export function interfaceObservations({ connected = false, ipcConnected = connected, catalog = [], protocols = [], toolCallObservation = null } = {}) {
+export function interfaceObservations({ connected = false, ipcConnected = connected, catalog = [], protocols = [], toolCallObservation = null, usageObservation = null } = {}) {
   const rows = Object.entries(OFFICIAL.tools).map(([id, spec]) => {
     const tool = catalog.find(t => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === spec.name);
     const fields = Object.keys(tool?.inputSchema?.properties ?? {}), missingFields = spec.request.filter(f => !fields.includes(f));
@@ -49,6 +49,10 @@ export function interfaceObservations({ connected = false, ipcConnected = connec
       : !tool.inputSchema?.properties ? unknown('工具参数声明无法读取')
       : missingFields.length ? { status: 'mismatch', missingFields, detail: '缺少参数：' + missingFields.join('、') }
       : { status: 'matched', fields, detail: '指令及所用顶层参数存在；来自实时 tools/list' };
+    // This fixed read-only tool alone can be confirmed by an empty live query
+    // when an auth-dependent catalog omits it. Never probe missing write tools.
+    if (connected && !tool && id === 'usage' && spec.probeWhenMissing === 'read-only-empty-arguments' && usageObservation)
+      return [id, { ...usageObservation }];
     return [id, value.status === 'matched' && toolCallObservation && toolCallObservation.status !== 'matched'
       ? { ...toolCallObservation } : value];
   });
@@ -71,7 +75,7 @@ export function observeDesktop(desktop, protocols) {
   observations.set(desktop, { identity: desktop.identity, image: desktop.identity?.appToolsPipe?.image,
     tools: desktop.tools, ipc: desktop.ipc, catalog: desktop.catalog,
     rows: freeze(interfaceObservations({ connected: true, ipcConnected: !!desktop.ipc && !desktop.ipc.socket?.destroyed,
-      catalog: desktop.catalog, protocols, toolCallObservation: desktop.toolCallObservation })) });
+      catalog: desktop.catalog, protocols, toolCallObservation: desktop.toolCallObservation, usageObservation: desktop.usageObservation })) });
 }
 export function forgetDesktop(desktop) { observations.delete(desktop); }
 export function desktopPolicy(desktop) {

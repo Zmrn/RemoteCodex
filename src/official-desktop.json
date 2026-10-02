@@ -220,11 +220,12 @@
     },
     "usage": {
       "name": "get_usage_limits",
+      "probeWhenMissing": "read-only-empty-arguments",
       "request": [],
       "response": "rateLimitsByLimitId, rateLimits",
       "purpose": "目标账号额度",
-      "consumer": "src/bridge.mjs:usage",
-      "test": "test/usage.test.mjs"
+      "consumer": "src/desktop.mjs:probeUsage, src/bridge.mjs:usage",
+      "test": "test/usage-desktop.test.mjs"
     }
   },
   "ipc": {

@@ -15,7 +15,7 @@ export function usageWindows(data) {
   return rows.sort((a, b) => Number(b.limitId === "codex") - Number(a.limitId === "codex") ||
     a.limitId.localeCompare(b.limitId) || a.windowDurationMins - b.windowDurationMins);
 }
-export const planName = data => ({ plus: "Plus", pro: "Pro", free: "Free", team: "Team", business: "Business", enterprise: "Enterprise", edu: "Edu" })[data?.planType] ?? "";
+export const planName = data => ({ plus: "Plus", pro: "Pro", prolite: "Pro Lite", promax: "Pro Max", free: "Free", go: "Go", team: "Team", business: "Business", enterprise: "Enterprise", edu: "Edu" })[data?.planType] ?? "";
 const durationName = row => row.windowDurationMins === 300 ? "5h 额度" : "周额度";
 const percent = value => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 }).format(value) + "%";
 export function resetCountdown(resetsAt, now = Date.now()) {

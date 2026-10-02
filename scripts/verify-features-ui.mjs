@@ -42,7 +42,8 @@ let current = {
   runtime = "idle",
   connected = true,
   confirmAnswer = false,
-  confirmSettings = true;
+  confirmSettings = true,
+  ultrafastAvailable = false;
 const items = [
   {
     id: "citation-fixture",
@@ -98,7 +99,8 @@ await page.route(address + "/api/**", async (route) => {
           id: "gpt-6-astra",
           efforts: ["low", "medium", "high"],
           description: "Fixture",
-          serviceTiers: [{ id: "priority", name: "Fast" }],
+          serviceTiers: [{ id: "priority", name: "Fast" },
+            ...(ultrafastAvailable ? [{ id: 'ultrafast', name: 'Ultrafast' }] : [])],
         },
         {
           id: "gpt-5.4-mini",
@@ -296,10 +298,46 @@ try {
   await page.locator('#refresh').evaluate(button => button.click());
   await page.waitForFunction(() => document.querySelector('#speed-toggle')?.getAttribute('aria-pressed') === 'false');
   current = { ...current, serviceTier: 'priority' };
+  await page.keyboard.press('Escape');
+  ultrafastAvailable = true;
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 960 });
+    await page.locator('#effort-display').click();
+    await page.locator('[data-service-tier="ultrafast"]:not(:disabled)').waitFor();
+    assert.equal(await page.locator('.speed-option').count(), 3);
+    await page.locator('[data-service-tier="ultrafast"]').click();
+    await page.waitForFunction(() => document.querySelector('[data-service-tier="ultrafast"]')?.getAttribute('aria-pressed') === 'true');
+    assert.equal(writes.at(-1).settings.serviceTier, 'ultrafast');
+    confirmSettings = false;
+    await page.locator('[data-service-tier="default"]').click();
+    await page.waitForFunction(() => !document.querySelector('[data-service-tier="default"]')?.disabled);
+    assert.equal(await page.locator('[data-service-tier="ultrafast"]').getAttribute('aria-pressed'), 'true');
+    confirmSettings = true;
+    await page.locator('[data-service-tier="priority"]').click();
+    await page.waitForFunction(() => document.querySelector('[data-service-tier="priority"]')?.getAttribute('aria-pressed') === 'true');
+    const bounds = await page.locator('#settings-menu').boundingBox();
+    assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width);
+    await page.screenshot({ path: path.join(dir, 'ultrafast-' + width + '.png') });
+    await page.keyboard.press('Escape');
+  }
+  ultrafastAvailable = false;
+  current = { ...current, serviceTier: 'ultrafast' };
+  await page.goto(address + '/?thread=' + id);
+  await page.locator('#effort-display:not(:disabled)').waitFor();
+  await page.locator('#effort-display').click();
+  await page.locator('[data-service-tier="ultrafast"]').waitFor();
+  assert.equal(await page.locator('[data-service-tier="ultrafast"]').isDisabled(), true);
+  await page.locator('[data-service-tier="default"]').click();
+  await page.waitForFunction(() => document.querySelector('#speed-toggle')?.getAttribute('aria-pressed') === 'false');
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.locator('#effort-display').click();
+  await page.locator('#speed-toggle').waitFor();
   await page.screenshot({
     path: path.join(ROOT, "evidence/features-ui-desktop.png"),
   });
   await page.keyboard.press("Escape");
+  current = { ...current, serviceTier: 'priority' }; // Restore the original running-settings fixture.
   runtime = "active";
   await page.goto(address + "/?thread=" + id);
   await page.locator("#permission-display:not(:disabled)").waitFor();
@@ -418,6 +456,8 @@ try {
           "wrapped-history-answer",
           "image-preview-and-download",
           "fast-toggle",
+          "ultrafast-per-model-desktop-and-mobile-official-readback",
+          "unavailable-ultrafast-cannot-be-selected-but-standard-can-be-restored",
           "new-task-permission",
           "running-model-effort-permission-and-speed-owner-post",
           "running-menu-survives-settings-read",

@@ -12,7 +12,7 @@ const { server, address } = await startServer({ port: 0, bridge: { dataDir: dir,
 const browser = await chromium.launch({ executablePath: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
 const errors = [], events = [];
-let used = 68, fail = false, legacy = false, delay = false, release, completedDelay;
+let used = 68, fail = false, legacy = false, delay = false, release, completedDelay, plan = 'pro';
 let resetsAt = Math.floor(Date.now() / 1000) + 3 * 86400 + 5 * 3600 + 120;
 const win = (usedPercent, windowDurationMins) => ({ usedPercent, windowDurationMins, resetsAt });
 page.on("pageerror", e => errors.push(e.message));
@@ -27,7 +27,7 @@ await page.route(address + "/api/**", async route => {
   if (p.endsWith("/threads")) return json({ data: { threads: [] } });
   if (p.endsWith("/usage")) {
     const response = accountUsage({ rateLimitsByLimitId: {
-      codex: laptop ? { planType: "plus", primary: win(used, 300), secondary: win(21, 10080) } : { planType: "pro", primary: win(80, 10080) },
+      codex: laptop ? { planType: "plus", primary: win(used, 300), secondary: win(21, 10080) } : { planType: plan, primary: win(80, 10080) },
       codex_bengalfox: { limitName: "GPT-5.3-Codex-Spark", primary: win(1, 300), secondary: win(2, 10080) },
     } });
     if (legacy) { delete response.schemaVersion; delete response.fiveHour; delete response.planType; }
@@ -48,6 +48,9 @@ try {
   assert.equal(await page.locator('#usage-details [data-limit-id="codex"][data-duration="300"]').count(), 0);
   assert.equal(await page.locator('#usage-details [data-limit-id="codex_bengalfox"][data-duration="300"]').count(), 1);
   assert.match(await page.locator("#usage-account-note").textContent(), /^Pro/);
+  plan = 'promax'; await page.locator('#refresh-usage').click();
+  await page.waitForFunction(() => document.querySelector('#usage-account-note').textContent.startsWith('Pro Max'));
+  assert.equal(await page.locator('#agent-quota').textContent(), '周额度剩余 20%');
   await page.locator("#agents button").filter({ hasText: "Plus 笔记本" }).click();
   await footer("5h 额度剩余 32%"); await openMenu();
   assert.match(await page.locator("#usage-account-note").textContent(), /^Plus/);

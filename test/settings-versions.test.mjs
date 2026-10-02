@@ -61,6 +61,27 @@ for (const version of [1, 2]) test(`settings v${version} uses the observed wire 
   assert.equal(f.calls.at(-1).params.tool, TOOLS.createThread);
 });
 
+for (const version of [1, 2]) test(`ultrafast uses the existing owner settings v${version} and rejects unsupported models before dispatch`, async t => {
+  const f = await fixture(t, version, version === 2 ? { applied: true } : { ok: true });
+  f.desktop.catalog.find(t => t.name === TOOLS.sendMessage).inputSchema.properties.model = {
+    description: 'fixture-model (Synthetic; supported reasoning efforts: low, high), other-model (Synthetic; supported reasoning efforts: low, high).',
+  };
+  fs.writeFileSync(path.join(f.b.dataDir, 'models_cache.json'), JSON.stringify({
+    fetched_at: new Date().toISOString(), models: [
+      { slug: 'fixture-model', service_tiers: [{ id: 'ultrafast', name: 'Ultrafast' }] },
+    ],
+  }));
+  f.b.officialStorage = { desktop: f.desktop, identity: f.desktop.identity, home: f.b.dataDir };
+  assert.equal((await f.b.updateSettings(id, 'ultrafast-settings', { serviceTier: 'ultrafast' })).status, 'accepted');
+  assert.deepEqual(f.calls[0].params.threadSettings, { serviceTier: 'ultrafast' });
+  assert.equal(f.calls[0].options.version, version);
+  assert.equal(f.calls[0].options.targetClientId, owner);
+  assert.equal(f.state.latestThreadSettings.serviceTier, undefined, 'ACK must not fabricate official selection');
+  f.state.latestThreadSettings.model = 'other-model';
+  await assert.rejects(f.b.updateSettings(id, 'unsupported-ultrafast', { serviceTier: 'ultrafast' }), /未提供此加速档位/);
+  assert.equal(f.calls.length, 1);
+});
+
 for (const reply of [{ applied: false }, {}, { applied: 'true' }]) test(`v2 rejects unconfirmed application ${JSON.stringify(reply)} and never starts or retries a message`, async t => {
   const f = await fixture(t, 2, reply);
   await assert.rejects(f.b.nativeSend(id, 'send-rejected-settings', 'synthetic', [], { permissionMode: 'workspace' }), /未应用|缺少应用确认/);

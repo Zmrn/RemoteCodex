@@ -7,7 +7,7 @@ export function parseModels(catalog) {
   )?.inputSchema?.properties?.model;
   const models = [
     ...(field?.description ?? "").matchAll(
-      /([a-z0-9][a-z0-9._-]+) \(([^()]*?); supported reasoning efforts: ([a-z, ]+)\)/g,
+      /([a-z0-9][a-z0-9._-]+) \(([^()]*?); supported reasoning efforts: ([a-z, ]+)(?:; service tiers: ([a-z, -]*))?\)/g,
     ),
   ].map((m) => ({
     id: m[1],
@@ -16,6 +16,7 @@ export function parseModels(catalog) {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
+    ...(m[4] === undefined ? {} : { serviceTiers: m[4].split(',').map(id => ({ id: id.trim() })).filter(t => t.id) }),
   }));
   if (!models.length) throw Error("官方桌面模型目录不可读，暂不能更换模型");
   return models;

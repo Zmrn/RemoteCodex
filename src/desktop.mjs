@@ -1,5 +1,5 @@
 import { sourceProtocols } from "./source-protocols.mjs";
-import { observeDesktop, forgetDesktop, requireInterface, OFFICIAL, TOOLS, protocolRequest, protocolBroadcast } from "./official-protocol.mjs";
+import { observeDesktop, forgetDesktop, requireInterface, desktopPolicy, OFFICIAL, TOOLS, protocolRequest, protocolBroadcast } from "./official-protocol.mjs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import { Pipe } from "./transport.mjs";
+import { isUsageResponse } from "./usage.mjs";
 import { PYTHON } from "./runtime.mjs";
 const exec = promisify(execFile),
   here = path.dirname(fileURLToPath(import.meta.url));
@@ -60,6 +61,12 @@ const toolCallParams = (tool, args, context) => ({
   tool,
   turnId: "remote-bridge-request-" + randomUUID(),
 });
+function toolResult(response) {
+  const r = response?.result;
+  const text = r?.contentItems?.filter(x => x.type === 'inputText').map(x => x.text).join('\n');
+  if (r?.success !== true) throw Error(text || 'Desktop tool failed');
+  try { return JSON.parse(text); } catch { return { text }; }
+}
 export function brokerKind(pipe) {
   if (!pipe?.pid || pipeName(pipe) !== OFFICIAL.discovery.ownerPipe) return null;
   if (officialImage(pipe)) return "official-desktop";
@@ -82,12 +89,14 @@ export class Desktop {
     this.identity = null;
     this.catalog = [];
     this.toolCallObservation = null;
+    this.usageObservation = null;
   }
   async connect({ inspectCatalog = false } = {}) {
     this.close();
     this.tools = this.ipc = this.identity = null;
     this.catalog = [];
     this.toolCallObservation = null;
+    this.usageObservation = null;
     // A diagnostics-only connection reads tools/list and never needs a task context.
     if (!inspectCatalog) this.context ??= localContext();
     const identity = await this.discoverPipes();
@@ -159,6 +168,7 @@ export class Desktop {
       this.tools = this.ipc = this.identity = null;
       this.catalog = [];
       this.toolCallObservation = null;
+      this.usageObservation = null;
       throw error;
     }
   }
@@ -178,37 +188,72 @@ export class Desktop {
           : { status: 'unknown', detail: '只读工具调用未获确认' };
       }
     }
+    await this.probeUsage(context);
     if (this.identity) observeDesktop(this, this.protocols);
     return this.toolCallObservation;
   }
+  async probeUsage(context = this.context) {
+    const sequence = this.usageProbeSequence = (this.usageProbeSequence ?? 0) + 1;
+    this.usageObservation = null;
+    if (this.catalog.some(t => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === TOOLS.usage) ||
+        OFFICIAL.tools.usage.probeWhenMissing !== 'read-only-empty-arguments') return;
+    if (!context) {
+      this.usageObservation = { status: 'unknown', detail: '额度指令未在目录中声明；没有本机上下文验证只读查询' };
+      return;
+    }
+    const identity = this.identity, tools = this.tools, catalog = this.catalog;
+    let observation, result;
+    try {
+      result = toolResult(await tools.request(OFFICIAL.transport.toolsCall,
+        toolCallParams(TOOLS.usage, {}, context), { timeoutMs: 10000 }));
+      observation = isUsageResponse(result)
+        ? { status: 'matched', detail: '目录未声明此指令；实际空参数只读额度查询及返回结构已确认', source: 'live-read-only-query' }
+        : { status: 'unknown', detail: '目录未声明此指令；只读额度查询返回结构无法确认' };
+    } catch {
+      observation = { status: 'unknown', detail: '目录未声明此指令；只读额度查询未获确认，请刷新重试' };
+    }
+    if (identity !== this.identity || tools !== this.tools || catalog !== this.catalog || tools?.socket?.destroyed)
+      throw Error('Official connection changed during quota probe');
+    // A simultaneous quota read on this same connection supersedes this
+    // observation; it must not revoke healthy unrelated catalog evidence.
+    if (sequence !== this.usageProbeSequence) return;
+    this.usageObservation = observation;
+    return observation.status === 'matched' ? result : undefined;
+  }
   async call(tool, args = {}, context = this.context, { timeoutMs = 60000 } = {}) {
     const key = Object.keys(OFFICIAL.tools).find(k => OFFICIAL.tools[k].name === tool);
+    if (key === 'usage' && (!args || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).length))
+      throw Error('Quota query takes no arguments');
+    let probedUsage;
+    if (key === 'usage' && this.usageObservation?.status !== 'matched' && desktopPolicy(this).interfaces.usage &&
+        !this.catalog.some(t => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === tool)) {
+      probedUsage = await this.probeUsage(context);
+      observeDesktop(this, this.protocols);
+    }
     requireInterface(this, key);
     if (
-      !this.catalog.some((t) => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === tool)
+      !this.catalog.some((t) => t.namespace === OFFICIAL.discovery.toolsNamespace && t.name === tool) &&
+      !(key === 'usage' && this.usageObservation?.status === 'matched')
     )
       throw Error("Unavailable desktop tool " + tool);
-    const f = await this.tools.request(
-      OFFICIAL.transport.toolsCall,
-      toolCallParams(tool, args, context),
-      { timeoutMs },
-    );
-    const r = f.result;
-    if (!r?.success)
-      throw Error(
-        r?.contentItems
-          ?.filter((x) => x.type === "inputText")
-          .map((x) => x.text)
-          .join("\n") || "Desktop tool failed",
-      );
-    const text = r.contentItems
-      .filter((x) => x.type === "inputText")
-      .map((x) => x.text)
-      .join("\n");
+    if (probedUsage) return probedUsage;
+    const identity = this.identity, tools = this.tools, catalog = this.catalog, usageSequence = this.usageProbeSequence;
     try {
-      return JSON.parse(text);
-    } catch {
-      return { text };
+      const f = await tools.request(OFFICIAL.transport.toolsCall, toolCallParams(tool, args, context), { timeoutMs });
+      const result = toolResult(f);
+      if (key === 'usage') {
+        if (identity !== this.identity || tools !== this.tools || tools?.socket?.destroyed)
+          throw Error('Official connection changed during quota query');
+        if (!isUsageResponse(result)) throw Error('Official quota response unavailable');
+      }
+      return result;
+    } catch (error) {
+      if (key === 'usage' && identity === this.identity && tools === this.tools && catalog === this.catalog &&
+          usageSequence === this.usageProbeSequence && this.usageObservation) {
+        this.usageObservation = { status: 'unknown', detail: '最近的只读额度查询未获确认，请刷新重试' };
+        observeDesktop(this, this.protocols);
+      }
+      throw error;
     }
   }
   async refreshCatalog() {
@@ -219,6 +264,11 @@ export class Desktop {
         throw Error("Official connection changed during catalog refresh");
       if (!Array.isArray(f.result?.tools)) throw Error("Official tool catalog unavailable");
       this.catalog = f.result.tools;
+      this.usageObservation = null;
+      observeDesktop(this, this.protocols);
+      await this.probeUsage();
+      if (identity !== this.identity || tools !== this.tools || tools.socket?.destroyed || sequence !== this.catalogSequence)
+        throw Error("Official connection changed during quota probe");
       observeDesktop(this, this.protocols);
       return this.catalog;
     } catch (error) {
@@ -248,6 +298,8 @@ export class Desktop {
   }
   close() {
     forgetDesktop(this);
+    this.usageProbeSequence = (this.usageProbeSequence ?? 0) + 1;
+    this.usageObservation = null;
     this.catalogSequence = (this.catalogSequence ?? 0) + 1;
     this.tools?.close();
     this.ipc?.close();

@@ -3311,7 +3311,8 @@ function renderSettingsMenu(focus = false) {
       ["priority", "fast"].includes(t.id),
     );
     const tier = choice.serviceTier ?? t.current?.serviceTier;
-    const active = ["priority", "fast"].includes(tier);
+    const active = ["priority", "fast", "ultrafast"].includes(tier);
+    const ultrafast = model?.serviceTiers?.find(t => t.id === 'ultrafast');
     speed.append(icon("bolt"));
     speed.setAttribute("aria-pressed", t.loaded && tier === undefined ? "mixed" : String(active));
     speed.title = !t.id
@@ -3323,8 +3324,34 @@ function renderSettingsMenu(focus = false) {
     speed.disabled = !t.loaded || (!fast && !active);
     speed.onclick = () =>
       applySetting({ serviceTier: active ? "default" : fast.id }, true);
-    head.append(speed, title, reset);
+    if (!ultrafast && tier !== 'ultrafast') head.append(speed);
+    head.append(title, reset);
     menu.append(head);
+    if (ultrafast || tier === 'ultrafast') {
+      const speeds = node('div', 'speed-options');
+      speeds.setAttribute('role', 'group');
+      speeds.setAttribute('aria-label', '消息速度');
+      for (const option of [
+        { id: 'default', name: '标准' },
+        ...(fast ? [{ ...fast, name: 'Fast' }] : []),
+        { id: 'ultrafast', name: 'Ultrafast', description: ultrafast?.description },
+      ]) {
+        const button = node('button', 'speed-option', option.name);
+        button.type = 'button';
+        button.dataset.serviceTier = option.id;
+        const selected = option.id === 'default' ? tier === null || tier === 'default'
+          : option.id === 'ultrafast' ? tier === 'ultrafast' : ['priority', 'fast'].includes(tier);
+        button.setAttribute('aria-pressed', String(selected));
+        button.disabled = !t.loaded || (option.id === 'ultrafast' && !ultrafast);
+        button.title = !t.loaded ? '官方新建接口尚未提供首轮加速参数，创建后可切换'
+          : option.id === 'ultrafast' && !ultrafast ? '官方当前选择为 Ultrafast；此模型目录未提供该档位，可切回标准'
+          : option.description ?? option.name;
+        button.onclick = () => applySetting({ serviceTier: option.id }, true);
+        speeds.append(button);
+      }
+      menu.append(speeds);
+      if (tier === undefined) menu.append(node('p', 'setting-note', '当前速度尚未由官方确认'));
+    }
     if (!model?.efforts.length) {
       const choose = node("button", "setting-option", "先选择一个模型");
       choose.type = "button";

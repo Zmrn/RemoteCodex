@@ -91,10 +91,10 @@ test('the verified callerSource is also sent with later app-tool reads', async (
     await f.desktop.connect();
     await f.desktop.call(TOOLS.listThreads, { limit: 1 });
     const calls = f.desktop.tools.calls.filter(c => c.method === OFFICIAL.transport.toolsCall);
-    assert.equal(calls.length, 2);
-    assert.deepEqual(calls.map(c => c.params.callerSource), ['codex', 'codex']);
-    assert.equal(calls[1].params.tool, TOOLS.listThreads);
-    assert.deepEqual(calls[1].params.arguments, { limit: 1 });
+    assert.deepEqual(calls.map(c => c.params.tool), [TOOLS.listProjects, TOOLS.usage, TOOLS.listThreads]);
+    assert.deepEqual(calls.map(c => c.params.callerSource), ['codex', 'codex', 'codex']);
+    assert.deepEqual(calls[1].params.arguments, {});
+    assert.deepEqual(calls[2].params.arguments, { limit: 1 });
   } finally { f.desktop.close(); }
 });
 

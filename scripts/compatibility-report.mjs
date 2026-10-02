@@ -18,6 +18,10 @@ export function validateCatalog() {
   }
   for (const [kind, entries] of Object.entries({ tools: OFFICIAL.tools, ipc: OFFICIAL.ipc })) {
     for (const [key, row] of Object.entries(entries)) {
+      if (Object.hasOwn(row, 'probeWhenMissing') &&
+          (kind !== 'tools' || key !== 'usage' || row.name !== 'get_usage_limits' ||
+           row.request.length || row.probeWhenMissing !== 'read-only-empty-arguments'))
+        throw Error('Only the empty read-only quota query may probe a missing catalog entry');
       if (!(row.method || row.name) || !row.purpose || !row.consumer || !Array.isArray(row.request) || !row.response ||
           !fs.existsSync(path.join(root, row.test)) || (kind === "ipc" && (!Number.isInteger(row.version) ||
             (row.supportedVersions && (!Array.isArray(row.supportedVersions) || !row.supportedVersions.includes(row.version) ||
@@ -54,6 +58,7 @@ export function interfaceMarkdown() {
     "- 管道 PID 不等于任务 owner；按真实 conversationId 发现 handledByClientId，再定向转发，核对相同 owner 回执及事件。协议没有 owner UUID 到 Windows PID 的查询字段，能力标志不是官方进程证明。共存验证见 VSCODE-COEXISTENCE.md。",
     "- 传输：4 字节小端长度 + JSON；app-tools 使用 JSON-RPC 2.0，桌面 IPC 使用 requestId/sourceClientId/version/targetClientId 信封，两者不能混用。",
     "- app-tools 调用封套使用 callerSource=" + OFFICIAL.transport.toolsCallerSource + "；连接后用只读 list_projects 验证实际调用。目录声明匹配而封套被拒绝时，工具依赖功能标记不可用，所有者 IPC 独立判断。",
+    "- get_usage_limits 未在目录列出时，仅通过已核对身份的现有官方连接发起空参数只读查询；收到有效额度结构才确认该接口。失败可在下一次额度读取时重试，不探测目录缺失的写入指令。",
     "- 实时流只接受当前订阅任务的已发现所有者，patch 基线不匹配时标记未知并重读。",
     "- 磁盘队列：" + OFFICIAL.storage.globalStateFile + " / " + OFFICIAL.storage.queueKey + "；仅只读，不能证明实时状态。",
     "- 大历史降级：当前官方 home 的 " + OFFICIAL.storage.rolloutHistory.directories.join(' / ') + "；核对本机任务和 session_meta 身份，只读 item_completed 并按消息分页、图片按需读取。历史结束记录不控制实时状态、写入或已读。",

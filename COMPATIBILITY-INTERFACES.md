@@ -13,6 +13,7 @@ Chat：列表/历史读取；文字续写待专用真实会话验证；新建/�
 - 管道 PID 不等于任务 owner；按真实 conversationId 发现 handledByClientId，再定向转发，核对相同 owner 回执及事件。协议没有 owner UUID 到 Windows PID 的查询字段，能力标志不是官方进程证明。共存验证见 VSCODE-COEXISTENCE.md。
 - 传输：4 字节小端长度 + JSON；app-tools 使用 JSON-RPC 2.0，桌面 IPC 使用 requestId/sourceClientId/version/targetClientId 信封，两者不能混用。
 - app-tools 调用封套使用 callerSource=codex；连接后用只读 list_projects 验证实际调用。目录声明匹配而封套被拒绝时，工具依赖功能标记不可用，所有者 IPC 独立判断。
+- get_usage_limits 未在目录列出时，仅通过已核对身份的现有官方连接发起空参数只读查询；收到有效额度结构才确认该接口。失败可在下一次额度读取时重试，不探测目录缺失的写入指令。
 - 实时流只接受当前订阅任务的已发现所有者，patch 基线不匹配时标记未知并重读。
 - 磁盘队列：.codex-global-state.json / queued-follow-ups；仅只读，不能证明实时状态。
 - 大历史降级：当前官方 home 的 sessions / archived_sessions；核对本机任务和 session_meta 身份，只读 item_completed 并按消息分页、图片按需读取。历史结束记录不控制实时状态、写入或已读。
@@ -30,7 +31,7 @@ Chat：列表/历史读取；文字续写待专用真实会话验证；新建/�
 | set_thread_title | 用户主动修改 Codex 会话名；专用测试权限上下文命名 | threadId, title | threadId, title (submission acknowledgement; display uses subsequent official list) | src/thread-titles.mjs:renameThread, src/bridge.mjs:permissionContext | test/thread-titles.test.mjs |
 | navigate_to_codex_page | 打开官方窗口同一任务 | threadId | official tool result | src/bridge.mjs:open | test/core.test.mjs |
 | wait_threads | 等待任务状态 | targets, timeoutMs | official tool result | src/bridge.mjs:wait | test/context.test.mjs |
-| get_usage_limits | 目标账号额度 |  | rateLimitsByLimitId, rateLimits | src/bridge.mjs:usage | test/usage.test.mjs |
+| get_usage_limits | 目标账号额度 |  | rateLimitsByLimitId, rateLimits | src/desktop.mjs:probeUsage, src/bridge.mjs:usage | test/usage-desktop.test.mjs |
 
 ## 所有者 IPC
 

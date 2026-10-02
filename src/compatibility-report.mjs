@@ -34,9 +34,9 @@ export function candidateImage(image, version) {
 
 const unknown = detail => ({ status: 'unknown', detail });
 export function buildCompatibilityReport({ activeVersion = null, connected = false, ipcConnected = connected, catalog = [], activeProtocols = [],
-  toolCallObservation = null, latestVersion = null, latestProtocols = [], latestSource = 'unavailable', activeError = null, latestError = null } = {}) {
+  toolCallObservation = null, usageObservation = null, latestVersion = null, latestProtocols = [], latestSource = 'unavailable', activeError = null, latestError = null } = {}) {
   const same = !!latestVersion && activeVersion === latestVersion;
-  const observations = interfaceObservations({ connected, ipcConnected, catalog, protocols: activeProtocols, toolCallObservation });
+  const observations = interfaceObservations({ connected, ipcConnected, catalog, protocols: activeProtocols, toolCallObservation, usageObservation });
   const rows = Object.entries(OFFICIAL.tools).map(([id, spec]) => {
     const running = observations[id];
     return { id, kind: 'tool', name: spec.name, purpose: spec.purpose, expected: { request: spec.request }, running,
@@ -87,7 +87,7 @@ export async function collectCompatibilityReport({ createDesktop = () => new Des
       } else latestError = '此电脑尚无最新版安装包，需包下载完成或新版运行后检查';
     }
     return buildCompatibilityReport({ activeVersion, connected, ipcConnected: desktop.ipc !== null, catalog, activeProtocols,
-      toolCallObservation: desktop.toolCallObservation,
+      toolCallObservation: desktop.toolCallObservation, usageObservation: desktop.usageObservation,
       latestVersion: latest.version || null, latestProtocols, latestSource, activeError, latestError });
   } finally { desktop.close(); }
 }

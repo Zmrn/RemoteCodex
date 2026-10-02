@@ -1,5 +1,7 @@
 # 官方桌面兼容性维护
 
+2026-10-02：0.10.53适配官方Windows x64 26.930.2377.0的额度目录间歇性缺项、Pro Max等套餐标签和按模型声明的Ultrafast。388项正常Node22.19.0回归及桌面/手机界面通过；真实只读接口预检和主动移除桥接器目录副本后的原生额度备用查询通过。官方目录现已恢复，未改官方目录或重启应用。当前笔记本模型缓存仅上报Fast，真实Ultrafast设置切换未验证，不扩大历史verifiedVersions或Chat/Work。用户已要求GitHub四包构建，发布状态见GITHUB-UPDATES.md；验证细节见 [OFFICIAL-26930-UPGRADE.md](OFFICIAL-26930-UPGRADE.md)。
+
 2026-09-27：官方 Windows x64 26.924.2738.0 将 app-tools 的 `tools/call` 封套新增必填 `callerSource`。0.10.50 能列出工具和所有者协议，却在任何实际工具调用时报 `-32602 Invalid app tool request`，导致界面误报接口正常而内容读取失败。Remote 现在在调用封套中声明 `callerSource=codex`，连接时只读调用 `list_projects`；封套不匹配或调用结果未知时，工具依赖功能在诊断和运行状态中标为异常／待验证，所有者 IPC 功能独立判断。已在当前官方版只读读取项目、任务列表、额度、Codex/Chat 历史，并对用户截图中的长会话完成首段分页读取；未向真实任务发送消息，也未将该版本加入完整行为已验证名单。详情见 [OFFICIAL-26924-UPGRADE.md](OFFICIAL-26924-UPGRADE.md)。
 
 2026-09-19：设置接口已增加按当前连接适配 v1/v2，v2校验 applied 回执，并保留未知版本限制。官方26.915.4065.0专用任务设置、新建与续写实测及未测范围见 [SETTINGS-V2.md](SETTINGS-V2.md)。
